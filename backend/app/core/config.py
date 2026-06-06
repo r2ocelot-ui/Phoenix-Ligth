@@ -24,5 +24,16 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = ["*"]
 
+    # --- Identity / access control ---
+    database_url: str = "sqlite:///./phoenix.db"
+    jwt_secret: str = "dev-secret-change-me"
+    access_token_expire_minutes: int = 480
+
+    # Progression: if enabled, users auto-promote one step when eligible,
+    # but never above auto_promote_max_rank. Disabled by default so promotions
+    # are an explicit admin action.
+    auto_promote_enabled: bool = False
+    auto_promote_max_rank: str = "tecnico"
+
 
 settings = Settings()

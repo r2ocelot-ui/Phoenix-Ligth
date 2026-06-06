@@ -49,22 +49,26 @@ Plan de versiones y revisiones en [`ROADMAP.md`](./ROADMAP.md).
 ```
 backend/
 ├── app/
-│   ├── main.py                  # Bootstrap FastAPI + MQTT lifecycle
+│   ├── main.py                  # Bootstrap FastAPI + MQTT lifecycle + init_db
 │   ├── core/
 │   │   ├── config.py            # Settings (pydantic-settings)
-│   │   └── mqtt_client.py       # Wrapper asyncio del cliente MQTT
+│   │   ├── database.py          # Engine/sesión SQLAlchemy + init_db
+│   │   ├── security.py          # Hash PBKDF2 + JWT HS256 (stdlib)
+│   │   └── mqtt_client.py       # Bus MQTT asíncrono (telemetría/comandos/alarmas)
 │   ├── api/v1/
-│   │   ├── cabinets.py          # CRUD de cuadros
-│   │   ├── measurements.py      # Consulta histórica
-│   │   ├── alarms.py            # Listado / ACK de alarmas
-│   │   └── control.py           # ON/OFF/Dimming
-│   ├── schemas/
-│   │   ├── measurement.py       # Modelos Pydantic
-│   │   └── alarm.py
+│   │   ├── auth.py              # register / login / me
+│   │   ├── users.py             # gestión de usuarios, rangos y permisos
+│   │   ├── audit.py             # historial append-only
+│   │   ├── alarms.py            # alarmas activas (protegido por permiso)
+│   │   └── control.py           # ON/OFF/Dimming (protegido por permiso)
+│   ├── models/                  # ORM: User, AuditLog
+│   ├── schemas/                 # Pydantic: measurement, alarm, user, audit
 │   └── services/
-│       ├── ingest.py            # Procesa telemetría entrante
 │       ├── alarm_engine.py      # Reglas de detección de fallos
-│       └── dimming_controller.py# Perfiles horarios + sensores lux
+│       ├── dimming_controller.py# Perfiles horarios + sensores lux
+│       ├── ranks.py             # Rangos, permisos y progresión
+│       ├── auth.py              # Deps: current_user / require_permission
+│       └── audit_log.py         # Registro append-only
 └── requirements.txt
 ```
 
@@ -127,10 +131,48 @@ Endpoints útiles:
 - `http://localhost:8000/docs` — Swagger / OpenAPI para integradores
 - `http://localhost:8000/api/v1/cabinets/CAB-001/alarms` — alarmas activas
 
+## Usuarios, rangos y auditoría
+
+La API requiere autenticación (JWT). Los endpoints están protegidos por **permisos**,
+que se derivan del **rango** del usuario más sus overrides individuales.
+
+| Rango | Nivel | Permisos por defecto |
+|---|---|---|
+| `novato` | 0 | leer cuadros |
+| `operador` | 1 | + control (encendido/apagado/dimming) |
+| `tecnico` | 2 | + ACK de alarmas, gestión de cuadros |
+| `supervisor` | 3 | + ver auditoría, ver usuarios |
+| `admin` | 4 | + gestionar usuarios y rangos |
+| `owner` | 5 | todo (`*`) |
+
+- **Progresión**: los usuarios acumulan `activity_points` al operar. Al alcanzar el umbral
+  de puntos + antigüedad quedan *elegibles* para el siguiente rango (ver `/auth/me`). El
+  ascenso lo confirma un admin (`POST /users/{id}/promote`), o automático si se activa
+  `PHOENIX_AUTO_PROMOTE_ENABLED` (con tope `PHOENIX_AUTO_PROMOTE_MAX_RANK`).
+- **Overrides por usuario**: `extra_permissions` y `denied_permissions` ajustan permisos
+  por encima/por debajo del rango (`POST /users/{id}/permissions`).
+- **Bootstrap**: el **primer usuario registrado** es `owner`; el resto nacen `novato`.
+- **Historial**: cada acción relevante (login, control, cambios de rango) queda en un
+  log append-only consultable en `GET /api/v1/audit`.
+
+```bash
+# 1) Registrar (el primero es owner) y obtener token
+curl -X POST localhost:8000/api/v1/auth/register \
+     -H 'Content-Type: application/json' \
+     -d '{"username":"admin","password":"secret123"}'
+TOKEN=$(curl -s -X POST localhost:8000/api/v1/auth/login \
+     -d 'username=admin&password=secret123' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+
+# 2) Llamar a un endpoint protegido
+curl -X POST localhost:8000/api/v1/cabinets/CAB-001/dim \
+     -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+     -d '{"level":50}'
+```
+
 ## Tests
 
 ```bash
-cd backend && pytest        # motor de alarmas + perfiles de dimming
+cd backend && pytest        # alarmas, dimming, rangos/permisos y API de auth
 python simulator/standalone_alarm_demo.py   # demo de lámpara fundida sin broker
 ```
 

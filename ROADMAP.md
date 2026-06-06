@@ -4,6 +4,9 @@
 > - `V` = **Versión** (hito funcional, cambio de capacidades visible para el usuario).
 > - `R` = **Revisión** (reparación, modificación o nueva feature dentro de una versión).
 > - Estado: `[x]` hecho · `[~]` en curso · `[ ]` pendiente.
+>
+> **Snapshots:** cada versión entregada se congela con un tag git (p. ej. `v0-mvp`).
+> Ese tag es la "foto" estable; el desarrollo nuevo va en la rama/PR (modificable).
 
 ---
 
@@ -28,20 +31,48 @@ Demostrar el bucle completo: edge → MQTT → backend → alarma → API.
 | R0.14 | feat | `ambient_lux` opcional en telemetría → realimentado al scheduler | [x] |
 | R0.15 | ci | GitHub Actions: `pytest` en cada push / PR | [x] |
 
+Snapshot: `v0-mvp`
+
 ---
 
-## V0.1 — Hardening (siguiente paso) 🔧
+## V0.2 — Identidad y control de acceso ✅
+Registro de usuarios, rangos con permisos y progresión, e historial/auditoría.
+(Adelantada respecto a parte de V0.1 por prioridad del proyecto.)
+
+| Rev | Tipo | Descripción | Estado |
+|---|---|---|---|
+| R0.2.1 | feat | Persistencia SQLite con SQLAlchemy 2.0 + `init_db()` en arranque | [x] |
+| R0.2.2 | feat | Registro/login: JWT HS256 (stdlib, sin deps) + hash PBKDF2 | [x] |
+| R0.2.3 | feat | Escalera de rangos: novato → operador → técnico → supervisor → admin → owner | [x] |
+| R0.2.4 | feat | Permisos granulares + overrides por usuario (extra / denied) | [x] |
+| R0.2.5 | feat | Progresión: elegibilidad por puntos + antigüedad; auto-promote opcional con tope | [x] |
+| R0.2.6 | feat | Historial/auditoría append-only de acciones (login, control, cambios de rango) | [x] |
+| R0.2.7 | feat | Endpoints de control y alarmas protegidos por permiso | [x] |
+| R0.2.8 | feat | Primer usuario = owner (bootstrap); no se asignan rangos por encima del propio | [x] |
+| R0.2.9 | test | 17 tests nuevos: servicio de rangos (unit) + API de auth (integración) | [x] |
+| R0.2.10 | docs | `.env.example` con variables de auth/BD | [x] |
+
+Pendiente para futuras revisiones de esta línea:
+| R0.2.11 | feat | Refresh tokens + revocación / logout | [ ] |
+| R0.2.12 | feat | API Key máquina-a-máquina para integradores (además del JWT humano) | [ ] |
+| R0.2.13 | feat | UI web de login + gestión de usuarios e historial (estilo panel) | [ ] |
+
+Snapshot: `v0.2-identity` (al cerrar la versión)
+
+---
+
+## V0.1 — Hardening 🔧
 Tapar los huecos que aún quedan antes de pensar en producción.
 
 | Rev | Tipo | Descripción | Estado |
 |---|---|---|---|
 | R0.1.1 | fix | Validación de coherencia: `P ≈ V·I·cos φ` (descartar telemetría incongruente) | [ ] |
-| R0.1.2 | feat | API Key por integrador (header `X-API-Key`) — gate mínimo de auth | [ ] |
+| R0.1.2 | feat | API Key por integrador (header `X-API-Key`) → movido a R0.2.12 tras añadir JWT | [~] |
 | R0.1.3 | feat | Suscripción a `cabinets/+/status` con timeout heartbeat (no solo LWT) | [ ] |
-| R0.1.4 | feat | Persistencia ligera con SQLite (estado de cuadros + cola de alarmas) | [ ] |
+| R0.1.4 | feat | Persistencia SQLite — BD ya disponible (V0.2); falta persistir estado de cuadros y alarmas | [~] |
 | R0.1.5 | test | Cobertura del control API (`/relay`, `/dim`) y endpoint de alarmas | [ ] |
 | R0.1.6 | fix | Healthcheck en `docker-compose` para que el backend espere a Mosquitto | [ ] |
-| R0.1.7 | docs | `.env.example` con todas las variables `PHOENIX_*` | [ ] |
+| R0.1.7 | docs | `.env.example` con todas las variables `PHOENIX_*` (hecho en V0.2) | [x] |
 | R0.1.8 | chore | Logging estructurado (JSON) para integración con ELK/Loki | [ ] |
 
 ---
@@ -56,7 +87,7 @@ Despliegue real en 5-10 cuadros con un cliente.
 | R1.0.3 | feat | MQTT con TLS + ACL por cuadro (cada ESP32 con su credencial) | [ ] |
 | R1.0.4 | feat | WebSocket `/ws/alarms` para streaming en tiempo real a integradores | [ ] |
 | R1.0.5 | feat | Rate limiting (`slowapi`) en endpoints de control | [ ] |
-| R1.0.6 | feat | Roles + JWT (admin / operador / integrador read-only) | [ ] |
+| R1.0.6 | feat | Roles + JWT — hecho en V0.2 (escalera de 6 rangos + permisos); faltan refresh tokens | [x] |
 | R1.0.7 | feat | Driver Modbus RTU para SDM630 / CIRCUTOR CVM-C10 (analizador certificable) | [ ] |
 | R1.0.8 | feat | Store-and-forward en el ESP32 (LittleFS) para no perder telemetría offline | [ ] |
 | R1.0.9 | feat | OTA del firmware vía `ArduinoOTA` o cliente HTTPS contra el backend | [ ] |
@@ -114,7 +145,7 @@ Cuando deje de ser “un prototipo” y empiece a ser “producto”.
 | R3.0.2 | feat | Aislamiento por tenant en Mosquitto (ACL dinámico) | [ ] |
 | R3.0.3 | feat | Marketplace de drivers (PRIME/G3, Zigbee, KNX) | [ ] |
 | R3.0.4 | feat | SDK Python / TypeScript para integradores | [ ] |
-| R3.0.5 | feat | Auditoría inmutable (append-only) de comandos a cuadros | [ ] |
+| R3.0.5 | feat | Auditoría inmutable (append-only) de comandos a cuadros — base hecha en V0.2 | [~] |
 
 ---
 

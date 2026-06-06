@@ -40,6 +40,8 @@ class MQTTBus:
         self.last_telemetry: dict[str, dict] = {}
         self.last_lux: dict[str, float] = {}
         self._known_cabinets: set[str] = set()
+        # Live subscribers (WebSocket connections) fed via per-client queues.
+        self._listeners: set[asyncio.Queue] = set()
 
     async def start(self) -> None:
         self._tasks = [
@@ -73,6 +75,31 @@ class MQTTBus:
         if state is None:
             return True
         return state.get("relay", "on") == "on" and state.get("dim", 100) > 0
+
+    # ----- Live pub/sub for WebSocket clients -------------------------------
+    def subscribe(self) -> asyncio.Queue:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=8)
+        self._listeners.add(queue)
+        return queue
+
+    def unsubscribe(self, queue: asyncio.Queue) -> None:
+        self._listeners.discard(queue)
+
+    def notify(self) -> None:
+        """Push a fresh snapshot to every live subscriber (drops stale frames)."""
+        if not self._listeners:
+            return
+        snap = self.snapshot()
+        for queue in list(self._listeners):
+            if queue.full():
+                try:
+                    queue.get_nowait()
+                except Exception:  # noqa: BLE001
+                    pass
+            try:
+                queue.put_nowait(snap)
+            except Exception:  # noqa: BLE001
+                pass
 
     # ----- Snapshot for the API / web panel ---------------------------------
     def snapshot(self) -> list[dict]:
@@ -110,6 +137,7 @@ class MQTTBus:
         expected_on = self._is_expected_on(cid)
         current = alarm_engine.evaluate(measurement, expected_on=expected_on)
         await self._reconcile_alarms(cid, current)
+        self.notify()
 
     # ----- MQTT loop --------------------------------------------------------
     async def _run(self) -> None:
@@ -181,6 +209,7 @@ class MQTTBus:
             cleared["cleared"] = True
             log.info("ALARM CLEARED COMMUNICATION_LOSS on %s", cabinet_id)
             await self.publish(settings.mqtt_topic_alarms, cleared)
+        self.notify()
 
     async def _reconcile_alarms(self, cabinet_id: str, current_alarms: list) -> None:
         current_by_type = {a.type.value: a for a in current_alarms}

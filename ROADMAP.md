@@ -76,11 +76,28 @@ Interfaz gráfica (la pieza "estilo Hydra") con la identidad de la división Pho
 | R0.3.8 | test | Tests del endpoint de cuadros + smoke test de servido del panel | [x] |
 
 Pendiente para futuras revisiones de esta línea:
-| R0.3.9 | feat | Mapa de ciudad (Leaflet) con ubicación de cuadros, como en Hydra | [ ] |
-| R0.3.10 | feat | WebSocket en lugar de polling para telemetría en tiempo real | [ ] |
+| R0.3.9 | feat | Mapa de ciudad (Leaflet) con ubicación de cuadros → hecho en V0.4 | [x] |
+| R0.3.10 | feat | WebSocket en lugar de polling para telemetría → hecho en V0.4 | [x] |
 | R0.3.11 | feat | Build React+Vite (si se quiere paridad técnica total con Hydra) | [ ] |
 
-Snapshot: `v0.3-panel` (al cerrar la versión)
+Snapshot: `v0.3-panel`
+
+---
+
+## V0.4 — Mapa, tiempo real y registro de cuadros ✅
+Las tres mejoras del panel pedidas + un refuerzo de backend que las sostiene.
+
+| Rev | Tipo | Descripción | Estado |
+|---|---|---|---|
+| R0.4.1 | feat | Registro de cuadros en BD (código, nombre, zona, lat/lon) + CRUD | [x] |
+| R0.4.2 | feat | `GET /cabinets` fusiona telemetría en vivo + metadatos del registro | [x] |
+| R0.4.3 | feat | WebSocket `/api/v1/ws` que empuja snapshots; el panel cae a polling si falla | [x] |
+| R0.4.4 | feat | Mapa Leaflet (tiles oscuros) con cuadros por color de estado y popup operable | [x] |
+| R0.4.5 | feat | Seed de cuadros demo con coordenadas | [x] |
+| R0.4.6 | feat | Pulido visual: emblema con llama animada, pulsos de estado, indicador en vivo | [x] |
+| R0.4.7 | test | Tests de registro de cuadros + WebSocket (32 en total) | [x] |
+
+Snapshot: `v0.4-map-realtime` (al cerrar la versión)
 
 ---
 
@@ -92,7 +109,7 @@ Tapar los huecos que aún quedan antes de pensar en producción.
 | R0.1.1 | fix | Validación de coherencia: `P ≈ V·I·cos φ` (descartar telemetría incongruente) | [ ] |
 | R0.1.2 | feat | API Key por integrador (header `X-API-Key`) → movido a R0.2.12 tras añadir JWT | [~] |
 | R0.1.3 | feat | Suscripción a `cabinets/+/status` con timeout heartbeat (no solo LWT) | [ ] |
-| R0.1.4 | feat | Persistencia SQLite — BD ya disponible (V0.2); falta persistir estado de cuadros y alarmas | [~] |
+| R0.1.4 | feat | Persistencia SQLite — registro de cuadros en BD (V0.4); falta persistir alarmas e histórico de telemetría | [~] |
 | R0.1.5 | test | Cobertura del control API (`/relay`, `/dim`) y endpoint de alarmas | [ ] |
 | R0.1.6 | fix | Healthcheck en `docker-compose` para que el backend espere a Mosquitto | [ ] |
 | R0.1.7 | docs | `.env.example` con todas las variables `PHOENIX_*` (hecho en V0.2) | [x] |

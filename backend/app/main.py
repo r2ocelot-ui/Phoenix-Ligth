@@ -12,10 +12,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1 import alarms, audit, auth, cabinets, control, users
+from app.api.v1 import alarms, audit, auth, cabinets, control, realtime, users
 from app.core.config import settings
-from app.core.database import init_db
+from app.core.database import SessionLocal, init_db
 from app.core.mqtt_client import bus
+from app.services.seed import seed_demo_cabinets
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -23,6 +24,9 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    if settings.demo_mode:
+        with SessionLocal() as db:
+            seed_demo_cabinets(db)
     await bus.start()
     yield
     await bus.stop()
@@ -45,6 +49,7 @@ app.include_router(audit.router, prefix=settings.api_v1_prefix)
 app.include_router(cabinets.router, prefix=settings.api_v1_prefix)
 app.include_router(alarms.router, prefix=settings.api_v1_prefix)
 app.include_router(control.router, prefix=settings.api_v1_prefix)
+app.include_router(realtime.router, prefix=settings.api_v1_prefix)
 
 
 @app.get("/health")

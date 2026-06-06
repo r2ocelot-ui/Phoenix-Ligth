@@ -52,6 +52,7 @@ async def set_relay(
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
     bus.record_command(cabinet_id, relay=cmd.state)
+    bus.notify()
     _credit_and_audit(db, user, "cabinet.relay", cabinet_id, {"state": cmd.state})
     return {"sent": True, "cabinet_id": cabinet_id, "state": cmd.state}
 
@@ -68,5 +69,6 @@ async def set_dim(
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
     bus.record_command(cabinet_id, dim=cmd.level)
+    bus.notify()
     _credit_and_audit(db, user, "cabinet.dim", cabinet_id, {"level": cmd.level})
     return {"sent": True, "cabinet_id": cabinet_id, "level": cmd.level}

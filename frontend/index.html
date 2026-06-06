@@ -6,6 +6,8 @@
   <title>Phoenix Light · Alumbrado Público Inteligente</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     /* ===== Tema (Kumiho / Phoenix). Cambia --accent* para otra división. ===== */
     :root {
@@ -31,12 +33,16 @@
     .mono { font-family: var(--mono); }
     .muted { color: var(--muted); }
 
-    /* ===== Emblema Phoenix ===== */
+    /* ===== Emblema Phoenix con llama animada ===== */
     .emblem { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
       background: radial-gradient(circle at 50% 35%, #2a1206, #0b0502);
       border: 1px solid var(--accent-line); box-shadow: 0 0 22px rgba(239,68,68,.35); flex: none; }
-    .emblem svg { width: 26px; height: 26px; filter: drop-shadow(0 0 4px rgba(249,115,22,.8)); }
+    .emblem svg { width: 26px; height: 26px; animation: flick 2.4s ease-in-out infinite; }
     .emblem.big { width: 84px; height: 84px; } .emblem.big svg { width: 52px; height: 52px; }
+    @keyframes flick {
+      0%,100% { filter: drop-shadow(0 0 4px rgba(249,115,22,.8)); transform: scale(1); }
+      50% { filter: drop-shadow(0 0 10px rgba(239,68,68,1)); transform: scale(1.06); }
+    }
 
     /* ===== Login ===== */
     #login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
@@ -67,7 +73,7 @@
     aside .brand { padding: 6px 8px 18px; }
     aside .brand h1 { font-size: 18px; letter-spacing: 3px; }
     nav a { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-radius: 10px;
-      color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; }
+      color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; cursor: pointer; }
     nav a:hover { background: #ffffff08; color: var(--text); }
     nav a.active { background: var(--accent-soft); color: #fff; border: 1px solid var(--accent-line); }
     nav a .ico { width: 18px; text-align: center; }
@@ -91,16 +97,18 @@
 
     .cab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
     .cab-head .id { font-weight: 700; font-size: 15px; letter-spacing: .5px; }
+    .cab-head .nm { font-size: 11px; color: var(--muted); }
     .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
     .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
     .dot.warning { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
-    .dot.critical { background: var(--crit); box-shadow: 0 0 8px var(--crit); }
+    .dot.critical { background: var(--crit); box-shadow: 0 0 8px var(--crit); animation: pulse 1.6s infinite; }
     .dot.off { background: var(--dim); }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.6); } 70% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
     .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin: 6px 0 12px; }
     .metrics .m .ml { font-size: 11px; color: var(--muted); }
     .metrics .m .mv { font-family: var(--mono); font-size: 16px; font-weight: 600; }
     .bar { height: 6px; background: var(--border-2); border-radius: 4px; overflow: hidden; }
-    .bar > span { display: block; height: 100%; background: var(--fire); }
+    .bar > span { display: block; height: 100%; background: var(--fire); transition: width .4s; }
 
     table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
     th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
@@ -122,6 +130,13 @@
       background: #fff; border: 3px solid var(--accent-2); cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
     input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--accent-2); }
 
+    /* ===== Mapa (Leaflet, tema oscuro) ===== */
+    #map { height: 560px; border-radius: 14px; border: 1px solid var(--border); }
+    .leaflet-container { background: #060b18; font-family: var(--sans); }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); border: 1px solid var(--border-2); }
+    .leaflet-popup-content { font-size: 13px; }
+    .leaflet-bar a { background: var(--panel); color: var(--text); border-color: var(--border-2); }
+
     .toast { position: fixed; right: 22px; bottom: 22px; background: var(--panel); border: 1px solid var(--border-2);
       border-left: 4px solid var(--accent); border-radius: 10px; padding: 13px 18px; font-size: 14px;
       box-shadow: 0 12px 40px rgba(0,0,0,.5); opacity: 0; transform: translateY(10px); transition: .25s; max-width: 360px; }
@@ -133,7 +148,6 @@
   </style>
 </head>
 <body>
-  <!-- Emblema reutilizable -->
   <template id="phoenix-svg">
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1">
@@ -177,6 +191,7 @@
       <nav id="nav">
         <a data-view="inicio" class="active"><span class="ico">◎</span> Inicio</a>
         <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">▦</span> Cuadros</a>
+        <a data-view="mapa" data-perm="cabinet:read"><span class="ico">◗</span> Mapa</a>
         <a data-view="control" data-perm="cabinet:control"><span class="ico">⏻</span> Control</a>
         <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">⚠</span> Alarmas</a>
         <a data-view="usuarios" data-perm="user:view"><span class="ico">☷</span> Usuarios</a>
@@ -197,7 +212,7 @@
         </div>
         <div class="row">
           <span class="dot ok" id="live-dot"></span>
-          <span class="muted" id="live-label" style="font-size:12px">en vivo</span>
+          <span class="muted" id="live-label" style="font-size:12px">conectando…</span>
         </div>
       </div>
       <div id="content"></div>
@@ -210,6 +225,8 @@
   <script>
   // ============================ Estado y utilidades ============================
   const API = "/api/v1";
+  const LIVE_VIEWS = ["inicio", "cuadros", "alarmas", "control"];
+  const STATUS_COLOR = { ok: "#22c55e", warning: "#f59e0b", critical: "#ef4444" };
   const state = { token: localStorage.getItem("ph_token") || null, me: null, view: "inicio", cabinets: [] };
 
   function emblemAll() {
@@ -220,6 +237,7 @@
   function el(tag, cls, html) { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
   function has(perm) { const p = state.me?.permissions || []; return p.includes("*") || p.includes(perm); }
   function toast(msg, isErr) { const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (isErr ? " err" : ""); setTimeout(() => t.className = "toast", 3200); }
+  function fmt(t, key, unit, d = 1) { const v = t?.[key]; return v == null ? "—" : Number(v).toFixed(d) + unit; }
 
   async function api(path, opts = {}) {
     opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
@@ -241,12 +259,13 @@
     await boot();
   }
   async function doRegister(user, pass) {
-    await fetch(API + "/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password: pass }) })
-      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.detail || "No se pudo registrar"); });
+    const r = await fetch(API + "/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password: pass }) });
+    const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.detail || "No se pudo registrar");
     await doLogin(user, pass);
   }
   function logout() {
     state.token = null; state.me = null; localStorage.removeItem("ph_token");
+    if (window._ws) { try { window._ws.close(); } catch (e) {} window._ws = null; }
     $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
   }
 
@@ -255,29 +274,67 @@
     $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
     $("#ub-user").textContent = state.me.username;
     $("#ub-rank").textContent = state.me.rank;
-    // Filtrar navegación por permisos
     document.querySelectorAll("#nav a").forEach(a => {
       const perm = a.dataset.perm; a.style.display = (!perm || has(perm)) ? "" : "none";
     });
     go("inicio");
-    if (!window._poll) window._poll = setInterval(refreshLive, 3000);
-    refreshLive();
+    await refreshLive();
+    connectWS();
+    if (!window._fallback) window._fallback = setInterval(() => {
+      if (!window._ws || window._ws.readyState !== 1) refreshLive();
+    }, 10000);
   }
 
-  // ============================ Datos en vivo ============================
+  // ============================ Datos en vivo (REST + WebSocket) ============================
+  function setLive(mode) {
+    const dot = $("#live-dot"), lbl = $("#live-label");
+    if (mode === "live") { dot.className = "dot ok"; lbl.textContent = "tiempo real"; }
+    else if (mode === "poll") { dot.className = "dot warning"; lbl.textContent = "actualizando…"; }
+    else { dot.className = "dot critical"; lbl.textContent = "sin conexión"; }
+  }
+
   async function refreshLive() {
     if (!state.token || !has("cabinet:read")) return;
     try {
-      state.cabinets = await api("/cabinets");
-      $("#live-dot").className = "dot ok";
-      if (["inicio", "cuadros", "alarmas", "control"].includes(state.view)) render();
-    } catch (e) { $("#live-dot").className = "dot critical"; }
+      state.cabinets = await api("/cabinets");   // lista completa con metadatos (nombre, lat/lon)
+      if (!window._ws || window._ws.readyState !== 1) setLive("poll");
+      rerenderLive();
+    } catch (e) { setLive("down"); }
+  }
+
+  function applyLive(liveList) {
+    const byId = Object.fromEntries(state.cabinets.map(c => [c.cabinet_id, c]));
+    liveList.forEach(l => {
+      const ex = byId[l.cabinet_id];
+      if (ex) Object.assign(ex, { online: l.online, status: l.status, telemetry: l.telemetry, state: l.state, alarms: l.alarms });
+      else state.cabinets.push(l);
+    });
+    rerenderLive();
+  }
+
+  function rerenderLive() {
+    if (LIVE_VIEWS.includes(state.view)) render();
+    else if (state.view === "mapa") updateMapMarkers();
+  }
+
+  function connectWS() {
+    if (!state.token) return;
+    try {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/api/v1/ws?token=${encodeURIComponent(state.token)}`);
+      window._ws = ws;
+      ws.onopen = () => setLive("live");
+      ws.onmessage = (ev) => { try { const m = JSON.parse(ev.data); if (m.type === "snapshot") applyLive(m.cabinets); } catch (e) {} };
+      ws.onclose = () => { window._ws = null; setLive("poll"); setTimeout(connectWS, 3000); };
+      ws.onerror = () => { try { ws.close(); } catch (e) {} };
+    } catch (e) { setTimeout(connectWS, 3000); }
   }
 
   // ============================ Navegación ============================
   const TITLES = {
     inicio: ["Inicio", "Resumen de la red de alumbrado"],
     cuadros: ["Cuadros", "Estado y telemetría de los cuadros"],
+    mapa: ["Mapa", "Ubicación y estado de los cuadros en la ciudad"],
     control: ["Control", "Encendido, apagado y regulación (dimming)"],
     alarmas: ["Alarmas", "Incidencias activas en la red"],
     usuarios: ["Usuarios", "Cuentas, rangos y permisos"],
@@ -298,12 +355,10 @@
     const c = $("#content");
     if (state.view === "inicio") return renderInicio(c);
     if (state.view === "cuadros") return renderCuadros(c);
+    if (state.view === "mapa") return renderMapa(c);
     if (state.view === "control") return renderControl(c);
     if (state.view === "alarmas") return renderAlarmas(c);
-    // usuarios/auditoria se rellenan async
   }
-
-  function fmt(t, key, unit, d = 1) { const v = t?.[key]; return v == null ? "—" : Number(v).toFixed(d) + unit; }
 
   function renderInicio(c) {
     const cabs = state.cabinets;
@@ -312,12 +367,8 @@
     const kw = cabs.reduce((s, x) => s + (x.telemetry?.active_power_w || 0), 0) / 1000;
     c.innerHTML = "";
     const kpis = el("div", "grid kpis");
-    kpis.append(
-      kpi("Cuadros", cabs.length, false),
-      kpi("Online", online + " / " + cabs.length, false),
-      kpi("Alarmas activas", alarms, alarms > 0),
-      kpi("Potencia total", kw.toFixed(2) + " kW", false),
-    );
+    kpis.append(kpi("Cuadros", cabs.length, false), kpi("Online", online + " / " + cabs.length, false),
+      kpi("Alarmas activas", alarms, alarms > 0), kpi("Potencia total", kw.toFixed(2) + " kW", false));
     c.append(kpis);
     const allAlarms = cabs.flatMap(x => x.alarms.map(a => ({ ...a, cabinet_id: x.cabinet_id })));
     const p = el("div", "panel"); p.style.marginTop = "18px";
@@ -326,11 +377,7 @@
     else p.append(alarmTable(allAlarms, false));
     c.append(p);
   }
-  function kpi(k, v, accent) {
-    const card = el("div", "card kpi");
-    card.append(el("div", "k", k), el("div", "v" + (accent ? " accent" : ""), v));
-    return card;
-  }
+  function kpi(k, v, accent) { const card = el("div", "card kpi"); card.append(el("div", "k", k), el("div", "v" + (accent ? " accent" : ""), v)); return card; }
 
   function renderCuadros(c) {
     c.innerHTML = "";
@@ -340,7 +387,7 @@
       const t = cab.telemetry || {};
       const card = el("div", "card");
       const head = el("div", "cab-head");
-      head.append(el("div", "id", cab.cabinet_id),
+      head.append(el("div", null, `<div class="id">${cab.cabinet_id}</div><div class="nm">${cab.name || ""}</div>`),
         el("div", null, `<span class="dot ${cab.online ? cab.status : 'off'}"></span> <span class="muted" style="font-size:12px">${cab.online ? cab.status : 'offline'}</span>`));
       card.append(head);
       const m = el("div", "metrics");
@@ -355,6 +402,38 @@
   }
   function metric(label, val) { const m = el("div", "m"); m.append(el("div", "ml", label), el("div", "mv", val)); return m; }
 
+  // ============================ Mapa ============================
+  function renderMapa(c) {
+    c.innerHTML = "";
+    if (typeof L === "undefined") { c.append(el("div", "empty", "El mapa requiere conexión a internet (Leaflet / tiles).")); return; }
+    const div = el("div"); div.id = "map"; c.append(div);
+    if (window._map) { window._map.remove(); }
+    window._markers = {}; window._fitDone = false;
+    const map = L.map("map", { attributionControl: false }).setView([40.4168, -3.7038], 13);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
+    window._map = map;
+    setTimeout(() => map.invalidateSize(), 60);
+    updateMapMarkers();
+  }
+  function updateMapMarkers() {
+    const map = window._map; if (!map) return;
+    const pts = [];
+    state.cabinets.forEach(cab => {
+      if (cab.latitude == null || cab.longitude == null) return;
+      const color = !cab.online ? "#64748b" : (STATUS_COLOR[cab.status] || "#22c55e");
+      let mk = window._markers[cab.cabinet_id];
+      if (!mk) { mk = L.circleMarker([cab.latitude, cab.longitude], { radius: 10, weight: 3 }).addTo(map); window._markers[cab.cabinet_id] = mk; }
+      mk.setStyle({ color, fillColor: color, fillOpacity: 0.45 });
+      const t = cab.telemetry || {};
+      const ctrl = has("cabinet:control") ? `<button class="btn sm" id="pop-${cab.cabinet_id}" style="margin-top:8px;width:100%">Operar</button>` : "";
+      mk.bindPopup(`<strong>${cab.name || cab.cabinet_id}</strong><br><span class="muted">${cab.cabinet_id} · ${cab.online ? cab.status : "offline"}</span><br>V ${fmt(t, "voltage_v", " V")} · I ${fmt(t, "current_a", " A", 2)}<br>P ${fmt(t, "active_power_w", " W", 0)} · dim ${cab.state?.dim ?? 0}%${ctrl}`);
+      mk.off("popupopen").on("popupopen", () => { const b = document.getElementById("pop-" + cab.cabinet_id); if (b) b.onclick = () => { window._ctrlSel = cab.cabinet_id; go("control"); }; });
+      pts.push([cab.latitude, cab.longitude]);
+    });
+    if (pts.length && !window._fitDone) { map.fitBounds(pts, { padding: [40, 40] }); window._fitDone = true; }
+  }
+
+  // ============================ Control ============================
   function renderControl(c) {
     c.innerHTML = "";
     if (!has("cabinet:control")) { c.append(el("div", "empty", "Tu rango no permite operar cuadros. Solo lectura.")); return; }
@@ -367,15 +446,14 @@
     const sel = el("select"); ids.forEach(id => { const o = el("option", null, id); o.value = id; if (id === cur.cabinet_id) o.selected = true; sel.append(o); });
     sel.onchange = () => { window._ctrlSel = sel.value; render(); };
     p.append(sel);
-    const dim = cur.state?.dim ?? 100;
-    p.append(el("div", null, `<label>Encendido / Apagado</label>`));
+    p.append(el("label", null, "Encendido / Apagado"));
     const relayRow = el("div", "row");
     const onBtn = el("button", "btn sm", "Encender"); onBtn.onclick = () => relay(cur.cabinet_id, "on");
     const offBtn = el("button", "btn sm ghost", "Apagar"); offBtn.onclick = () => relay(cur.cabinet_id, "off");
     relayRow.append(onBtn, offBtn); p.append(relayRow);
+    const dim = cur.state?.dim ?? 100;
     p.append(el("label", null, `Regulación (dimming) · <span class="mono" id="dimv">${dim}%</span>`));
-    const rng = el("input"); rng.type = "range"; rng.min = 0; rng.max = 100; rng.value = dim;
-    rng.style.setProperty("--p", dim + "%");
+    const rng = el("input"); rng.type = "range"; rng.min = 0; rng.max = 100; rng.value = dim; rng.style.setProperty("--p", dim + "%");
     rng.oninput = () => { $("#dimv").textContent = rng.value + "%"; rng.style.setProperty("--p", rng.value + "%"); };
     p.append(rng);
     const send = el("button", "btn", "Aplicar dimming"); send.onclick = () => dimCmd(cur.cabinet_id, parseInt(rng.value, 10));
@@ -383,14 +461,15 @@
     c.append(p);
   }
   async function relay(id, st) {
-    try { await api(`/cabinets/${id}/relay`, { method: "POST", body: JSON.stringify({ state: st }) }); toast(`${id}: ${st === "on" ? "encendido" : "apagado"}`); refreshLive(); }
+    try { await api(`/cabinets/${id}/relay`, { method: "POST", body: JSON.stringify({ state: st }) }); toast(`${id}: ${st === "on" ? "encendido" : "apagado"}`); }
     catch (e) { toast(e.message, true); }
   }
   async function dimCmd(id, level) {
-    try { await api(`/cabinets/${id}/dim`, { method: "POST", body: JSON.stringify({ level }) }); toast(`${id}: dimming ${level}%`); refreshLive(); }
+    try { await api(`/cabinets/${id}/dim`, { method: "POST", body: JSON.stringify({ level }) }); toast(`${id}: dimming ${level}%`); }
     catch (e) { toast(e.message, true); }
   }
 
+  // ============================ Alarmas ============================
   function renderAlarmas(c) {
     c.innerHTML = "";
     const all = state.cabinets.flatMap(x => x.alarms.map(a => ({ ...a, cabinet_id: x.cabinet_id })));
@@ -417,6 +496,7 @@
     catch (e) { toast(e.message, true); }
   }
 
+  // ============================ Usuarios ============================
   async function loadUsers() {
     const c = $("#content"); c.innerHTML = "";
     try {
@@ -442,6 +522,7 @@
     } catch (e) { c.append(el("div", "empty", e.message)); }
   }
 
+  // ============================ Auditoría ============================
   async function loadAudit() {
     const c = $("#content"); c.innerHTML = "";
     try {

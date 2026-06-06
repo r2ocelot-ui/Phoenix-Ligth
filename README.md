@@ -143,6 +143,7 @@ Endpoints útiles:
 - `http://localhost:8000/ui/` — **Panel web Phoenix Light**
 - `http://localhost:8000/docs` — Swagger / OpenAPI para integradores
 - `http://localhost:8000/api/v1/cabinets` — snapshot en vivo de los cuadros (requiere token)
+- `ws://localhost:8000/api/v1/ws?token=…` — telemetría/alarmas en tiempo real
 
 ## Panel web (Phoenix Light UI)
 
@@ -153,6 +154,7 @@ Phoenix. Secciones:
 
 - **Inicio** — KPIs de la red (cuadros, online, alarmas, potencia total) e incidencias.
 - **Cuadros** — tarjetas con telemetría en vivo (V/I/P/cos φ) y nivel de dimming.
+- **Mapa** — cuadros sobre un mapa Leaflet (tiles oscuros), coloreados por estado.
 - **Control** — encendido/apagado y regulación por cuadro (requiere `cabinet:control`).
 - **Alarmas** — incidencias activas y ACK (requiere `alarm:ack`).
 - **Usuarios** — gestión de cuentas y rangos (requiere `user:view`/`user:manage`).
@@ -161,6 +163,11 @@ Phoenix. Secciones:
 La navegación se filtra automáticamente según los permisos del usuario. El tema
 se controla con variables CSS (`--accent*`): cambiar ese bloque reskinea el panel
 para otra división (p. ej. morado para Hydra, azul para Argus).
+
+**Tiempo real:** el panel recibe telemetría y alarmas por WebSocket
+(`/api/v1/ws`) y cae automáticamente a *polling* si la conexión se interrumpe.
+Los cuadros se describen en un registro en BD (código, nombre, zona, coordenadas),
+gestionable con permiso `cabinet:manage`.
 
 ## Usuarios, rangos y auditoría
 

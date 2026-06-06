@@ -31,6 +31,6 @@ def get_db() -> Iterator[Session]:
 
 def init_db() -> None:
     # Import models so their tables register on Base.metadata before create_all.
-    from app.models import audit, user  # noqa: F401
+    from app.models import audit, cabinet, user  # noqa: F401
 
     Base.metadata.create_all(engine)

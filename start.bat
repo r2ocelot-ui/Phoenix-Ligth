@@ -1,16 +1,32 @@
 @echo off
 REM ===================================================================
 REM  Phoenix Light - arranque facil para Windows (doble clic).
-REM  Requisito: tener Python 3.11+ instalado desde https://python.org
-REM  (en el instalador, marca la casilla "Add Python to PATH").
+REM  Requisito: Python 3.11+ instalado desde https://python.org
+REM  (en el instalador, marca "Add python.exe to PATH").
 REM ===================================================================
 cd /d "%~dp0backend"
 
-where python >nul 2>nul
-if errorlevel 1 (
+REM Buscar un Python REAL. Se prefiere el lanzador 'py' porque el alias de
+REM Microsoft Store ("python") puede enganar a 'where python'.
+set "PYEXE="
+py -3 --version >nul 2>nul && set "PYEXE=py -3"
+if not defined PYEXE (
+  python --version >nul 2>nul && set "PYEXE=python"
+)
+
+if not defined PYEXE (
   echo.
-  echo  [!] No se encontro Python. Instalalo desde https://python.org
-  echo      y marca "Add Python to PATH" durante la instalacion.
+  echo  [!] No se encontro Python instalado.
+  echo.
+  echo  SOLUCION:
+  echo   1^) Instalalo desde  https://python.org/downloads
+  echo      ^>^>^> MARCA la casilla "Add python.exe to PATH" en la 1a pantalla.
+  echo.
+  echo   2^) Si ya lo instalaste y sigue fallando, desactiva los alias de la Store:
+  echo      Configuracion ^> Aplicaciones ^> Configuracion avanzada de aplicaciones
+  echo      ^> Alias de ejecucion de aplicaciones ^> apaga "python.exe" y "python3.exe".
+  echo.
+  echo   Despues, vuelve a hacer doble clic en start.bat
   echo.
   pause
   exit /b 1
@@ -18,7 +34,7 @@ if errorlevel 1 (
 
 if not exist ".venv" (
   echo Primera vez: preparando el entorno ^(puede tardar 1-2 minutos^)...
-  python -m venv .venv
+  %PYEXE% -m venv .venv
 )
 call .venv\Scripts\activate.bat
 echo Instalando/comprobando dependencias...

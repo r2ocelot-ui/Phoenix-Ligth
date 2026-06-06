@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from app.core.mqtt_client import bus
 
@@ -13,7 +13,10 @@ async def list_alarms(cabinet_id: str) -> list[dict]:
 
 @router.delete("/{cabinet_id}/alarms")
 async def acknowledge_all(cabinet_id: str) -> dict:
-    if cabinet_id not in bus.active_alarms:
-        raise HTTPException(404, "Unknown cabinet")
+    """Idempotent: returns 200 even if the cabinet has no alarms stored.
+
+    This mirrors the GET behaviour (empty list for unknown cabinets) and lets
+    integrators retry safely after a transient failure.
+    """
     bus.active_alarms[cabinet_id] = {}
     return {"acknowledged": True}

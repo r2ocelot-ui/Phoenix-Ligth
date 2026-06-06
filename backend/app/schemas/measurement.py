@@ -13,3 +13,6 @@ class Measurement(BaseModel):
     active_power_w: float = Field(..., ge=0)
     power_factor: float = Field(..., ge=0, le=1)
     lamp_circuit: str = Field("L1", description="Circuit identifier (L1/L2/L3)")
+    ambient_lux: float | None = Field(
+        None, ge=0, description="Optional ambient light reading; feeds the dimming scheduler."
+    )

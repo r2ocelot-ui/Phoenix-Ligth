@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     alarm_undervoltage_threshold_v: float = 207.0
 
     dimming_interval_s: int = 60
+    communication_loss_timeout_s: int = 300
+
+    cors_origins: list[str] = ["*"]
 
 
 settings = Settings()

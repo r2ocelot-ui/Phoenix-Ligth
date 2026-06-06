@@ -4,6 +4,8 @@ Prototipo de software de **telegestión y eficiencia energética para cuadros de
 
 El sistema permite supervisar, controlar y optimizar el funcionamiento de cuadros eléctricos de alumbrado a través de un backend ligero, una capa de comunicación M2M (MQTT/HTTP) y firmware embebido en el cuadro.
 
+Plan de versiones y revisiones en [`ROADMAP.md`](./ROADMAP.md).
+
 ---
 
 ## A) Arquitectura de Software

@@ -51,3 +51,8 @@ def test_line_failure_on_voltage_collapse():
         _m(voltage_v=0.0, current_a=0.0, active_power_w=0.0, power_factor=0.0)
     )
     assert AlarmType.LINE_FAILURE in _types(alarms)
+
+
+def test_ambient_lux_is_accepted_and_optional():
+    assert _m(ambient_lux=15.2).ambient_lux == 15.2
+    assert _m().ambient_lux is None

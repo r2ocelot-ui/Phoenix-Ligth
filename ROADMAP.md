@@ -61,6 +61,29 @@ Snapshot: `v0.2-identity` (al cerrar la versión)
 
 ---
 
+## V0.3 — Panel web Phoenix ✅
+Interfaz gráfica (la pieza "estilo Hydra") con la identidad de la división Phoenix.
+
+| Rev | Tipo | Descripción | Estado |
+|---|---|---|---|
+| R0.3.1 | feat | SPA en un archivo (`frontend/index.html`) servida por FastAPI en `/ui/` | [x] |
+| R0.3.2 | feat | Tema Kumiho/Phoenix: base slate + acento rojo/fuego, vía variables CSS reskineables | [x] |
+| R0.3.3 | feat | Login/registro integrado con la API de auth (JWT en localStorage) | [x] |
+| R0.3.4 | feat | Secciones: Inicio, Cuadros, Control, Alarmas, Usuarios, Auditoría | [x] |
+| R0.3.5 | feat | Navegación filtrada por permisos del usuario | [x] |
+| R0.3.6 | feat | Snapshot en vivo de cuadros: `GET /api/v1/cabinets` + telemetría por cuadro | [x] |
+| R0.3.7 | feat | Modo demo: telemetría sintética sin broker para ver el panel al instante | [x] |
+| R0.3.8 | test | Tests del endpoint de cuadros + smoke test de servido del panel | [x] |
+
+Pendiente para futuras revisiones de esta línea:
+| R0.3.9 | feat | Mapa de ciudad (Leaflet) con ubicación de cuadros, como en Hydra | [ ] |
+| R0.3.10 | feat | WebSocket en lugar de polling para telemetría en tiempo real | [ ] |
+| R0.3.11 | feat | Build React+Vite (si se quiere paridad técnica total con Hydra) | [ ] |
+
+Snapshot: `v0.3-panel` (al cerrar la versión)
+
+---
+
 ## V0.1 — Hardening 🔧
 Tapar los huecos que aún quedan antes de pensar en producción.
 

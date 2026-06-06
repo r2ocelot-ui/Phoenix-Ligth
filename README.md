@@ -122,14 +122,45 @@ Para certificación (MID) en alumbrado público se recomienda **CVM-C10** o **SD
 
 ## Quick start (PoC)
 
+### Opción A — solo el panel web, con datos de demo (sin broker)
 ```bash
-docker compose up -d           # Mosquitto + TimescaleDB + Backend
+cd backend && pip install -r requirements.txt
+uvicorn app.main:app --reload
+# Abre http://localhost:8000/ui/
+```
+En modo demo (`PHOENIX_DEMO_MODE=true`, por defecto) el backend inyecta
+telemetría sintética de 4 cuadros, así que el panel cobra vida al instante.
+
+### Opción B — pila completa (broker MQTT + simulador real)
+```bash
+docker compose up -d
 python simulator/cabinet_simulator.py --cabinet-id CAB-001
 ```
 
+> El **primer usuario** que registres en el panel será `owner`.
+
 Endpoints útiles:
+- `http://localhost:8000/ui/` — **Panel web Phoenix Light**
 - `http://localhost:8000/docs` — Swagger / OpenAPI para integradores
-- `http://localhost:8000/api/v1/cabinets/CAB-001/alarms` — alarmas activas
+- `http://localhost:8000/api/v1/cabinets` — snapshot en vivo de los cuadros (requiere token)
+
+## Panel web (Phoenix Light UI)
+
+SPA en un único archivo (`frontend/index.html`, sin build) servida por el propio
+backend en `/ui/`. Misma familia visual que el resto de divisiones de Kumiho
+(base oscura slate, tipografía Inter + monoespacio) con **acento rojo/fuego** de
+Phoenix. Secciones:
+
+- **Inicio** — KPIs de la red (cuadros, online, alarmas, potencia total) e incidencias.
+- **Cuadros** — tarjetas con telemetría en vivo (V/I/P/cos φ) y nivel de dimming.
+- **Control** — encendido/apagado y regulación por cuadro (requiere `cabinet:control`).
+- **Alarmas** — incidencias activas y ACK (requiere `alarm:ack`).
+- **Usuarios** — gestión de cuentas y rangos (requiere `user:view`/`user:manage`).
+- **Auditoría** — historial de acciones (requiere `audit:read`).
+
+La navegación se filtra automáticamente según los permisos del usuario. El tema
+se controla con variables CSS (`--accent*`): cambiar ese bloque reskinea el panel
+para otra división (p. ej. morado para Hydra, azul para Argus).
 
 ## Usuarios, rangos y auditoría
 

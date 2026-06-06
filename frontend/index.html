@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phoenix Light · Alumbrado Público Inteligente</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    /* ===== Tema (Kumiho / Phoenix). Cambia --accent* para otra división. ===== */
+    :root {
+      --bg: #020617; --panel: #0f172a; --panel-2: #0b1120;
+      --border: #1e293b; --border-2: #334155;
+      --text: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
+      --accent: #f97316; --accent-2: #ef4444; --accent-3: #fb923c;
+      --accent-soft: rgba(249, 115, 22, .14); --accent-line: rgba(249, 115, 22, .45);
+      --ok: #22c55e; --warn: #f59e0b; --crit: #ef4444;
+      --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      --fire: linear-gradient(135deg, #fb923c, #ef4444 60%, #b91c1c);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: radial-gradient(1200px 600px at 80% -10%, #1c0a06 0%, var(--bg) 55%);
+      color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent-3); }
+    button { font-family: inherit; cursor: pointer; }
+    .hidden { display: none !important; }
+    .mono { font-family: var(--mono); }
+    .muted { color: var(--muted); }
+
+    /* ===== Emblema Phoenix ===== */
+    .emblem { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+      background: radial-gradient(circle at 50% 35%, #2a1206, #0b0502);
+      border: 1px solid var(--accent-line); box-shadow: 0 0 22px rgba(239,68,68,.35); flex: none; }
+    .emblem svg { width: 26px; height: 26px; filter: drop-shadow(0 0 4px rgba(249,115,22,.8)); }
+    .emblem.big { width: 84px; height: 84px; } .emblem.big svg { width: 52px; height: 52px; }
+
+    /* ===== Login ===== */
+    #login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    .login-card { width: 100%; max-width: 400px; background: linear-gradient(#0f172af2, #020617f2);
+      border: 1px solid var(--border-2); border-radius: 20px; padding: 32px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+    .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+    .brand h1 { margin: 0; font-size: 24px; letter-spacing: 4px; font-weight: 800; }
+    .brand .sub { font-size: 11px; letter-spacing: 3px; color: var(--accent-3); text-transform: uppercase; }
+    .login-card p.tag { color: var(--muted); font-size: 13px; margin: 14px 0 22px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; letter-spacing: .5px; }
+    input, select { width: 100%; padding: 11px 13px; background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border-2); border-radius: 10px; font-size: 14px; outline: none; }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .btn { border: 1px solid var(--accent-line); background: var(--fire); color: #fff; font-weight: 600;
+      padding: 11px 16px; border-radius: 10px; width: 100%; margin-top: 20px; font-size: 14px;
+      box-shadow: 0 8px 24px rgba(239,68,68,.3); }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.ghost { background: transparent; color: var(--text); border-color: var(--border-2); box-shadow: none; }
+    .btn.sm { width: auto; margin: 0; padding: 7px 12px; font-size: 12.5px; }
+    .switch { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); }
+    .switch a { cursor: pointer; }
+    .err { color: var(--crit); font-size: 13px; margin-top: 12px; min-height: 18px; }
+
+    /* ===== App shell ===== */
+    #app { display: grid; grid-template-columns: 244px 1fr; min-height: 100vh; }
+    aside { background: linear-gradient(#0b1120, #060b18); border-right: 1px solid var(--border);
+      padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; }
+    aside .brand { padding: 6px 8px 18px; }
+    aside .brand h1 { font-size: 18px; letter-spacing: 3px; }
+    nav a { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-radius: 10px;
+      color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; }
+    nav a:hover { background: #ffffff08; color: var(--text); }
+    nav a.active { background: var(--accent-soft); color: #fff; border: 1px solid var(--accent-line); }
+    nav a .ico { width: 18px; text-align: center; }
+    aside .spacer { flex: 1; }
+    .userbox { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #ffffff05; }
+    .userbox .u { font-weight: 600; font-size: 14px; }
+
+    main { padding: 26px 30px; overflow: auto; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+    .topbar h2 { margin: 0; font-size: 22px; font-weight: 700; }
+    .topbar .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+
+    .grid { display: grid; gap: 16px; }
+    .kpis { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .cards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .card { background: linear-gradient(#0f172a, #0b1120); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px; }
+    .card.kpi .v { font-size: 30px; font-weight: 800; font-family: var(--mono); }
+    .card.kpi .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    .card.kpi .v.accent { color: var(--accent-3); }
+
+    .cab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .cab-head .id { font-weight: 700; font-size: 15px; letter-spacing: .5px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.warning { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .dot.critical { background: var(--crit); box-shadow: 0 0 8px var(--crit); }
+    .dot.off { background: var(--dim); }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin: 6px 0 12px; }
+    .metrics .m .ml { font-size: 11px; color: var(--muted); }
+    .metrics .m .mv { font-family: var(--mono); font-size: 16px; font-weight: 600; }
+    .bar { height: 6px; background: var(--border-2); border-radius: 4px; overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: var(--fire); }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+    tbody tr:hover { background: #ffffff05; }
+    .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+      border: 1px solid var(--border-2); }
+    .badge.CRITICAL { color: #fecaca; border-color: #ef444466; background: #ef444418; }
+    .badge.WARNING { color: #fde68a; border-color: #f59e0b66; background: #f59e0b18; }
+    .badge.INFO { color: #bfdbfe; border-color: #3b82f666; background: #3b82f618; }
+    .rank { color: var(--accent-3); border-color: var(--accent-line); background: var(--accent-soft); text-transform: capitalize; }
+
+    .panel { background: linear-gradient(#0f172a, #0b1120); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .row.between { justify-content: space-between; }
+    input[type=range] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent) var(--p,50%), var(--border-2) var(--p,50%)); padding: 0; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+      background: #fff; border: 3px solid var(--accent-2); cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--accent-2); }
+
+    .toast { position: fixed; right: 22px; bottom: 22px; background: var(--panel); border: 1px solid var(--border-2);
+      border-left: 4px solid var(--accent); border-radius: 10px; padding: 13px 18px; font-size: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.5); opacity: 0; transform: translateY(10px); transition: .25s; max-width: 360px; }
+    .toast.show { opacity: 1; transform: none; }
+    .toast.err { border-left-color: var(--crit); }
+    .empty { color: var(--dim); text-align: center; padding: 40px; font-size: 14px; }
+    footer.foot { color: var(--dim); font-size: 11px; letter-spacing: 1px; margin-top: 28px; text-align: center; text-transform: uppercase; }
+    @media (max-width: 760px) { #app { grid-template-columns: 1fr; } aside { flex-direction: row; flex-wrap: wrap; } }
+  </style>
+</head>
+<body>
+  <!-- Emblema reutilizable -->
+  <template id="phoenix-svg">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fbbf24"/><stop offset=".5" stop-color="#f97316"/><stop offset="1" stop-color="#dc2626"/>
+      </linearGradient></defs>
+      <path fill="url(#fg)" d="M12 2c1.2 2.3.6 4-.7 5.3 2.1-.3 3.3-1.6 3.8-3.1.9 2.2.6 4.2-.8 5.9 1.6-.2 2.8-1 3.6-2.2.4 3-1 5.4-3.4 6.9 1.3.2 2.6-.1 3.7-.8-.8 2.6-2.9 4.3-5.6 4.8l1.1 2.2H8.6l1.1-2.2c-2.7-.5-4.8-2.2-5.6-4.8 1.1.7 2.4 1 3.7.8C5.4 13.3 4 10.9 4.4 7.9c.8 1.2 2 2 3.6 2.2C6.6 8.4 6.3 6.4 7.2 4.2c.5 1.5 1.7 2.8 3.8 3.1C9.4 6 8.8 4.3 12 2Z"/>
+    </svg>
+  </template>
+
+  <!-- ===================== LOGIN ===================== -->
+  <section id="login">
+    <div class="login-card">
+      <div class="brand">
+        <div class="emblem"></div>
+        <div><h1>PHOENIX</h1><div class="sub">Light · Division</div></div>
+      </div>
+      <p class="tag">Telegestión y eficiencia de alumbrado público.<br/>Accede con tu cuenta para operar la red.</p>
+      <div id="form-login">
+        <label>Usuario</label><input id="li-user" autocomplete="username" />
+        <label>Contraseña</label><input id="li-pass" type="password" autocomplete="current-password" />
+        <button class="btn" id="btn-login">Entrar</button>
+        <div class="switch">¿Sin cuenta? <a id="to-register">Crear una</a></div>
+      </div>
+      <div id="form-register" class="hidden">
+        <label>Usuario</label><input id="re-user" />
+        <label>Contraseña (mín. 6)</label><input id="re-pass" type="password" />
+        <button class="btn" id="btn-register">Registrarme</button>
+        <div class="switch">¿Ya tienes cuenta? <a id="to-login">Entrar</a></div>
+      </div>
+      <div class="err" id="login-err"></div>
+    </div>
+  </section>
+
+  <!-- ===================== APP ===================== -->
+  <section id="app" class="hidden">
+    <aside>
+      <div class="brand">
+        <div class="emblem"></div>
+        <div><h1>PHOENIX</h1><div class="sub">Light</div></div>
+      </div>
+      <nav id="nav">
+        <a data-view="inicio" class="active"><span class="ico">◎</span> Inicio</a>
+        <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">▦</span> Cuadros</a>
+        <a data-view="control" data-perm="cabinet:control"><span class="ico">⏻</span> Control</a>
+        <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">⚠</span> Alarmas</a>
+        <a data-view="usuarios" data-perm="user:view"><span class="ico">☷</span> Usuarios</a>
+        <a data-view="auditoria" data-perm="audit:read"><span class="ico">❑</span> Auditoría</a>
+      </nav>
+      <div class="spacer"></div>
+      <div class="userbox">
+        <div class="u" id="ub-user">—</div>
+        <div style="margin:6px 0"><span class="badge rank" id="ub-rank">—</span></div>
+        <button class="btn ghost sm" id="btn-logout" style="width:100%">Cerrar sesión</button>
+      </div>
+    </aside>
+    <main>
+      <div class="topbar">
+        <div>
+          <h2 id="view-title">Inicio</h2>
+          <div class="sub" id="view-sub">Resumen de la red de alumbrado</div>
+        </div>
+        <div class="row">
+          <span class="dot ok" id="live-dot"></span>
+          <span class="muted" id="live-label" style="font-size:12px">en vivo</span>
+        </div>
+      </div>
+      <div id="content"></div>
+      <footer class="foot">Kumiho Group · Phoenix Division · Tecnología · Innovación · Seguridad · Futuro</footer>
+    </main>
+  </section>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  // ============================ Estado y utilidades ============================
+  const API = "/api/v1";
+  const state = { token: localStorage.getItem("ph_token") || null, me: null, view: "inicio", cabinets: [] };
+
+  function emblemAll() {
+    const tpl = document.getElementById("phoenix-svg").content;
+    document.querySelectorAll(".emblem").forEach(e => { if (!e.childElementCount) e.appendChild(tpl.cloneNode(true)); });
+  }
+  function $(s) { return document.querySelector(s); }
+  function el(tag, cls, html) { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
+  function has(perm) { const p = state.me?.permissions || []; return p.includes("*") || p.includes(perm); }
+  function toast(msg, isErr) { const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (isErr ? " err" : ""); setTimeout(() => t.className = "toast", 3200); }
+
+  async function api(path, opts = {}) {
+    opts.headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+    if (state.token) opts.headers["Authorization"] = "Bearer " + state.token;
+    const r = await fetch(API + path, opts);
+    if (r.status === 401) { logout(); throw new Error("Sesión expirada"); }
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || data.error || ("HTTP " + r.status));
+    return data;
+  }
+
+  // ============================ Autenticación ============================
+  async function doLogin(user, pass) {
+    const body = new URLSearchParams({ username: user, password: pass });
+    const r = await fetch(API + "/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || "Credenciales inválidas");
+    state.token = data.access_token; localStorage.setItem("ph_token", state.token);
+    await boot();
+  }
+  async function doRegister(user, pass) {
+    await fetch(API + "/auth/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: user, password: pass }) })
+      .then(async r => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.detail || "No se pudo registrar"); });
+    await doLogin(user, pass);
+  }
+  function logout() {
+    state.token = null; state.me = null; localStorage.removeItem("ph_token");
+    $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
+  }
+
+  async function boot() {
+    state.me = await api("/auth/me");
+    $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
+    $("#ub-user").textContent = state.me.username;
+    $("#ub-rank").textContent = state.me.rank;
+    // Filtrar navegación por permisos
+    document.querySelectorAll("#nav a").forEach(a => {
+      const perm = a.dataset.perm; a.style.display = (!perm || has(perm)) ? "" : "none";
+    });
+    go("inicio");
+    if (!window._poll) window._poll = setInterval(refreshLive, 3000);
+    refreshLive();
+  }
+
+  // ============================ Datos en vivo ============================
+  async function refreshLive() {
+    if (!state.token || !has("cabinet:read")) return;
+    try {
+      state.cabinets = await api("/cabinets");
+      $("#live-dot").className = "dot ok";
+      if (["inicio", "cuadros", "alarmas", "control"].includes(state.view)) render();
+    } catch (e) { $("#live-dot").className = "dot critical"; }
+  }
+
+  // ============================ Navegación ============================
+  const TITLES = {
+    inicio: ["Inicio", "Resumen de la red de alumbrado"],
+    cuadros: ["Cuadros", "Estado y telemetría de los cuadros"],
+    control: ["Control", "Encendido, apagado y regulación (dimming)"],
+    alarmas: ["Alarmas", "Incidencias activas en la red"],
+    usuarios: ["Usuarios", "Cuentas, rangos y permisos"],
+    auditoria: ["Auditoría", "Historial de acciones"],
+  };
+  function go(view) {
+    state.view = view;
+    document.querySelectorAll("#nav a").forEach(a => a.classList.toggle("active", a.dataset.view === view));
+    $("#view-title").textContent = TITLES[view][0];
+    $("#view-sub").textContent = TITLES[view][1];
+    render();
+    if (view === "usuarios") loadUsers();
+    if (view === "auditoria") loadAudit();
+  }
+
+  // ============================ Render por sección ============================
+  function render() {
+    const c = $("#content");
+    if (state.view === "inicio") return renderInicio(c);
+    if (state.view === "cuadros") return renderCuadros(c);
+    if (state.view === "control") return renderControl(c);
+    if (state.view === "alarmas") return renderAlarmas(c);
+    // usuarios/auditoria se rellenan async
+  }
+
+  function fmt(t, key, unit, d = 1) { const v = t?.[key]; return v == null ? "—" : Number(v).toFixed(d) + unit; }
+
+  function renderInicio(c) {
+    const cabs = state.cabinets;
+    const online = cabs.filter(x => x.online).length;
+    const alarms = cabs.reduce((n, x) => n + x.alarms.length, 0);
+    const kw = cabs.reduce((s, x) => s + (x.telemetry?.active_power_w || 0), 0) / 1000;
+    c.innerHTML = "";
+    const kpis = el("div", "grid kpis");
+    kpis.append(
+      kpi("Cuadros", cabs.length, false),
+      kpi("Online", online + " / " + cabs.length, false),
+      kpi("Alarmas activas", alarms, alarms > 0),
+      kpi("Potencia total", kw.toFixed(2) + " kW", false),
+    );
+    c.append(kpis);
+    const allAlarms = cabs.flatMap(x => x.alarms.map(a => ({ ...a, cabinet_id: x.cabinet_id })));
+    const p = el("div", "panel"); p.style.marginTop = "18px";
+    p.append(el("div", "row between", "<strong>Incidencias activas</strong>"));
+    if (!allAlarms.length) p.append(el("div", "empty", "Sin alarmas. Red operando con normalidad."));
+    else p.append(alarmTable(allAlarms, false));
+    c.append(p);
+  }
+  function kpi(k, v, accent) {
+    const card = el("div", "card kpi");
+    card.append(el("div", "k", k), el("div", "v" + (accent ? " accent" : ""), v));
+    return card;
+  }
+
+  function renderCuadros(c) {
+    c.innerHTML = "";
+    if (!state.cabinets.length) { c.append(el("div", "empty", "No hay cuadros reportando todavía.")); return; }
+    const grid = el("div", "grid cards");
+    state.cabinets.forEach(cab => {
+      const t = cab.telemetry || {};
+      const card = el("div", "card");
+      const head = el("div", "cab-head");
+      head.append(el("div", "id", cab.cabinet_id),
+        el("div", null, `<span class="dot ${cab.online ? cab.status : 'off'}"></span> <span class="muted" style="font-size:12px">${cab.online ? cab.status : 'offline'}</span>`));
+      card.append(head);
+      const m = el("div", "metrics");
+      m.append(metric("Tensión", fmt(t, "voltage_v", " V")), metric("Corriente", fmt(t, "current_a", " A", 2)),
+        metric("Potencia", fmt(t, "active_power_w", " W", 0)), metric("cos φ", fmt(t, "power_factor", "", 2)));
+      card.append(m);
+      const dim = cab.state?.dim ?? 0;
+      card.append(el("div", null, `<div class="muted" style="font-size:11px;margin-bottom:4px">Dimming · ${dim}%</div><div class="bar"><span style="width:${dim}%"></span></div>`));
+      grid.append(card);
+    });
+    c.append(grid);
+  }
+  function metric(label, val) { const m = el("div", "m"); m.append(el("div", "ml", label), el("div", "mv", val)); return m; }
+
+  function renderControl(c) {
+    c.innerHTML = "";
+    if (!has("cabinet:control")) { c.append(el("div", "empty", "Tu rango no permite operar cuadros. Solo lectura.")); return; }
+    const ids = state.cabinets.map(x => x.cabinet_id);
+    if (!ids.length) { c.append(el("div", "empty", "No hay cuadros disponibles para controlar.")); return; }
+    const cur = state.cabinets.find(x => x.cabinet_id === (window._ctrlSel || ids[0])) || state.cabinets[0];
+    window._ctrlSel = cur.cabinet_id;
+    const p = el("div", "panel");
+    p.append(el("label", null, "Cuadro"));
+    const sel = el("select"); ids.forEach(id => { const o = el("option", null, id); o.value = id; if (id === cur.cabinet_id) o.selected = true; sel.append(o); });
+    sel.onchange = () => { window._ctrlSel = sel.value; render(); };
+    p.append(sel);
+    const dim = cur.state?.dim ?? 100;
+    p.append(el("div", null, `<label>Encendido / Apagado</label>`));
+    const relayRow = el("div", "row");
+    const onBtn = el("button", "btn sm", "Encender"); onBtn.onclick = () => relay(cur.cabinet_id, "on");
+    const offBtn = el("button", "btn sm ghost", "Apagar"); offBtn.onclick = () => relay(cur.cabinet_id, "off");
+    relayRow.append(onBtn, offBtn); p.append(relayRow);
+    p.append(el("label", null, `Regulación (dimming) · <span class="mono" id="dimv">${dim}%</span>`));
+    const rng = el("input"); rng.type = "range"; rng.min = 0; rng.max = 100; rng.value = dim;
+    rng.style.setProperty("--p", dim + "%");
+    rng.oninput = () => { $("#dimv").textContent = rng.value + "%"; rng.style.setProperty("--p", rng.value + "%"); };
+    p.append(rng);
+    const send = el("button", "btn", "Aplicar dimming"); send.onclick = () => dimCmd(cur.cabinet_id, parseInt(rng.value, 10));
+    p.append(send);
+    c.append(p);
+  }
+  async function relay(id, st) {
+    try { await api(`/cabinets/${id}/relay`, { method: "POST", body: JSON.stringify({ state: st }) }); toast(`${id}: ${st === "on" ? "encendido" : "apagado"}`); refreshLive(); }
+    catch (e) { toast(e.message, true); }
+  }
+  async function dimCmd(id, level) {
+    try { await api(`/cabinets/${id}/dim`, { method: "POST", body: JSON.stringify({ level }) }); toast(`${id}: dimming ${level}%`); refreshLive(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  function renderAlarmas(c) {
+    c.innerHTML = "";
+    const all = state.cabinets.flatMap(x => x.alarms.map(a => ({ ...a, cabinet_id: x.cabinet_id })));
+    const p = el("div", "panel");
+    if (!all.length) p.append(el("div", "empty", "Sin alarmas activas."));
+    else p.append(alarmTable(all, has("alarm:ack")));
+    c.append(p);
+  }
+  function alarmTable(alarms, canAck) {
+    const t = el("table");
+    t.innerHTML = `<thead><tr><th>Cuadro</th><th>Tipo</th><th>Severidad</th><th>Mensaje</th><th></th></tr></thead>`;
+    const tb = el("tbody");
+    alarms.forEach(a => {
+      const tr = el("tr");
+      tr.innerHTML = `<td class="mono">${a.cabinet_id}</td><td>${a.type}</td><td><span class="badge ${a.severity}">${a.severity}</span></td><td class="muted">${a.message || ""}</td>`;
+      const td = el("td");
+      if (canAck) { const b = el("button", "btn sm ghost", "ACK"); b.onclick = () => ackCab(a.cabinet_id); td.append(b); }
+      tr.append(td); tb.append(tr);
+    });
+    t.append(tb); return t;
+  }
+  async function ackCab(id) {
+    try { await api(`/cabinets/${id}/alarms`, { method: "DELETE" }); toast(`Alarmas de ${id} reconocidas`); refreshLive(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  async function loadUsers() {
+    const c = $("#content"); c.innerHTML = "";
+    try {
+      const users = await api("/users");
+      const p = el("div", "panel");
+      const t = el("table");
+      t.innerHTML = `<thead><tr><th>ID</th><th>Usuario</th><th>Rango</th><th>Puntos</th><th>Activo</th><th></th></tr></thead>`;
+      const tb = el("tbody");
+      const RANKS = ["novato", "operador", "tecnico", "supervisor", "admin", "owner"];
+      users.forEach(u => {
+        const tr = el("tr");
+        tr.innerHTML = `<td class="mono">${u.id}</td><td>${u.username}</td><td><span class="badge rank">${u.rank}</span></td><td class="mono">${u.activity_points}</td><td>${u.is_active ? "sí" : "no"}</td>`;
+        const td = el("td");
+        if (has("user:manage")) {
+          const sel = el("select"); sel.style.width = "140px";
+          RANKS.forEach(r => { const o = el("option", null, r); o.value = r; if (r === u.rank) o.selected = true; sel.append(o); });
+          sel.onchange = async () => { try { await api(`/users/${u.id}/rank`, { method: "POST", body: JSON.stringify({ rank: sel.value }) }); toast(`${u.username} → ${sel.value}`); loadUsers(); } catch (e) { toast(e.message, true); } };
+          td.append(sel);
+        }
+        tr.append(td); tb.append(tr);
+      });
+      t.append(tb); p.append(t); c.append(p);
+    } catch (e) { c.append(el("div", "empty", e.message)); }
+  }
+
+  async function loadAudit() {
+    const c = $("#content"); c.innerHTML = "";
+    try {
+      const entries = await api("/audit?limit=150");
+      const p = el("div", "panel");
+      const t = el("table");
+      t.innerHTML = `<thead><tr><th>Hora</th><th>Usuario</th><th>Acción</th><th>Objetivo</th><th>Detalle</th></tr></thead>`;
+      const tb = el("tbody");
+      entries.forEach(e => {
+        const tr = el("tr");
+        const when = new Date(e.timestamp).toLocaleString();
+        tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge">${e.action}</span></td><td class="mono">${e.target || "—"}</td><td class="muted" style="font-size:12px">${e.detail ? JSON.stringify(e.detail) : ""}</td>`;
+        tb.append(tr);
+      });
+      t.append(tb); p.append(t);
+      if (!entries.length) p.append(el("div", "empty", "Sin registros."));
+      c.append(p);
+    } catch (e) { c.append(el("div", "empty", e.message)); }
+  }
+
+  // ============================ Wiring ============================
+  emblemAll();
+  $("#btn-login").onclick = async () => { try { $("#login-err").textContent = ""; await doLogin($("#li-user").value.trim(), $("#li-pass").value); } catch (e) { $("#login-err").textContent = e.message; } };
+  $("#btn-register").onclick = async () => { try { $("#login-err").textContent = ""; await doRegister($("#re-user").value.trim(), $("#re-pass").value); } catch (e) { $("#login-err").textContent = e.message; } };
+  $("#to-register").onclick = () => { $("#form-login").classList.add("hidden"); $("#form-register").classList.remove("hidden"); $("#login-err").textContent = ""; };
+  $("#to-login").onclick = () => { $("#form-register").classList.add("hidden"); $("#form-login").classList.remove("hidden"); $("#login-err").textContent = ""; };
+  $("#btn-logout").onclick = logout;
+  document.querySelectorAll("#nav a").forEach(a => a.onclick = () => go(a.dataset.view));
+  $("#li-pass").addEventListener("keydown", e => { if (e.key === "Enter") $("#btn-login").click(); });
+
+  if (state.token) boot().catch(() => logout());
+  </script>
+</body>
+</html>

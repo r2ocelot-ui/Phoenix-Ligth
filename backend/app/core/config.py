@@ -35,5 +35,10 @@ class Settings(BaseSettings):
     auto_promote_enabled: bool = False
     auto_promote_max_rank: str = "tecnico"
 
+    # Demo mode injects synthetic telemetry so the web panel shows live data
+    # without a broker. Disable in production.
+    demo_mode: bool = True
+    demo_interval_s: int = 3
+
 
 settings = Settings()

@@ -122,6 +122,12 @@ Para certificación (MID) en alumbrado público se recomienda **CVM-C10** o **SD
 
 ## Quick start (PoC)
 
+### Opción fácil — lanzador de un clic
+1. Instala **Python 3.11+** (en Windows, marca *"Add Python to PATH"* en el instalador).
+2. Descarga el proyecto: en GitHub, botón **Code → Download ZIP**, y descomprímelo.
+3. Doble clic en **`start.bat`** (Windows) o ejecuta **`start.sh`** (Mac/Linux).
+4. Se abre solo `http://localhost:8000/ui/`. Entra con **admin / phoenix123**.
+
 ### Opción A — solo el panel web, con datos de demo (sin broker)
 ```bash
 cd backend && pip install -r requirements.txt

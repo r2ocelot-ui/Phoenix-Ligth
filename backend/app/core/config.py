@@ -1,0 +1,23 @@
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", env_prefix="PHOENIX_")
+
+    app_name: str = "Phoenix-Light"
+    api_v1_prefix: str = "/api/v1"
+
+    mqtt_host: str = "localhost"
+    mqtt_port: int = 1883
+    mqtt_username: str | None = None
+    mqtt_password: str | None = None
+    mqtt_topic_telemetry: str = "phoenix/cabinets/+/telemetry"
+    mqtt_topic_status: str = "phoenix/cabinets/+/status"
+    mqtt_topic_alarms: str = "phoenix/alarms"
+
+    alarm_zero_current_threshold_a: float = 0.05
+    alarm_overvoltage_threshold_v: float = 253.0
+    alarm_undervoltage_threshold_v: float = 207.0
+
+
+settings = Settings()

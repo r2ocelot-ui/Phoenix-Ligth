@@ -1,0 +1,16 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./infra/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  backend:
+    build: ./backend
+    environment:
+      PHOENIX_MQTT_HOST: mosquitto
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mosquitto

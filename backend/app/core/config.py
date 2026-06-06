@@ -19,5 +19,7 @@ class Settings(BaseSettings):
     alarm_overvoltage_threshold_v: float = 253.0
     alarm_undervoltage_threshold_v: float = 207.0
 
+    dimming_interval_s: int = 60
+
 
 settings = Settings()

@@ -2,6 +2,12 @@
 
 Evaluates each incoming Measurement against thresholds and emits Alarm objects.
 Stateless by design — callers persist or publish the resulting alarms.
+
+Metering is assumed to be upstream of the contactor (cabinet head), so line
+voltage is present even when the lamps are commanded off. `expected_on` tells
+the engine whether the circuit is *supposed* to be drawing current right now
+(relay on AND dim level > 0); when it is not, zero current is normal and must
+not raise a LAMP_OUT alarm.
 """
 from datetime import datetime, timezone
 
@@ -10,12 +16,13 @@ from app.schemas.alarm import Alarm, AlarmSeverity, AlarmType
 from app.schemas.measurement import Measurement
 
 
-def evaluate(measurement: Measurement) -> list[Alarm]:
+def evaluate(measurement: Measurement, expected_on: bool = True) -> list[Alarm]:
     alarms: list[Alarm] = []
     now = datetime.now(timezone.utc)
 
     if (
-        measurement.voltage_v > 50
+        expected_on
+        and measurement.voltage_v > 50
         and measurement.current_a < settings.alarm_zero_current_threshold_a
     ):
         alarms.append(

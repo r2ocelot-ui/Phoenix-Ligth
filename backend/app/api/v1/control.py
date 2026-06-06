@@ -20,6 +20,7 @@ async def set_relay(cabinet_id: str, cmd: RelayCommand) -> dict:
         await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/relay", cmd.model_dump())
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
+    bus.record_command(cabinet_id, relay=cmd.state)
     return {"sent": True, "cabinet_id": cabinet_id, "state": cmd.state}
 
 
@@ -29,4 +30,5 @@ async def set_dim(cabinet_id: str, cmd: DimCommand) -> dict:
         await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/dim", cmd.model_dump())
     except RuntimeError as exc:
         raise HTTPException(503, str(exc))
+    bus.record_command(cabinet_id, dim=cmd.level)
     return {"sent": True, "cabinet_id": cabinet_id, "level": cmd.level}

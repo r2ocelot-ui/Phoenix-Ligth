@@ -100,7 +100,8 @@ void loop() {
 
   StaticJsonDocument<256> doc;
   doc["cabinet_id"]     = CABINET_ID;
-  doc["timestamp"]      = "";
+  // timestamp omitted on purpose: the backend stamps server receive time.
+  // For audit-grade timestamps, sync NTP on the edge and set an ISO-8601 string here.
   doc["voltage_v"]      = v;
   doc["current_a"]      = i;
   doc["active_power_w"] = p;

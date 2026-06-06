@@ -124,3 +124,23 @@ python simulator/cabinet_simulator.py --cabinet-id CAB-001
 Endpoints útiles:
 - `http://localhost:8000/docs` — Swagger / OpenAPI para integradores
 - `http://localhost:8000/api/v1/cabinets/CAB-001/alarms` — alarmas activas
+
+## Tests
+
+```bash
+cd backend && pytest        # motor de alarmas + perfiles de dimming
+python simulator/standalone_alarm_demo.py   # demo de lámpara fundida sin broker
+```
+
+## Notas de diseño
+
+- **Alarmas con estado:** cada alarma se levanta una sola vez al cruzar el umbral
+  y se limpia (evento `cleared`) al resolverse. No se reemiten en cada muestra,
+  así que la lista de alarmas activas está acotada (una entrada por tipo y cuadro).
+- **Dimming automático:** un scheduler resuelve el perfil horario cada
+  `PHOENIX_DIMMING_INTERVAL_S` segundos y publica `cmd/dim` a cada cuadro conocido.
+  El estado comandado (relé + nivel) se registra para que el motor de alarmas
+  distingua un apagado intencionado de una lámpara fundida (no hay falso `LAMP_OUT`
+  cuando el dimming está a 0).
+- **Timestamp:** el `timestamp` de la telemetría es opcional; si el edge no lo
+  envía, el backend sella la hora de recepción.

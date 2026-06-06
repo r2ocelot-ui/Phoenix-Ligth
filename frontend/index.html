@@ -136,6 +136,10 @@
     .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); border: 1px solid var(--border-2); }
     .leaflet-popup-content { font-size: 13px; }
     .leaflet-bar a { background: var(--panel); color: var(--text); border-color: var(--border-2); }
+    .leaflet-tooltip.cm-label, .leaflet-tooltip.pt-label { background: transparent; border: none; box-shadow: none; padding: 0; font-family: var(--mono); text-shadow: 0 1px 3px #000, 0 0 2px #000; }
+    .leaflet-tooltip.cm-label { color: #fff; font-weight: 800; font-size: 11px; }
+    .leaflet-tooltip.pt-label { color: #e2e8f0; font-weight: 600; font-size: 10px; }
+    .leaflet-tooltip.cm-label:before, .leaflet-tooltip.pt-label:before { display: none; }
 
     .toast { position: fixed; right: 22px; bottom: 22px; background: var(--panel); border: 1px solid var(--border-2);
       border-left: 4px solid var(--accent); border-radius: 10px; padding: 13px 18px; font-size: 14px;
@@ -192,6 +196,7 @@
         <a data-view="inicio" class="active"><span class="ico">◎</span> Inicio</a>
         <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">▦</span> Cuadros</a>
         <a data-view="mapa" data-perm="cabinet:read"><span class="ico">◗</span> Mapa</a>
+        <a data-view="topologia" data-perm="cabinet:read"><span class="ico">⌗</span> Topología</a>
         <a data-view="control" data-perm="cabinet:control"><span class="ico">⏻</span> Control</a>
         <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">⚠</span> Alarmas</a>
         <a data-view="usuarios" data-perm="user:view"><span class="ico">☷</span> Usuarios</a>
@@ -227,7 +232,7 @@
   const API = "/api/v1";
   const LIVE_VIEWS = ["inicio", "cuadros", "alarmas", "control"];
   const STATUS_COLOR = { ok: "#22c55e", warning: "#f59e0b", critical: "#ef4444" };
-  const state = { token: localStorage.getItem("ph_token") || null, me: null, view: "inicio", cabinets: [] };
+  const state = { token: localStorage.getItem("ph_token") || null, me: null, view: "inicio", cabinets: [], mapMode: "estado" };
 
   function emblemAll() {
     const tpl = document.getElementById("phoenix-svg").content;
@@ -314,7 +319,7 @@
 
   function rerenderLive() {
     if (LIVE_VIEWS.includes(state.view)) render();
-    else if (state.view === "mapa") updateMapMarkers();
+    else if (state.view === "mapa") drawTopology();
   }
 
   function connectWS() {
@@ -334,7 +339,8 @@
   const TITLES = {
     inicio: ["Inicio", "Resumen de la red de alumbrado"],
     cuadros: ["Cuadros", "Estado y telemetría de los cuadros"],
-    mapa: ["Mapa", "Ubicación y estado de los cuadros en la ciudad"],
+    mapa: ["Mapa", "Centros de mando y farolas sobre el plano"],
+    topologia: ["Topología", "Centros de mando, circuitos y farolas"],
     control: ["Control", "Encendido, apagado y regulación (dimming)"],
     alarmas: ["Alarmas", "Incidencias activas en la red"],
     usuarios: ["Usuarios", "Cuentas, rangos y permisos"],
@@ -346,6 +352,7 @@
     $("#view-title").textContent = TITLES[view][0];
     $("#view-sub").textContent = TITLES[view][1];
     render();
+    if (view === "topologia") loadTopologia();
     if (view === "usuarios") loadUsers();
     if (view === "auditoria") loadAudit();
   }
@@ -403,34 +410,79 @@
   function metric(label, val) { const m = el("div", "m"); m.append(el("div", "ml", label), el("div", "mv", val)); return m; }
 
   // ============================ Mapa ============================
-  function renderMapa(c) {
+  async function renderMapa(c) {
     c.innerHTML = "";
     if (typeof L === "undefined") { c.append(el("div", "empty", "El mapa requiere conexión a internet (Leaflet / tiles).")); return; }
+    const modes = [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]];
+    const bar = el("div", "row between"); bar.style.marginBottom = "12px";
+    const seg = el("div", "row");
+    modes.forEach(([k, lbl]) => { const b = el("button", "btn sm" + (state.mapMode === k ? "" : " ghost"), lbl); b.onclick = () => { state.mapMode = k; renderMapa(c); }; seg.append(b); });
+    bar.append(el("div", null, "<strong>Mapa</strong> · colorear por:"), seg);
+    c.append(bar);
     const div = el("div"); div.id = "map"; c.append(div);
-    if (window._map) { window._map.remove(); }
-    window._markers = {}; window._fitDone = false;
+    const legend = el("div", "panel"); legend.id = "legend"; legend.style.marginTop = "12px"; c.append(legend);
+    try { window._topology = await api("/topology"); } catch (e) { c.append(el("div", "empty", e.message)); return; }
+    if (window._map) window._map.remove();
+    window._cmMarkers = {}; window._ptMarkers = {}; window._fitDone = false;
     const map = L.map("map", { attributionControl: false }).setView([40.4168, -3.7038], 13);
     L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
-    window._map = map;
-    setTimeout(() => map.invalidateSize(), 60);
-    updateMapMarkers();
+    window._map = map; setTimeout(() => map.invalidateSize(), 60);
+    drawTopology();
   }
-  function updateMapMarkers() {
-    const map = window._map; if (!map) return;
+
+  function pointColor(cab, circ, pt) {
+    const tp = window._topology;
+    if (state.mapMode === "cm") return cab.color || "#f97316";
+    if (state.mapMode === "circuito") return circ ? circ.color : "#64748b";
+    if (state.mapMode === "fase") return (tp.phase_colors || {})[pt.phase] || "#64748b";
+    return !cab._online ? "#64748b" : (STATUS_COLOR[cab._status] || "#22c55e");
+  }
+
+  function drawTopology() {
+    const map = window._map, tp = window._topology; if (!map || !tp) return;
+    const liveById = Object.fromEntries(state.cabinets.map(c => [c.cabinet_id, c]));
     const pts = [];
-    state.cabinets.forEach(cab => {
-      if (cab.latitude == null || cab.longitude == null) return;
-      const color = !cab.online ? "#64748b" : (STATUS_COLOR[cab.status] || "#22c55e");
-      let mk = window._markers[cab.cabinet_id];
-      if (!mk) { mk = L.circleMarker([cab.latitude, cab.longitude], { radius: 10, weight: 3 }).addTo(map); window._markers[cab.cabinet_id] = mk; }
-      mk.setStyle({ color, fillColor: color, fillOpacity: 0.45 });
-      const t = cab.telemetry || {};
-      const ctrl = has("cabinet:control") ? `<button class="btn sm" id="pop-${cab.cabinet_id}" style="margin-top:8px;width:100%">Operar</button>` : "";
-      mk.bindPopup(`<strong>${cab.name || cab.cabinet_id}</strong><br><span class="muted">${cab.cabinet_id} · ${cab.online ? cab.status : "offline"}</span><br>V ${fmt(t, "voltage_v", " V")} · I ${fmt(t, "current_a", " A", 2)}<br>P ${fmt(t, "active_power_w", " W", 0)} · dim ${cab.state?.dim ?? 0}%${ctrl}`);
-      mk.off("popupopen").on("popupopen", () => { const b = document.getElementById("pop-" + cab.cabinet_id); if (b) b.onclick = () => { window._ctrlSel = cab.cabinet_id; go("control"); }; });
-      pts.push([cab.latitude, cab.longitude]);
+    tp.cabinets.forEach(cab => {
+      const live = liveById[cab.code] || {};
+      cab._online = live.online ?? cab.online; cab._status = live.status ?? cab.status;
+      const tele = live.telemetry ?? cab.telemetry ?? {};
+      const circById = Object.fromEntries(cab.circuits.map(x => [x.id, x]));
+      if (cab.latitude != null && cab.longitude != null) {
+        const col = state.mapMode === "estado" ? (!cab._online ? "#64748b" : (STATUS_COLOR[cab._status] || "#22c55e")) : (cab.color || "#f97316");
+        let m = window._cmMarkers[cab.code];
+        if (!m) { m = L.circleMarker([cab.latitude, cab.longitude], { radius: 13 }).addTo(map); m.bindTooltip("CM" + cab.number, { permanent: true, direction: "center", className: "cm-label" }); window._cmMarkers[cab.code] = m; }
+        m.setStyle({ color: "#fff", weight: 3, fillColor: col, fillOpacity: 0.9 });
+        const ctrl = has("cabinet:control") ? `<button class="btn sm" id="pop-${cab.code}" style="margin-top:8px;width:100%">Operar</button>` : "";
+        m.bindPopup(`<strong>CM${cab.number} · ${cab.name || cab.code}</strong><br><span class="muted">${cab.code} · ${cab._online ? cab._status : "offline"}</span><br>V ${fmt(tele, "voltage_v", " V")} · I ${fmt(tele, "current_a", " A", 2)}<br>${cab.circuits.length} circuitos · ${cab.points.length} farolas${ctrl}`);
+        m.off("popupopen").on("popupopen", () => { const b = document.getElementById("pop-" + cab.code); if (b) b.onclick = () => { window._ctrlSel = cab.code; go("control"); }; });
+        pts.push([cab.latitude, cab.longitude]);
+      }
+      cab.points.forEach(pt => {
+        if (pt.latitude == null || pt.longitude == null) return;
+        const circ = circById[pt.circuit_id];
+        const col = pointColor(cab, circ, pt);
+        let m = window._ptMarkers[pt.id];
+        if (!m) { m = L.circleMarker([pt.latitude, pt.longitude], { radius: 6, weight: 1 }).addTo(map); m.bindTooltip(String(pt.number), { permanent: true, direction: "top", className: "pt-label", offset: [0, -4] }); window._ptMarkers[pt.id] = m; }
+        m.setStyle({ color: "#0b1120", fillColor: col, fillOpacity: 0.95 });
+        m.bindPopup(`<strong>Farola ${cab.number}.${pt.number}</strong><br><span class="muted">${pt.label || ""}</span><br>CM${cab.number} · Circuito ${circ ? circ.number : "?"} · Fase ${pt.phase}<br>${pt.power_w} W`);
+        pts.push([pt.latitude, pt.longitude]);
+      });
     });
     if (pts.length && !window._fitDone) { map.fitBounds(pts, { padding: [40, 40] }); window._fitDone = true; }
+    renderLegend();
+  }
+
+  function renderLegend() {
+    const lg = document.getElementById("legend"); if (!lg) return; const tp = window._topology; lg.innerHTML = "";
+    const items = [];
+    if (state.mapMode === "cm") tp.cabinets.forEach(c => items.push([c.color || "#f97316", "CM" + c.number + " · " + (c.name || c.code)]));
+    else if (state.mapMode === "circuito") { const seen = {}; tp.cabinets.forEach(c => c.circuits.forEach(ci => { if (!seen[ci.color]) { seen[ci.color] = 1; items.push([ci.color, "Circuito " + ci.number]); } })); }
+    else if (state.mapMode === "fase") Object.entries(tp.phase_colors || {}).forEach(([ph, col]) => items.push([col, "Fase " + ph]));
+    else { items.push(["#22c55e", "OK"], ["#f59e0b", "Aviso"], ["#ef4444", "Crítico"], ["#64748b", "Offline"]); }
+    lg.append(el("div", "muted", "<strong>Leyenda · " + state.mapMode + "</strong>"));
+    const row = el("div", "row"); row.style.marginTop = "8px"; row.style.gap = "16px"; row.style.flexWrap = "wrap";
+    items.forEach(([col, lbl]) => { const it = el("div", "row"); it.style.gap = "6px"; it.innerHTML = `<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${col};border:1px solid #fff3"></span><span style="font-size:12px">${lbl}</span>`; row.append(it); });
+    lg.append(row);
   }
 
   // ============================ Control ============================
@@ -494,6 +546,29 @@
   async function ackCab(id) {
     try { await api(`/cabinets/${id}/alarms`, { method: "DELETE" }); toast(`Alarmas de ${id} reconocidas`); refreshLive(); }
     catch (e) { toast(e.message, true); }
+  }
+
+  // ============================ Topología ============================
+  async function loadTopologia() {
+    const c = $("#content"); c.innerHTML = "";
+    try {
+      const tp = await api("/topology");
+      if (!tp.cabinets.length) { c.append(el("div", "empty", "Sin topología todavía. Da de alta cuadros, circuitos y farolas.")); return; }
+      tp.cabinets.forEach(cab => {
+        const p = el("div", "panel"); p.style.marginBottom = "14px";
+        p.append(el("div", "row between", `<div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cab.color};margin-right:8px"></span><strong>CM${cab.number} · ${cab.name || cab.code}</strong> <span class="muted">${cab.code}</span></div><span class="muted">${cab.points.length} farolas · ${cab.circuits.length} circuitos</span>`));
+        const t = el("table"); t.innerHTML = `<thead><tr><th>Circuito</th><th>Color</th><th>Farolas</th><th>Fases</th></tr></thead>`;
+        const tb = el("tbody");
+        cab.circuits.forEach(ci => {
+          const cpts = cab.points.filter(pt => pt.circuit_id === ci.id);
+          const phases = [...new Set(cpts.map(pt => pt.phase))].sort().join(", ") || "—";
+          const tr = el("tr");
+          tr.innerHTML = `<td>Circuito ${ci.number}</td><td><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${ci.color};margin-right:6px"></span><span class="mono">${ci.color}</span></td><td class="mono">${cpts.length}</td><td>${phases}</td>`;
+          tb.append(tr);
+        });
+        t.append(tb); p.append(t); c.append(p);
+      });
+    } catch (e) { c.append(el("div", "empty", e.message)); }
   }
 
   // ============================ Usuarios ============================

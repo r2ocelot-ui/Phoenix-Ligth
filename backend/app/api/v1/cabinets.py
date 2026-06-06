@@ -28,6 +28,8 @@ def _merged(db: Session) -> list[dict]:
         }
         reg = registry.get(code)
         item["name"] = reg.name if reg else code
+        item["number"] = reg.number if reg else 0
+        item["color"] = reg.color if reg else "#f97316"
         item["zone"] = reg.zone if reg else None
         item["latitude"] = reg.latitude if reg else None
         item["longitude"] = reg.longitude if reg else None

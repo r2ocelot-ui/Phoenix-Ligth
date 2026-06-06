@@ -97,7 +97,30 @@ Las tres mejoras del panel pedidas + un refuerzo de backend que las sostiene.
 | R0.4.6 | feat | Pulido visual: emblema con llama animada, pulsos de estado, indicador en vivo | [x] |
 | R0.4.7 | test | Tests de registro de cuadros + WebSocket (32 en total) | [x] |
 
-Snapshot: `v0.4-map-realtime` (al cerrar la versión)
+Snapshot: `v0.4-map-realtime`
+
+---
+
+## V0.5 — Topología CM / circuitos / farolas ✅
+Modelado de la red real (centro de mando → circuitos → farolas) y su
+identificación visual en el mapa por color de CM, circuito y fase.
+
+| Rev | Tipo | Descripción | Estado |
+|---|---|---|---|
+| R0.5.1 | feat | Modelo CM (nº+color) → circuitos (nº+color) → farolas (nº, fase, lat/lon, W) | [x] |
+| R0.5.2 | feat | `GET /topology`: árbol con estado en vivo + colores de fase | [x] |
+| R0.5.3 | feat | CRUD de circuitos y farolas (permiso `cabinet:manage`) | [x] |
+| R0.5.4 | feat | Mapa: CM + farolas numeradas; colorear por estado/CM/circuito/fase + leyenda | [x] |
+| R0.5.5 | feat | Sección Topología (árbol CM → circuitos → farolas con fases) | [x] |
+| R0.5.6 | feat | Seed demo: 4 CM × 2 circuitos × 6 farolas repartidas en L1/L2/L3 | [x] |
+| R0.5.7 | test | Tests de `/topology` y de permisos de alta (35 en total) | [x] |
+
+Pendiente para futuras revisiones de esta línea:
+| R0.5.8 | feat | Control por circuito y por farola (requiere luminaria/nodo controlable) | [ ] |
+| R0.5.9 | feat | Alta/edición de CM, circuitos y farolas desde la UI (hoy solo por API) | [ ] |
+| R0.5.10 | feat | Importación masiva de farolas (CSV/GeoJSON) | [ ] |
+
+Snapshot: `v0.5-topology` (al cerrar la versión)
 
 ---
 

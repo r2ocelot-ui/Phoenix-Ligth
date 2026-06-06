@@ -129,7 +129,9 @@ uvicorn app.main:app --reload
 # Abre http://localhost:8000/ui/
 ```
 En modo demo (`PHOENIX_DEMO_MODE=true`, por defecto) el backend inyecta
-telemetría sintética de 4 cuadros, así que el panel cobra vida al instante.
+telemetría sintética de 4 cuadros (con sus circuitos y farolas), así que el panel
+cobra vida al instante. _Si vienes de una versión anterior, borra
+`backend/phoenix.db` porque el esquema ha cambiado._
 
 ### Opción B — pila completa (broker MQTT + simulador real)
 ```bash
@@ -154,7 +156,8 @@ Phoenix. Secciones:
 
 - **Inicio** — KPIs de la red (cuadros, online, alarmas, potencia total) e incidencias.
 - **Cuadros** — tarjetas con telemetría en vivo (V/I/P/cos φ) y nivel de dimming.
-- **Mapa** — cuadros sobre un mapa Leaflet (tiles oscuros), coloreados por estado.
+- **Mapa** — centros de mando (CM) y farolas sobre Leaflet; colorear por **estado, CM, circuito o fase**, con números y leyenda.
+- **Topología** — árbol CM → circuitos → farolas, con colores y reparto de fases.
 - **Control** — encendido/apagado y regulación por cuadro (requiere `cabinet:control`).
 - **Alarmas** — incidencias activas y ACK (requiere `alarm:ack`).
 - **Usuarios** — gestión de cuentas y rangos (requiere `user:view`/`user:manage`).
@@ -168,6 +171,12 @@ para otra división (p. ej. morado para Hydra, azul para Argus).
 (`/api/v1/ws`) y cae automáticamente a *polling* si la conexión se interrumpe.
 Los cuadros se describen en un registro en BD (código, nombre, zona, coordenadas),
 gestionable con permiso `cabinet:manage`.
+
+**Topología (CM / circuito / fase):** la red se modela como **centros de mando**
+(CM = cuadro) → **circuitos** → **farolas** (puntos de luz). Cada farola lleva su
+número y su fase (L1/L2/L3); en el mapa puedes colorear por CM, circuito o fase
+para identificar de un vistazo a qué pertenece cada punto. El control se ejerce
+hoy a nivel de CM; el control por circuito/farola es la siguiente capa de hardware.
 
 ## Usuarios, rangos y auditoría
 

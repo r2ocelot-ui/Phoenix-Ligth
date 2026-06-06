@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api.v1 import alarms, audit, auth, cabinets, control, realtime, users
+from app.api.v1 import alarms, audit, auth, cabinets, control, realtime, topology, users
 from app.core.config import settings
 from app.core.database import SessionLocal, init_db
 from app.core.mqtt_client import bus
@@ -47,6 +47,7 @@ app.include_router(auth.router, prefix=settings.api_v1_prefix)
 app.include_router(users.router, prefix=settings.api_v1_prefix)
 app.include_router(audit.router, prefix=settings.api_v1_prefix)
 app.include_router(cabinets.router, prefix=settings.api_v1_prefix)
+app.include_router(topology.router, prefix=settings.api_v1_prefix)
 app.include_router(alarms.router, prefix=settings.api_v1_prefix)
 app.include_router(control.router, prefix=settings.api_v1_prefix)
 app.include_router(realtime.router, prefix=settings.api_v1_prefix)

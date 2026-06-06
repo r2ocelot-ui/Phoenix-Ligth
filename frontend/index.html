@@ -182,6 +182,7 @@
         <div class="switch">¿Ya tienes cuenta? <a id="to-login">Entrar</a></div>
       </div>
       <div class="err" id="login-err"></div>
+      <div id="demo-hint" class="muted" style="margin-top:14px;font-size:12px;text-align:center"></div>
     </div>
   </section>
 
@@ -242,6 +243,11 @@
   function el(tag, cls, html) { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
   function has(perm) { const p = state.me?.permissions || []; return p.includes("*") || p.includes(perm); }
   function toast(msg, isErr) { const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (isErr ? " err" : ""); setTimeout(() => t.className = "toast", 3200); }
+  function netMsg(e) {
+    return /failed to fetch|networkerror|load failed/i.test(e?.message || "")
+      ? "No se puede conectar con el backend. Arranca el servidor y abre http://localhost:8000/ui/ (no abras el .html directamente)."
+      : (e?.message || "Error");
+  }
   function fmt(t, key, unit, d = 1) { const v = t?.[key]; return v == null ? "—" : Number(v).toFixed(d) + unit; }
 
   async function api(path, opts = {}) {
@@ -618,10 +624,27 @@
     } catch (e) { c.append(el("div", "empty", e.message)); }
   }
 
+  // ============================ Info / demo ============================
+  async function loadInfo() {
+    try {
+      const r = await fetch(API + "/auth/info"); const d = await r.json();
+      if (d.demo_mode && d.demo_username) {
+        if (!$("#li-user").value) $("#li-user").value = d.demo_username;
+        if (!$("#li-pass").value) $("#li-pass").value = d.demo_password || "";
+        $("#demo-hint").innerHTML = `Modo demo · entra con <span class="mono">${d.demo_username} / ${d.demo_password}</span>`;
+      }
+    } catch (e) {}
+  }
+
   // ============================ Wiring ============================
   emblemAll();
-  $("#btn-login").onclick = async () => { try { $("#login-err").textContent = ""; await doLogin($("#li-user").value.trim(), $("#li-pass").value); } catch (e) { $("#login-err").textContent = e.message; } };
-  $("#btn-register").onclick = async () => { try { $("#login-err").textContent = ""; await doRegister($("#re-user").value.trim(), $("#re-pass").value); } catch (e) { $("#login-err").textContent = e.message; } };
+  if (location.protocol === "file:") {
+    $("#login-err").innerHTML = "⚠ Estás abriendo el archivo directamente (file://).<br>Arranca el backend y abre <b>http://localhost:8000/ui/</b>";
+  } else {
+    loadInfo();
+  }
+  $("#btn-login").onclick = async () => { try { $("#login-err").textContent = ""; await doLogin($("#li-user").value.trim(), $("#li-pass").value); } catch (e) { $("#login-err").textContent = netMsg(e); } };
+  $("#btn-register").onclick = async () => { try { $("#login-err").textContent = ""; await doRegister($("#re-user").value.trim(), $("#re-pass").value); } catch (e) { $("#login-err").textContent = netMsg(e); } };
   $("#to-register").onclick = () => { $("#form-login").classList.add("hidden"); $("#form-register").classList.remove("hidden"); $("#login-err").textContent = ""; };
   $("#to-login").onclick = () => { $("#form-register").classList.add("hidden"); $("#form-login").classList.remove("hidden"); $("#login-err").textContent = ""; };
   $("#btn-logout").onclick = logout;

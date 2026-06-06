@@ -139,7 +139,9 @@ docker compose up -d
 python simulator/cabinet_simulator.py --cabinet-id CAB-001
 ```
 
-> El **primer usuario** que registres en el panel será `owner`.
+> **Acceso demo:** en modo demo el panel viene con un usuario sembrado
+> `admin` / `phoenix123` (rol `owner`) y el login aparece ya rellenado.
+> El **primer usuario** que registres tú también será `owner`.
 
 Endpoints útiles:
 - `http://localhost:8000/ui/` — **Panel web Phoenix Light**

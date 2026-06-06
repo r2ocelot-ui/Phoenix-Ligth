@@ -16,7 +16,7 @@ from app.api.v1 import alarms, audit, auth, cabinets, control, realtime, topolog
 from app.core.config import settings
 from app.core.database import SessionLocal, init_db
 from app.core.mqtt_client import bus
-from app.services.seed import seed_demo_cabinets
+from app.services.seed import seed_demo_admin, seed_demo_cabinets
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -26,6 +26,7 @@ async def lifespan(_: FastAPI):
     init_db()
     if settings.demo_mode:
         with SessionLocal() as db:
+            seed_demo_admin(db, settings.demo_admin_username, settings.demo_admin_password)
             seed_demo_cabinets(db)
     await bus.start()
     yield

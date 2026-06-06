@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import User
@@ -58,3 +59,14 @@ def login(
 @router.get("/me", response_model=UserDetail)
 def me(user: User = Depends(get_current_user)) -> UserDetail:
     return user_detail(user)
+
+
+@router.get("/info")
+def info() -> dict:
+    """Public hint for the login screen. Demo credentials are only revealed
+    while demo mode is on (turn it off in production)."""
+    data = {"app": settings.app_name, "demo_mode": settings.demo_mode}
+    if settings.demo_mode:
+        data["demo_username"] = settings.demo_admin_username
+        data["demo_password"] = settings.demo_admin_password
+    return data

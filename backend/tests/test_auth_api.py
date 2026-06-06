@@ -82,6 +82,25 @@ def test_unauthenticated_requests_are_rejected(client):
     assert client.post("/api/v1/cabinets/CAB-1/relay", json={"state": "on"}).status_code == 401
 
 
+def test_auth_info_reveals_demo_credentials(client):
+    data = client.get("/api/v1/auth/info").json()
+    assert data["demo_mode"] is True
+    assert data["demo_username"] == "admin"
+    assert data["demo_password"] == "phoenix123"
+
+
+def test_seeded_demo_admin_can_login(client):
+    from app.services.seed import seed_demo_admin
+
+    # Seed through the same overridden session the app uses.
+    db = next(app.dependency_overrides[get_db]())
+    seed_demo_admin(db, "admin", "phoenix123")
+
+    r = client.post("/api/v1/auth/login", data={"username": "admin", "password": "phoenix123"})
+    assert r.status_code == 200
+    assert r.json()["rank"] == "owner"
+
+
 def test_novato_blocked_operador_allowed(client):
     _register(client, "boss")
     _register(client, "newbie")

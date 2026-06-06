@@ -113,12 +113,14 @@ identificación visual en el mapa por color de CM, circuito y fase.
 | R0.5.4 | feat | Mapa: CM + farolas numeradas; colorear por estado/CM/circuito/fase + leyenda | [x] |
 | R0.5.5 | feat | Sección Topología (árbol CM → circuitos → farolas con fases) | [x] |
 | R0.5.6 | feat | Seed demo: 4 CM × 2 circuitos × 6 farolas repartidas en L1/L2/L3 | [x] |
-| R0.5.7 | test | Tests de `/topology` y de permisos de alta (35 en total) | [x] |
+| R0.5.7 | test | Tests de `/topology` y de permisos de alta | [x] |
+| R0.5.8 | feat | Usuario demo sembrado (`admin`/`phoenix123`) + `/auth/info` y prefill de login | [x] |
+| R0.5.9 | feat | Aviso claro al abrir el `.html` en `file://` y errores de red legibles | [x] |
 
 Pendiente para futuras revisiones de esta línea:
-| R0.5.8 | feat | Control por circuito y por farola (requiere luminaria/nodo controlable) | [ ] |
-| R0.5.9 | feat | Alta/edición de CM, circuitos y farolas desde la UI (hoy solo por API) | [ ] |
-| R0.5.10 | feat | Importación masiva de farolas (CSV/GeoJSON) | [ ] |
+| R0.5.10 | feat | Control por circuito y por farola (requiere luminaria/nodo controlable) | [ ] |
+| R0.5.11 | feat | Alta/edición de CM, circuitos y farolas desde la UI (hoy solo por API) | [ ] |
+| R0.5.12 | feat | Importación masiva de farolas (CSV/GeoJSON) | [ ] |
 
 Snapshot: `v0.5-topology` (al cerrar la versión)
 

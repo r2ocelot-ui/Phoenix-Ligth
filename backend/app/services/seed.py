@@ -7,9 +7,19 @@ import math
 
 from sqlalchemy.orm import Session
 
+from app.core.security import hash_password
 from app.models.cabinet import Cabinet
 from app.models.circuit import Circuit
 from app.models.lightpoint import LightPoint
+from app.models.user import User
+
+
+def seed_demo_admin(db: Session, username: str, password: str) -> None:
+    """Create a known owner account for demo logins (idempotent)."""
+    if db.query(User).filter(User.username == username).first():
+        return
+    db.add(User(username=username, password_hash=hash_password(password), rank="owner"))
+    db.commit()
 
 # (code, name, zone, lat, lon, number, color) — around central Madrid.
 _DEMO_CABINETS = [

@@ -58,7 +58,7 @@ def _token(client, username, password="secret123"):
     return r.json()["access_token"]
 
 
-def _create_user(client, owner_token, username, rank="novato", password="secret123"):
+def _create_user(client, owner_token, username, rank="visualizador", password="secret123"):
     r = client.post(
         "/api/v1/users",
         json={"username": username, "password": password, "rank": rank},
@@ -86,7 +86,7 @@ def test_first_user_bootstraps_owner_then_registration_closed(client):
 def test_admin_creates_users_and_dedups(client):
     _register(client, "boss")
     boss = _token(client, "boss")
-    assert _create_user(client, boss, "dup")["rank"] == "novato"
+    assert _create_user(client, boss, "dup")["rank"] == "visualizador"
     again = client.post(
         "/api/v1/users", json={"username": "dup", "password": "secret123"}, headers=_auth(boss)
     )

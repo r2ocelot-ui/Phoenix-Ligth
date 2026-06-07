@@ -1,0 +1,141 @@
+# Phoenix-Light · Decisiones de diseño
+
+Vivero de decisiones que se han ido tomando durante el desarrollo. Cada
+decisión se anota con su fecha aproximada y el **porqué**, no sólo el
+**qué** — para que el contexto sobreviva a los cambios de conversación.
+
+---
+
+## 1. Seguridad y autenticación
+
+### 1.1 Login en dos pasos obligatorios (estilo Hydra) — 2026-06
+- **Paso 1:** usuario + contraseña + PIN (una sola pantalla).
+- **Paso 2:** patrón geométrico 3×3 estilo móvil.
+- Entre ambos pasos se intercambia un **challenge token** firmado, con
+  `step: 1` y caducidad **90 s**. Sólo sirve para consumir el paso 2.
+- Cuentas sin patrón configurado terminan el login en el paso 1 — así
+  un admin recién creado puede entrar y configurar el suyo desde dentro.
+
+### 1.2 PIN y patrón son hashes del lado del servidor
+- PBKDF2-SHA256, 200 000 rondas (mismo motor que la contraseña).
+- Verificación **siempre** en backend. Nada se valida en el navegador.
+- Esto es lo que diferencia Phoenix del Hydra revisado (que llevaba
+  los PINs en texto plano dentro del bundle JS).
+
+### 1.3 Anti-keylogger: rotar credencial requiere la actual
+- `/auth/password`, `/auth/pin`, `/auth/pattern` exigen el valor actual
+  para aceptar el nuevo. Único caso exento: cuando la credencial se
+  define por primera vez (no había nada previo).
+- Defensa real contra keyloggers pasivos: aunque te capturen las
+  teclas, no pueden rotar la credencial sin la actual.
+- El reset por admin (`/users/{id}/password`) **no** pide la actual —
+  es un reset, no un cambio personal.
+
+### 1.4 Bloqueo anti fuerza bruta
+- Tras `PHOENIX_AUTH_MAX_FAILED_ATTEMPTS` fallos consecutivos
+  (default **5**), la cuenta se bloquea `PHOENIX_AUTH_LOCKOUT_MINUTES`
+  (default **5 min**) en el modelo (`User.locked_until`).
+- Aplica a login (contraseña Y PIN) y a unlock (PIN/patrón). Durante
+  el bloqueo, incluso la credencial correcta devuelve **HTTP 429**.
+- Un login bueno **resetea el contador**.
+
+### 1.5 Historial de seguridad (admin-only)
+- Endpoint `/api/v1/audit/security` filtra eventos `auth.*` y
+  `emergency.*` del audit log general. Requiere permiso `user:manage`.
+- Vista "Seguridad" en el panel: KPIs de 24 h (logins OK / fallidos
+  / lockouts) y feed con badges de color (verde / rojo / ámbar).
+- El Supervisor sigue viendo `/audit` general; sólo Admin/Owner ve esto.
+
+### 1.6 Pendiente: 2FA TOTP estilo Google Authenticator
+- Decidido en sesión 2026-06: lo añadiremos como **cuarta credencial**
+  encima de contraseña + PIN + patrón, no en sustitución.
+- Probablemente como tercer paso opcional, activable por usuario.
+- Por hacer.
+
+---
+
+## 2. Roles y permisos
+
+### 2.1 Jerarquía de 7 niveles (estilo Hydra) — 2026-06
+Reemplaza el modelo plano anterior (`novato → owner`).
+
+| Nivel | ID                | Para qué                                              |
+|------:|-------------------|-------------------------------------------------------|
+|     6 | `owner`           | Dueño del software Phoenix. Acceso total.             |
+|     5 | `admin_proyecto`  | Admin de una ciudad / instalación. Sólo SU proyecto.  |
+|     4 | `ingeniero`       | Responsable técnico: topología, cuadros, analítica.   |
+|     3 | `supervisor`      | Jefe de turno: operación + alarmas + ver usuarios.    |
+|     2 | `tecnico`         | Operario de campo: opera y reconoce alarmas.          |
+|     1 | `operador`        | Sala de control: encender/apagar/regular.             |
+|     0 | `visualizador`    | Sólo lectura (becarios, auditores externos).          |
+
+Notas:
+- `admin_programa` se valoró y se descartó: Owner ya cubre ese papel.
+- Migración automática de rangos antiguos:
+  `novato → visualizador`, `admin → admin_proyecto`.
+
+### 2.2 Edición de roles
+- Owner edita todos.
+- `admin_proyecto` edita solo roles **estrictamente inferiores** al suyo
+  (es decir hasta `ingeniero` incluido).
+- Nadie puede asignar o promocionar a un rango ≥ al suyo propio.
+
+### 2.3 Permisos ajustables por usuario
+- El rol da el conjunto base. Encima, cada usuario puede tener
+  `extra_permissions` (concesiones) y `denied_permissions` (denegaciones)
+  que se aplican sobre el set base.
+- Quien gestiona estos overrides es quien tenga `user:manage`.
+
+---
+
+## 3. Multi-tenant
+
+### 3.1 Opción 3: diseño preparado, datos mono-tenant — 2026-06
+- Modelo `Proyecto` (ciudad/instalación) existe en el schema, con
+  los campos mínimos: `id`, `code`, `name`, `created_at`.
+- `User` tiene un `project_id` **opcional** (null = global).
+- Endpoints **NO filtran todavía** por proyecto. La lógica de
+  aislamiento se activará cuando llegue el segundo cliente.
+- Coste hoy: mínimo. Coste mañana: ~50 líneas de filtros en endpoints.
+
+---
+
+## 4. UX adoptado de Hydra
+
+### 4.1 Modal de inactividad con cuenta atrás
+- Aviso a -1 min, cuenta atrás visible los últimos 30 s con botón
+  "Seguir trabajando".
+
+### 4.2 Bloqueo manual de pantalla
+- Botón 🔒 en sidebar → pantalla bloqueada con keypad y/o pantalla del
+  patrón. Si el usuario tiene ambos, conmutador "Usar PIN / Usar patrón".
+
+### 4.3 Modo Emergencia
+- Botón ⚠ en sidebar (sólo `cabinet:control`) → `POST /emergency/all-on`
+  enciende todo + 100% dim en un solo paso. Auditado.
+
+### 4.4 Descripciones de rango en los selectores
+- Cada rango lleva una descripción que se muestra en `<option title>` y
+  como hint debajo del selector al crear usuarios.
+
+---
+
+## 5. Infraestructura
+
+### 5.1 Auto-migración de columnas — 2026-06
+- En `init_db()`, antes de servir, se hace inspección del schema y se
+  ejecuta `ALTER TABLE ... ADD COLUMN` para cualquier columna que esté
+  en el modelo pero no en la BD.
+- Sólo añade. Nunca borra ni cambia tipo. Para cambios más profundos
+  habrá que hacer Alembic — pero hoy no toca.
+- Saca al usuario del bucle de "borra `phoenix.db` y vuelve a empezar"
+  cada vez que crece el esquema.
+
+### 5.2 Seed demo con credenciales conocidas
+- En modo demo, `admin` se siembra con:
+  - contraseña: `phoenix123`
+  - PIN: `1234`
+  - patrón: `01258` (Z diagonal)
+- `/auth/info` revela los 4 valores cuando `PHOENIX_DEMO_MODE=true`,
+  para que la pantalla de login los pre-rellene.
+- En producción se desactiva con `PHOENIX_DEMO_MODE=false`.

@@ -42,7 +42,7 @@ class UserCreateAdmin(BaseModel):
     username: str = Field(..., min_length=3, max_length=64)
     password: str = Field(..., min_length=6)
     email: str | None = None
-    rank: str = "novato"
+    rank: str = "visualizador"
     pin: str | None = Field(default=None, pattern=r"^\d{4,8}$")
     pattern: str | None = Field(default=None, pattern=r"^[0-8]{4,9}$")
 

@@ -57,9 +57,10 @@ def create_user(
     """Admin-driven account creation (there is no public self-registration)."""
     if db.query(User).filter(User.username == body.username).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "El usuario ya existe")
-    if body.rank not in ranks.RANKS:
+    rank = ranks.canonicalize(body.rank)
+    if rank not in ranks.RANKS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Rango desconocido: {body.rank}")
-    if ranks.rank_level(body.rank) > ranks.rank_level(actor.rank):
+    if ranks.rank_level(rank) > ranks.rank_level(actor.rank):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No puedes crear un usuario de rango superior al tuyo")
 
     user = User(
@@ -68,7 +69,7 @@ def create_user(
         password_hash=hash_password(body.password),
         pin_hash=hash_password(body.pin) if body.pin else None,
         pattern_hash=hash_password(body.pattern) if body.pattern else None,
-        rank=body.rank,
+        rank=rank,
     )
     db.add(user)
     db.commit()
@@ -111,14 +112,15 @@ def change_rank(
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> User:
-    if body.rank not in ranks.RANKS:
+    rank = ranks.canonicalize(body.rank)
+    if rank not in ranks.RANKS:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown rank: {body.rank}")
-    if ranks.rank_level(body.rank) > ranks.rank_level(actor.rank):
+    if ranks.rank_level(rank) > ranks.rank_level(actor.rank):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot assign a rank above your own")
 
     user = _get(db, user_id)
     old = user.rank
-    user.rank = body.rank
+    user.rank = rank
     db.commit()
     db.refresh(user)
     audit_log.record(

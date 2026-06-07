@@ -32,64 +32,93 @@ ALL_PERMISSIONS = [
 ]
 
 # --- Rank ladder (ordered low -> high) --------------------------------------
-RANK_ORDER = ["novato", "operador", "tecnico", "supervisor", "admin", "owner"]
+# 7-tier ladder inspired by Hydra's role separation: a clear divide between
+# "operates the software" (owner / project admin) and "operates a city's
+# lights" (engineer / supervisor / technician / operator / viewer).
+RANK_ORDER = [
+    "visualizador", "operador", "tecnico", "supervisor",
+    "ingeniero", "admin_proyecto", "owner",
+]
 
 RANKS: dict[str, dict] = {
-    "novato": {
-        "level": 0, "label": "Novato",
-        "description": "Solo lectura. Puede ver cuadros y alarmas, pero no operar.",
+    "visualizador": {
+        "level": 0, "label": "Visualizador",
+        "description": "Solo lectura. Ve cuadros, alarmas y mapa, pero no opera.",
         "permissions": {P_CABINET_READ},
     },
     "operador": {
         "level": 1, "label": "Operador",
-        "description": "Operación diaria: encender, apagar y regular cuadros.",
+        "description": "Sala de control: encender, apagar y regular (dimming) cuadros.",
         "permissions": {P_CABINET_READ, P_CABINET_CONTROL},
     },
     "tecnico": {
         "level": 2, "label": "Técnico",
-        "description": "Operación + reconocimiento de alarmas y gestión de cuadros.",
-        "permissions": {P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE},
+        "description": "Operario de campo: opera cuadros y reconoce alarmas.",
+        "permissions": {P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK},
     },
     "supervisor": {
         "level": 3, "label": "Supervisor",
-        "description": "Visión global: añade ver la auditoría y los usuarios.",
+        "description": "Jefe de turno: operación, alarmas, ver usuarios y auditoría.",
+        "permissions": {
+            P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK,
+            P_AUDIT_READ, P_USER_VIEW,
+        },
+    },
+    "ingeniero": {
+        "level": 4, "label": "Ingeniero",
+        "description": "Responsable técnico: topología, configuración de cuadros y analítica.",
         "permissions": {
             P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,
             P_AUDIT_READ, P_USER_VIEW,
         },
     },
-    "admin": {
-        "level": 4, "label": "Admin",
-        "description": "Gestiona usuarios y rangos. Acceso completo salvo configuración crítica.",
+    "admin_proyecto": {
+        "level": 5, "label": "Admin de proyecto",
+        "description": "Administra una ciudad/instalación: usuarios, roles y configuración del proyecto.",
         "permissions": {
             P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,
             P_AUDIT_READ, P_USER_VIEW, P_USER_MANAGE,
         },
     },
     "owner": {
-        "level": 5, "label": "Owner",
-        "description": "Control total del sistema. Equivalente a superadmin.",
+        "level": 6, "label": "Owner",
+        "description": "Dueño del software Phoenix. Acceso total, multi-proyecto.",
         "permissions": {WILDCARD},
     },
 }
 
+# Aliases for renamed ranks, so older databases keep working after upgrade.
+# Read-only mapping consumed by the migration step in init_db().
+LEGACY_ALIASES: dict[str, str] = {
+    "novato": "visualizador",
+    "admin": "admin_proyecto",
+}
+
 # Points / tenure (days) required to be eligible for each target rank.
-# admin and owner are intentionally absent: manual assignment only.
+# admin_proyecto and owner are intentionally absent: manual assignment only.
 PROGRESSION: dict[str, dict] = {
     "operador": {"min_points": 10, "min_days": 0},
     "tecnico": {"min_points": 50, "min_days": 3},
     "supervisor": {"min_points": 200, "min_days": 14},
+    "ingeniero": {"min_points": 500, "min_days": 30},
 }
 
-DEFAULT_RANK = "novato"
+DEFAULT_RANK = "visualizador"
 BOOTSTRAP_RANK = "owner"  # the very first registered user
 
 
+def canonicalize(rank: str) -> str:
+    """Return the current canonical id for a rank, mapping legacy aliases."""
+    return LEGACY_ALIASES.get(rank, rank)
+
+
 def rank_level(rank: str) -> int:
+    rank = canonicalize(rank)
     return RANKS.get(rank, RANKS[DEFAULT_RANK])["level"]
 
 
 def next_rank(rank: str) -> str | None:
+    rank = canonicalize(rank)
     try:
         idx = RANK_ORDER.index(rank)
     except ValueError:
@@ -98,6 +127,7 @@ def next_rank(rank: str) -> str | None:
 
 
 def rank_permissions(rank: str) -> set[str]:
+    rank = canonicalize(rank)
     return set(RANKS.get(rank, RANKS[DEFAULT_RANK])["permissions"])
 
 

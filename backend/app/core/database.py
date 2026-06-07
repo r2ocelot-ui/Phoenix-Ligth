@@ -34,10 +34,29 @@ def get_db() -> Iterator[Session]:
 
 def init_db() -> None:
     # Import models so their tables register on Base.metadata before create_all.
-    from app.models import audit, cabinet, circuit, lightpoint, user  # noqa: F401
+    from app.models import audit, cabinet, circuit, lightpoint, project, user  # noqa: F401
 
     Base.metadata.create_all(engine)
     _autopatch_columns()
+    _migrate_legacy_ranks()
+
+
+def _migrate_legacy_ranks() -> None:
+    """Rename users still on old rank IDs to their new counterparts so older
+    databases keep working after the 7-tier refactor (novato → visualizador,
+    admin → admin_proyecto, ...). Idempotent: a second run is a no-op."""
+    from app.services.ranks import LEGACY_ALIASES
+    if not LEGACY_ALIASES:
+        return
+    with engine.begin() as conn:
+        for old, new in LEGACY_ALIASES.items():
+            result = conn.execute(
+                text('UPDATE users SET rank = :new WHERE rank = :old'),
+                {"new": new, "old": old},
+            )
+            if result.rowcount:
+                logger.info("Migrated %d user(s) from rank %r → %r",
+                            result.rowcount, old, new)
 
 
 def _autopatch_columns() -> None:

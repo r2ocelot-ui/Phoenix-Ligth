@@ -234,3 +234,42 @@ industria).
 - `/auth/info` revela los 4 valores cuando `PHOENIX_DEMO_MODE=true`,
   para que la pantalla de login los pre-rellene.
 - En producción se desactiva con `PHOENIX_DEMO_MODE=false`.
+
+---
+
+## 6. Hardware destino · PLCs / edge AI
+
+### 6.1 Arquitectura de despliegue recomendada — 2026-06
+Phoenix-Light no necesita PLC industrial Siemens/Beckhoff salvo que el
+cliente lo exija contractualmente. Despliegue real previsto en dos capas:
+
+**Capa A · En cada cuadro físico (campo):**
+- **ESP32-S3-WROOM** (~10 €): control de relés + Modbus + telemetría.
+- **ESP32-S3 + módulo 4G** (p. ej. LilyGO T-SIM7600, ~50 €): para
+  cuadros aislados sin red cableada.
+- *Opcional*, si hay analítica local: ESP32-S3 + **Coral USB Edge TPU**
+  (4 TOPS, ~60 €) para detección de presencia/ruido con MFCC.
+
+**Capa B · Centro de mando (gateway / pequeño servidor):**
+Aquí corre Phoenix-Light entero (FastAPI + SQLite/PostgreSQL + MQTT)
+junto con la analítica de IA.
+
+| Hardware | NPU | Coste aprox. | Cuándo elegirlo |
+|---|---|---|---|
+| **Raspberry Pi 5 + Hailo-8 HAT** | 26 TOPS | 250 € | **Por defecto.** Hasta ~1000 cuadros |
+| **NVIDIA Jetson Orin Nano Super 8 GB** | 67 TOPS | 250 € | Si hay computer vision |
+| **NVIDIA Jetson Orin NX 16 GB** | 100 TOPS | 600 € | Municipios grandes (>10 000 cuadros) |
+| **PLCnext de Phoenix Contact** | Variable | 800-2000 € | Si el cliente exige PLC industrial real |
+| **Siemens S7-1500 + TM NPU** | Industrial | >3000 € | Solo si lo exige el contrato |
+
+**Software stack en el gateway:**
+- Python 3.11+ con FastAPI + SQLAlchemy + Pydantic (lo que ya tenemos).
+- **ONNX Runtime** o **TensorFlow Lite** para inferencia.
+- **Hailo SDK** si el gateway es Pi + Hailo-8.
+- Drivers: `aiomqtt` (ya en uso), `pymodbus`, OPC-UA si llega.
+
+### 6.2 IA que correrá encima (futuro, no en MVP)
+- Predicción de consumo eléctrico (scikit-learn, Pandas).
+- Detección de averías por autoencoder (TFLite).
+- Dimming inteligente por afluencia (rule-based + opcional ML).
+- Computer vision con cámara para iluminación adaptativa (YOLO en Hailo).

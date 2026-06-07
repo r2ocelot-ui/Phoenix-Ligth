@@ -7,7 +7,7 @@ from app.models.cabinet import Cabinet
 from app.models.device import Device
 from app.models.user import User
 from app.schemas.device import DeviceCreate, DeviceRead
-from app.services import audit_log, ranks
+from app.services import audit_log, ranks, tenancy
 from app.services.auth import require_permission
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -17,14 +17,19 @@ router = APIRouter(prefix="/devices", tags=["devices"])
 def list_devices(
     cabinet_code: str | None = None,
     include_inactive: bool = False,
+    project_id: int | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_CABINET_READ)),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
 ):
     q = db.query(Device).order_by(Device.id.desc())
     if cabinet_code:
         q = q.filter(Device.cabinet_code == cabinet_code)
     if not include_inactive:
         q = q.filter(Device.is_active.is_(True))
+    # Devices inherit visibility from their cabinet's project.
+    codes = tenancy.cabinet_codes_in_scope(db, actor, project_id)
+    if codes is not None:
+        q = q.filter(Device.cabinet_code.in_(codes))
     return q.all()
 
 
@@ -34,8 +39,10 @@ def register_device(
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
 ):
-    if not db.query(Cabinet).filter(Cabinet.code == body.cabinet_code).first():
+    cabinet = db.query(Cabinet).filter(Cabinet.code == body.cabinet_code).first()
+    if not cabinet:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro no encontrado")
+    tenancy.ensure_visible(cabinet, actor)
     if db.query(Device).filter(Device.serial == body.serial).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Ese serial ya está registrado")
     # Replace any other active binding for this cabinet — only one at a time.

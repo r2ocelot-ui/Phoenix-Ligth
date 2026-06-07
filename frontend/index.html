@@ -205,6 +205,30 @@
     .kpis-sm .kpi { padding: 10px 14px; }
     .kpis-sm .k { font-size: 11px; letter-spacing: 0.6px; }
     .kpis-sm .v { font-size: 22px; }
+    /* ===== Chip de proyecto / ciudad activa (estilo Hydra) ===== */
+    .project-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border: 1px solid var(--border-2); border-radius: 999px;
+      background: rgba(255,255,255,0.03); font-size: 13px; cursor: default;
+    }
+    .project-chip.clickable { cursor: pointer; }
+    .project-chip.clickable:hover { background: rgba(255,255,255,0.07); }
+    .project-chip .caret { color: var(--dim); font-size: 11px; }
+    .project-picker {
+      position: absolute; top: 80px; right: 28px;
+      background: rgba(15, 23, 42, 0.97); border: 1px solid var(--border-2);
+      border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px); min-width: 240px; max-height: 320px;
+      overflow-y: auto; z-index: 900;
+    }
+    .project-picker .opt {
+      padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    .project-picker .opt:last-child { border-bottom: 0; }
+    .project-picker .opt:hover { background: rgba(255,255,255,0.06); }
+    .project-picker .opt.active { background: rgba(34, 197, 94, 0.12); }
+    .project-picker .opt small { color: var(--dim); font-size: 11px; }
     .inicio-map { height: calc(100vh - 380px); min-height: 380px; }
     .inicio-map #map { height: 100%; border-radius: 12px; background: #0b1120; }
     /* No fade-in on the map tiles themselves — defensive against the
@@ -338,11 +362,20 @@
           <h2 id="view-title">Inicio</h2>
           <div class="sub" id="view-sub">Resumen de la red de alumbrado</div>
         </div>
-        <div class="row">
-          <span class="dot ok" id="live-dot"></span>
-          <span class="muted" id="live-label" style="font-size:12px">conectando…</span>
+        <div class="row" style="gap:14px">
+          <div id="project-chip" class="project-chip hidden">
+            <span class="muted" style="font-size:11px">Ciudad</span>
+            <span id="project-chip-name">—</span>
+            <span id="project-chip-caret" class="caret hidden">▾</span>
+          </div>
+          <div class="row">
+            <span class="dot ok" id="live-dot"></span>
+            <span class="muted" id="live-label" style="font-size:12px">conectando…</span>
+          </div>
         </div>
       </div>
+      <!-- Selector de proyecto (solo owner; despliega al pulsar el chip). -->
+      <div id="project-picker" class="project-picker hidden"></div>
       <div id="content"></div>
       <footer class="foot">Kumiho Group · Phoenix Division · Tecnología · Innovación · Seguridad · Futuro</footer>
     </main>
@@ -442,6 +475,8 @@
     if (window._ws) { try { window._ws.close(); } catch (e) {} window._ws = null; }
     if (window._dockTimer) { clearInterval(window._dockTimer); window._dockTimer = null; }
     state.eventDock = []; state.dockOpen = false;
+    state.projects = []; state.activeProject = null;
+    const chip = $("#project-chip"); if (chip) chip.classList.add("hidden");
     const dock = $("#event-dock"); if (dock) { dock._wired = false; dock.classList.add("collapsed"); }
     clearTimeout(window._idle);
     $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
@@ -684,6 +719,7 @@
       const perm = a.dataset.perm; a.style.display = (!perm || has(perm)) ? "" : "none";
     });
     try { state.ranksCatalog = await api("/users/ranks"); } catch (e) { state.ranksCatalog = []; }
+    await loadProjectsForChip();
     go("inicio");
     await refreshLive();
     connectWS();
@@ -692,6 +728,71 @@
     if (!window._fallback) window._fallback = setInterval(() => {
       if (!window._ws || window._ws.readyState !== 1) refreshLive();
     }, 10000);
+  }
+
+  // ============================ Proyecto / ciudad activa ============================
+  // El chip de arriba a la derecha muestra la ciudad en la que se opera. Para
+  // un Owner es un selector con todos los proyectos (más "Todas"). Para el
+  // resto es solo informativo: ese usuario está pinned a su proyecto en BD.
+  async function loadProjectsForChip() {
+    try { state.projects = await api("/projects"); }
+    catch (e) { state.projects = []; }
+    state.activeProject = state.activeProject ?? null;  // null = "Todas"
+    renderProjectChip();
+  }
+  function isOwnerUser() { return state.me && (state.me.permissions || []).includes("*"); }
+  function renderProjectChip() {
+    const chip = $("#project-chip"); if (!chip) return;
+    const owner = isOwnerUser();
+    const projects = state.projects || [];
+    const lockedName = projects.length === 1 ? projects[0].name : null;
+    let label;
+    if (owner) {
+      const active = projects.find(p => p.id === state.activeProject);
+      label = active ? active.name : (projects.length ? "Todas las ciudades" : "Sin proyectos");
+    } else {
+      label = lockedName || (state.me?.project_id ? "Ciudad #" + state.me.project_id : "Sin asignar");
+    }
+    $("#project-chip-name").textContent = label;
+    $("#project-chip-caret").classList.toggle("hidden", !owner);
+    chip.classList.toggle("clickable", owner);
+    chip.classList.remove("hidden");
+    if (owner) chip.onclick = toggleProjectPicker;
+    else chip.onclick = null;
+  }
+  function toggleProjectPicker(e) {
+    e?.stopPropagation();
+    const picker = $("#project-picker");
+    const open = !picker.classList.contains("hidden");
+    if (open) { picker.classList.add("hidden"); return; }
+    picker.innerHTML = "";
+    const all = el("div", "opt" + (state.activeProject === null ? " active" : ""));
+    all.innerHTML = `<div><div>Todas las ciudades</div><small>vista global</small></div><div>${state.activeProject === null ? "✓" : ""}</div>`;
+    all.onclick = () => pickProject(null);
+    picker.append(all);
+    (state.projects || []).forEach(p => {
+      const o = el("div", "opt" + (state.activeProject === p.id ? " active" : ""));
+      o.innerHTML = `<div><div>${p.name}</div><small class="mono">${p.code}</small></div><div>${state.activeProject === p.id ? "✓" : ""}</div>`;
+      o.onclick = () => pickProject(p.id);
+      picker.append(o);
+    });
+    picker.classList.remove("hidden");
+    setTimeout(() => document.addEventListener("click", closeProjectPicker, { once: true }), 0);
+  }
+  function closeProjectPicker() { $("#project-picker")?.classList.add("hidden"); }
+  function pickProject(id) {
+    state.activeProject = id;
+    closeProjectPicker();
+    renderProjectChip();
+    // Re-fetch para que las listas reflejen el nuevo scope.
+    refreshLive();
+    if (state.view === "usuarios") loadUsers();
+  }
+  function scopeQuery(path) {
+    // Helper: anexa ?project_id=X cuando el owner haya activado un proyecto.
+    if (state.activeProject == null) return path;
+    const sep = path.includes("?") ? "&" : "?";
+    return path + sep + "project_id=" + state.activeProject;
   }
 
   // ============================ Dock de eventos (estilo Hydra) ============================
@@ -797,7 +898,7 @@
   async function refreshLive() {
     if (!state.token || !has("cabinet:read")) return;
     try {
-      state.cabinets = await api("/cabinets");   // lista completa con metadatos (nombre, lat/lon)
+      state.cabinets = await api(scopeQuery("/cabinets"));   // lista completa con metadatos (nombre, lat/lon)
       if (!window._ws || window._ws.readyState !== 1) setLive("poll");
       rerenderLive();
       if (state.eventDock) pollDock();
@@ -1230,7 +1331,7 @@
   async function loadUsers() {
     const c = $("#content"); c.innerHTML = "";
     try {
-      const users = await api("/users");
+      const users = await api(scopeQuery("/users"));
       // Alta de usuarios (solo admins). No hay auto-registro: el admin da el acceso.
       if (has("user:manage")) {
         const cp = el("div", "panel"); cp.style.marginBottom = "14px";

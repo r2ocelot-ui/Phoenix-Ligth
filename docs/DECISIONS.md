@@ -147,13 +147,31 @@ Notas:
 
 ## 3. Multi-tenant
 
-### 3.1 Opción 3: diseño preparado, datos mono-tenant — 2026-06
-- Modelo `Proyecto` (ciudad/instalación) existe en el schema, con
-  los campos mínimos: `id`, `code`, `name`, `created_at`.
-- `User` tiene un `project_id` **opcional** (null = global).
-- Endpoints **NO filtran todavía** por proyecto. La lógica de
-  aislamiento se activará cuando llegue el segundo cliente.
-- Coste hoy: mínimo. Coste mañana: ~50 líneas de filtros en endpoints.
+### 3.1 Activación del aislamiento multi-tenant — 2026-06
+- Modelo `Project` (ciudad/instalación) en schema con `id`, `code`, `name`,
+  `created_at`. `User.project_id` y `Cabinet.project_id` referencian al
+  proyecto (NULL = "global"/sin asignar).
+- **Filtrado activo** desde esta versión. Reglas:
+  - **Owner** (wildcard `*`): ve todo. Tiene un chip "Ciudad" en la topbar
+    que le permite filtrar manualmente a un proyecto (?project_id=X).
+  - **Resto** (admin, ingeniero, supervisor, tecnico, operador, visualizador):
+    locked a su `user.project_id`. Si es NULL → ve solo recursos NULL
+    ("global"). Si es X → ve solo recursos con `project_id == X`.
+  - Cuando un admin crea un usuario o cuadro, hereda automáticamente su
+    propio `project_id`.
+- Servicio `services/tenancy.py` centraliza la lógica: `scope_query()`
+  para queries, `ensure_visible()` para detalle, `cabinet_codes_in_scope()`
+  para endpoints que filtran por código (devices).
+- Endpoints aplicando el filtro: `/users`, `/cabinets`, `/cabinets/registry`,
+  `/devices`. `/auth/security` queda visible para admins (es global por
+  diseño — registro append-only del sistema).
+- Endpoint `/projects` con CRUD (POST/DELETE solo owner) + `assign-user`
+  + `assign-cabinet/{code}`.
+- En la UI, el chip de ciudad muestra el proyecto activo y, para owner,
+  despliega un selector con todas las ciudades + "Todas las ciudades".
+- Migración: la auto-migración añade `project_id` a `cabinets` sin
+  romper datos existentes. El seed demo crea un proyecto "madrid"
+  (Madrid Centro) y asigna los 4 cuadros demo a él.
 
 ---
 

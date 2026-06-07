@@ -6,18 +6,22 @@ from app.core.mqtt_client import bus
 from app.models.cabinet import Cabinet
 from app.models.user import User
 from app.schemas.cabinet import CabinetCreate, CabinetRead, CabinetUpdate
-from app.services import audit_log, ranks
-from app.services.auth import require_permission
+from app.services import audit_log, ranks, tenancy
+from app.services.auth import get_current_user, require_permission
 
 router = APIRouter(prefix="/cabinets", tags=["cabinets"])
 
 
-def _merged(db: Session) -> list[dict]:
-    """Combine live telemetry (from the bus) with registry metadata (from DB)."""
+def _merged(db: Session, visible_codes: set[str] | None) -> list[dict]:
+    """Combine live telemetry (from the bus) with registry metadata (from DB).
+    ``visible_codes`` filters the result to the caller's project scope; pass
+    ``None`` to skip the filter (owner without an active project filter)."""
     live = {c["cabinet_id"]: c for c in bus.snapshot()}
     registry = {c.code: c for c in db.query(Cabinet).all()}
     out = []
     for code in sorted(set(live) | set(registry)):
+        if visible_codes is not None and code not in visible_codes:
+            continue
         item = live.get(code) or {
             "cabinet_id": code,
             "online": False,
@@ -33,25 +37,31 @@ def _merged(db: Session) -> list[dict]:
         item["zone"] = reg.zone if reg else None
         item["latitude"] = reg.latitude if reg else None
         item["longitude"] = reg.longitude if reg else None
+        item["project_id"] = reg.project_id if reg else None
         out.append(item)
     return out
 
 
 @router.get("")
 def list_cabinets(
+    project_id: int | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_CABINET_READ)),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
 ) -> list[dict]:
     """Live snapshot of every cabinet: telemetry, state, alarms and location."""
-    return _merged(db)
+    codes = tenancy.cabinet_codes_in_scope(db, actor, project_id)
+    return _merged(db, codes)
 
 
 @router.get("/registry", response_model=list[CabinetRead])
 def list_registry(
+    project_id: int | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_CABINET_READ)),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
 ):
-    return db.query(Cabinet).order_by(Cabinet.code).all()
+    q = db.query(Cabinet).order_by(Cabinet.code)
+    q = tenancy.scope_query(q, Cabinet, actor, project_id)
+    return q.all()
 
 
 @router.post("/registry", response_model=CabinetRead, status_code=status.HTTP_201_CREATED)
@@ -62,7 +72,12 @@ def create_cabinet(
 ) -> Cabinet:
     if db.query(Cabinet).filter(Cabinet.code == body.code).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Cabinet code already exists")
-    cabinet = Cabinet(**body.model_dump())
+    payload = body.model_dump()
+    # A non-owner pins the new cabinet to their own project. Owner stays
+    # global by default (can move it to a project from the Projects panel).
+    if not tenancy.is_global(actor):
+        payload["project_id"] = actor.project_id
+    cabinet = Cabinet(**payload)
     db.add(cabinet)
     db.commit()
     db.refresh(cabinet)

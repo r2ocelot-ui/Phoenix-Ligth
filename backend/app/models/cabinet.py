@@ -23,6 +23,9 @@ class Cabinet(Base):
     zone: Mapped[str | None] = mapped_column(String(80), nullable=True)
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Project / city scope. NULL = "global" (visible only to owners or to
+    # users without a project assigned). See services/tenancy.py.
+    project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

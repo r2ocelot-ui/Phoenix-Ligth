@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.api.v1 import alarms, audit, auth, cabinets, control, devices, realtime, roles, security, topology, users
+from app.api.v1 import alarms, audit, auth, cabinets, control, devices, projects, realtime, roles, security, topology, users
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db, init_db
 from app.core.mqtt_client import bus
@@ -80,6 +80,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(users.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(roles.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(projects.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(audit.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(security.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(cabinets.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)

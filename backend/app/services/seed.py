@@ -11,6 +11,7 @@ from app.core.security import hash_password
 from app.models.cabinet import Cabinet
 from app.models.circuit import Circuit
 from app.models.lightpoint import LightPoint
+from app.models.project import Project
 from app.models.user import User
 
 
@@ -46,10 +47,23 @@ _RING_RADIUS = 0.0016  # ~150 m
 
 
 def seed_demo_cabinets(db: Session) -> None:
+    # Ensure a demo project exists so the multi-tenant filter has something
+    # to chew on out of the box. Idempotent.
+    project = db.query(Project).filter(Project.code == "madrid").first()
+    if project is None:
+        project = Project(code="madrid", name="Madrid Centro")
+        db.add(project)
+        db.commit()
+        db.refresh(project)
+
     for code, name, zone, lat, lon, number, color in _DEMO_CABINETS:
-        if not db.query(Cabinet).filter(Cabinet.code == code).first():
+        existing = db.query(Cabinet).filter(Cabinet.code == code).first()
+        if existing is None:
             db.add(Cabinet(code=code, name=name, zone=zone, latitude=lat,
-                           longitude=lon, number=number, color=color))
+                           longitude=lon, number=number, color=color,
+                           project_id=project.id))
+        elif existing.project_id is None:
+            existing.project_id = project.id
     db.commit()
 
     for code, name, zone, lat, lon, number, color in _DEMO_CABINETS:

@@ -95,7 +95,7 @@ DEFAULT_RANKS: dict[str, dict] = {
         },
     },
     "admin_proyecto": {
-        "level": 5, "label": "Admin de proyecto",
+        "level": 5, "label": "Admin",
         "description": "Administra una ciudad/instalación: usuarios, roles y configuración del proyecto.",
         "permissions": {
             P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,

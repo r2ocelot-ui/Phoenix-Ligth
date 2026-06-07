@@ -15,15 +15,23 @@ def seed_default_roles(db: Session) -> None:
     Idempotent — a second call is a no-op. Only inserts ids that don't already
     exist, so an admin can delete a built-in row (the schema allows it) and a
     restart won't silently re-create it. Custom rows are left alone.
+
+    Also keeps the *built-in* rows in sync with ``DEFAULT_RANKS`` for the
+    fields the admin shouldn't normally hand-edit (label, description) —
+    handy when we ship a rename or a copy fix in code. Permissions and level
+    are NOT overwritten so admin edits survive an upgrade.
     """
-    existing = {r.id for r in db.query(Role).all()}
+    existing = {r.id: r for r in db.query(Role).all()}
     for rid in ranks.BUILTIN_RANK_ORDER:
-        if rid in existing:
-            continue
         default = ranks.DEFAULT_RANKS[rid]
-        # The wildcard is encoded by the is_owner flag, not by a stored "*"
-        # entry — keeps the JSON column free of magic values.
         perms = sorted(p for p in default["permissions"] if p != ranks.WILDCARD)
+        if rid in existing:
+            row = existing[rid]
+            if row.is_builtin:
+                # Refresh cosmetic fields only.
+                row.label = default["label"]
+                row.description = default["description"]
+            continue
         db.add(Role(
             id=rid,
             level=default["level"],

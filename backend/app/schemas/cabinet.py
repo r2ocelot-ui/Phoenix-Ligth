@@ -9,6 +9,7 @@ class CabinetCreate(BaseModel):
     zone: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    project_id: int | None = None
 
 
 class CabinetUpdate(BaseModel):
@@ -31,3 +32,4 @@ class CabinetRead(BaseModel):
     zone: str | None
     latitude: float | None
     longitude: float | None
+    project_id: int | None = None

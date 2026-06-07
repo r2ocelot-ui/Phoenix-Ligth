@@ -503,6 +503,108 @@ def test_role_editor_creates_and_uses_custom_role(client):
     assert "cabinet:control" not in me["permissions"]
 
 
+def test_project_admin_only_sees_own_users_and_cabinets(client):
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.cabinet import Cabinet
+    from app.models.project import Project
+    from app.services import role_store
+    db = next(_app.dependency_overrides[get_db]())
+    role_store.seed_default_roles(db)
+
+    # Two projects with one cabinet each.
+    madrid = Project(code="madrid", name="Madrid"); db.add(madrid)
+    bcn = Project(code="bcn", name="Barcelona"); db.add(bcn)
+    db.commit(); db.refresh(madrid); db.refresh(bcn)
+    db.add(Cabinet(code="CAB-MAD", name="Madrid 1", project_id=madrid.id))
+    db.add(Cabinet(code="CAB-BCN", name="Barcelona 1", project_id=bcn.id))
+    db.commit()
+
+    # Bootstrap owner + admin de cada proyecto.
+    _register(client, "owner")
+    own = _token(client, "owner")
+    client.post("/api/v1/users",
+                json={"username": "ana", "password": "secret123", "rank": "admin_proyecto"},
+                headers=_auth(own))
+    client.post("/api/v1/users",
+                json={"username": "bea", "password": "secret123", "rank": "admin_proyecto"},
+                headers=_auth(own))
+    # Asignar ana → Madrid, bea → Barcelona.
+    ana_id = next(u["id"] for u in client.get("/api/v1/users", headers=_auth(own)).json()
+                  if u["username"] == "ana")
+    bea_id = next(u["id"] for u in client.get("/api/v1/users", headers=_auth(own)).json()
+                  if u["username"] == "bea")
+    assert client.post("/api/v1/projects/assign-user",
+                       json={"user_id": ana_id, "project_id": madrid.id},
+                       headers=_auth(own)).status_code == 200
+    assert client.post("/api/v1/projects/assign-user",
+                       json={"user_id": bea_id, "project_id": bcn.id},
+                       headers=_auth(own)).status_code == 200
+
+    # Ana (Madrid) ve solo Madrid: 1 cuadro y solo usuarios de Madrid (ella).
+    ana = _token(client, "ana")
+    ana_cabs = client.get("/api/v1/cabinets/registry", headers=_auth(ana)).json()
+    assert [c["code"] for c in ana_cabs] == ["CAB-MAD"]
+    ana_users = client.get("/api/v1/users", headers=_auth(ana)).json()
+    assert {u["username"] for u in ana_users} == {"ana"}
+
+    # Bea (Barcelona) ve solo Barcelona.
+    bea = _token(client, "bea")
+    bea_cabs = client.get("/api/v1/cabinets/registry", headers=_auth(bea)).json()
+    assert [c["code"] for c in bea_cabs] == ["CAB-BCN"]
+
+    # Owner ve todos.
+    owner_cabs = client.get("/api/v1/cabinets/registry", headers=_auth(own)).json()
+    assert {c["code"] for c in owner_cabs} >= {"CAB-MAD", "CAB-BCN"}
+
+
+def test_project_admin_creates_user_inherits_project(client):
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.project import Project
+    from app.services import role_store
+    db = next(_app.dependency_overrides[get_db]())
+    role_store.seed_default_roles(db)
+    p = Project(code="madrid", name="Madrid"); db.add(p); db.commit(); db.refresh(p)
+
+    _register(client, "owner"); own = _token(client, "owner")
+    client.post("/api/v1/users",
+                json={"username": "ana", "password": "secret123", "rank": "admin_proyecto"},
+                headers=_auth(own))
+    ana_id = next(u["id"] for u in client.get("/api/v1/users", headers=_auth(own)).json()
+                  if u["username"] == "ana")
+    client.post("/api/v1/projects/assign-user",
+                json={"user_id": ana_id, "project_id": p.id}, headers=_auth(own))
+
+    # Ana crea un técnico — debe heredar project_id=p.id.
+    ana = _token(client, "ana")
+    r = client.post("/api/v1/users",
+                    json={"username": "tom", "password": "secret123", "rank": "tecnico"},
+                    headers=_auth(ana))
+    assert r.status_code == 201, r.text
+    # Ana ve a tom porque ambos están en Madrid.
+    visible = client.get("/api/v1/users", headers=_auth(ana)).json()
+    assert "tom" in {u["username"] for u in visible}
+
+
+def test_only_owner_can_manage_projects(client):
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.services import role_store
+    db = next(_app.dependency_overrides[get_db]())
+    role_store.seed_default_roles(db)
+
+    _register(client, "owner"); own = _token(client, "owner")
+    client.post("/api/v1/users",
+                json={"username": "ana", "password": "secret123", "rank": "admin_proyecto"},
+                headers=_auth(own))
+    ana = _token(client, "ana")
+    # Ana intenta crear proyecto → 403.
+    r = client.post("/api/v1/projects",
+                    json={"code": "sneaky", "name": "Sneaky"}, headers=_auth(ana))
+    assert r.status_code == 403
+
+
 def test_activity_points_accumulate(client):
     _register(client, "boss")
     boss = _token(client, "boss")

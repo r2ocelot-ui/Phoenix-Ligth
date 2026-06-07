@@ -12,7 +12,7 @@ from app.schemas.user import (
     UserDetail,
     UserRead,
 )
-from app.services import audit_log, ranks
+from app.services import audit_log, ranks, tenancy
 from app.services.auth import require_permission, user_detail
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -33,19 +33,24 @@ def list_ranks() -> list[dict]:
     ]
 
 
-def _get(db: Session, user_id: int) -> User:
+def _get(db: Session, user_id: int, actor: User | None = None) -> User:
     user = db.get(User, user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if actor is not None:
+        tenancy.ensure_visible(user, actor)
     return user
 
 
 @router.get("", response_model=list[UserRead])
 def list_users(
+    project_id: int | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ):
-    return db.query(User).order_by(User.id).all()
+    q = db.query(User).order_by(User.id)
+    q = tenancy.scope_query(q, User, actor, project_id)
+    return q.all()
 
 
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -63,6 +68,9 @@ def create_user(
     if ranks.rank_level(rank) > ranks.rank_level(actor.rank):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "No puedes crear un usuario de rango superior al tuyo")
 
+    # A non-owner admin pins the new user to their own project automatically;
+    # an owner creates "global" users (project_id=None) and assigns later.
+    new_project_id = actor.project_id if not tenancy.is_global(actor) else None
     user = User(
         username=body.username,
         email=body.email,
@@ -70,6 +78,7 @@ def create_user(
         pin_hash=hash_password(body.pin) if body.pin else None,
         pattern_hash=hash_password(body.pattern) if body.pattern else None,
         rank=rank,
+        project_id=new_project_id,
     )
     db.add(user)
     db.commit()
@@ -89,7 +98,7 @@ def set_password(
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> dict:
-    user = _get(db, user_id)
+    user = _get(db, user_id, actor)
     user.password_hash = hash_password(body.password)
     db.commit()
     audit_log.record(db, username=actor.username, action="user.password_reset", target=user.username)
@@ -100,9 +109,9 @@ def set_password(
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> UserDetail:
-    return user_detail(_get(db, user_id))
+    return user_detail(_get(db, user_id, actor))
 
 
 @router.post("/{user_id}/rank", response_model=UserRead)
@@ -118,7 +127,7 @@ def change_rank(
     if ranks.rank_level(rank) > ranks.rank_level(actor.rank):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot assign a rank above your own")
 
-    user = _get(db, user_id)
+    user = _get(db, user_id, actor)
     old = user.rank
     user.rank = rank
     db.commit()
@@ -139,7 +148,7 @@ def promote(
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> User:
-    user = _get(db, user_id)
+    user = _get(db, user_id, actor)
     info = ranks.promotion_eligibility(user)
     if not info.get("next_rank") or not info.get("eligible"):
         raise HTTPException(status.HTTP_409_CONFLICT, f"Not eligible for promotion: {info}")
@@ -176,7 +185,7 @@ def set_permissions(
     if unknown:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"Unknown permissions: {unknown}")
 
-    user = _get(db, user_id)
+    user = _get(db, user_id, actor)
     user.extra_permissions = list(body.extra_permissions)
     user.denied_permissions = list(body.denied_permissions)
     db.commit()

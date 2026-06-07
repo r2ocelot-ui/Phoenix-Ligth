@@ -43,7 +43,7 @@ def _get(db: Session, user_id: int) -> User:
 @router.get("", response_model=list[UserRead])
 def list_users(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_USER_VIEW)),
+    _: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ):
     return db.query(User).order_by(User.id).all()
 
@@ -100,7 +100,7 @@ def set_password(
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_USER_VIEW)),
+    _: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> UserDetail:
     return user_detail(_get(db, user_id))
 

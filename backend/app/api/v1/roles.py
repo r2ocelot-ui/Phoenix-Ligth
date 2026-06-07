@@ -56,7 +56,7 @@ def _ensure_can_grant(actor: User, new_perms: list[str] | None) -> None:
 
 @router.get("/permissions", response_model=list[PermissionInfo])
 def list_permissions(
-    _: User = Depends(require_permission(ranks.P_USER_VIEW)),
+    _: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ):
     """Catalogue of every permission the system understands, with labels.
     Drives the checklist in the editor."""
@@ -66,7 +66,7 @@ def list_permissions(
 @router.get("", response_model=list[RoleRead])
 def list_roles(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_USER_VIEW)),
+    _: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ):
     return role_store.list_roles(db)
 
@@ -75,7 +75,7 @@ def list_roles(
 def get_role(
     role_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_USER_VIEW)),
+    _: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ):
     role = role_store.get_role(db, role_id)
     if not role:

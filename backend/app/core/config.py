@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     alarm_zero_current_threshold_a: float = 0.05
     alarm_overvoltage_threshold_v: float = 253.0
     alarm_undervoltage_threshold_v: float = 207.0
+    alarm_overcurrent_threshold_a: float = 30.0
+    alarm_cabinet_temp_c: float = 55.0  # umbral de "exceso de temperatura"
 
     dimming_interval_s: int = 60
     communication_loss_timeout_s: int = 300

@@ -122,6 +122,33 @@ def update_circuit(
     return circuit
 
 
+@router.delete("/circuits/{circuit_id}")
+def delete_circuit(
+    circuit_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
+) -> dict:
+    """Delete a circuit. Refuses while it still has light points attached
+    — the admin must rehome or delete the lamps first to avoid orphan rows."""
+    circuit = db.get(Circuit, circuit_id)
+    if not circuit:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Circuit not found")
+    attached = db.query(LightPoint).filter(LightPoint.circuit_id == circuit_id).count()
+    if attached:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"No se puede borrar: {attached} luminaria(s) aún cuelgan de este circuito.",
+        )
+    code = circuit.cabinet_code
+    db.delete(circuit)
+    db.commit()
+    audit_log.record(
+        db, username=actor.username, action="circuit.delete",
+        target=f"{code}/{circuit_id}",
+    )
+    return {"deleted": True}
+
+
 # --------------------------- Light points ---------------------------
 @router.get("/lightpoints", response_model=list[LightPointRead])
 def list_lightpoints(

@@ -84,3 +84,51 @@ def test_topology_mutations_require_manage(client):
     r = client.post("/api/v1/lightpoints",
                     json={"cabinet_code": "CAB-001", "circuit_id": 1, "number": 1}, headers=novato)
     assert r.status_code == 403
+
+
+def test_delete_circuit_refuses_with_attached_lightpoints(client):
+    owner = _owner(client)
+    client.post("/api/v1/cabinets/registry",
+                json={"code": "CAB-001", "name": "Centro", "number": 1}, headers=owner)
+    circ = client.post("/api/v1/circuits",
+                       json={"cabinet_code": "CAB-001", "number": 1}, headers=owner).json()
+    client.post("/api/v1/lightpoints",
+                json={"cabinet_code": "CAB-001", "circuit_id": circ["id"], "number": 1,
+                      "phase": "L1"}, headers=owner)
+    # Hay una luminaria → 409.
+    r = client.delete(f"/api/v1/circuits/{circ['id']}", headers=owner)
+    assert r.status_code == 409
+    # Quitar la luminaria → ahora sí.
+    point = client.get("/api/v1/lightpoints?cabinet_code=CAB-001", headers=owner).json()[0]
+    client.delete(f"/api/v1/lightpoints/{point['id']}", headers=owner)
+    assert client.delete(f"/api/v1/circuits/{circ['id']}", headers=owner).status_code == 200
+
+
+def test_delete_cabinet_cascades_circuits_and_points(client):
+    owner = _owner(client)
+    client.post("/api/v1/cabinets/registry",
+                json={"code": "CAB-X", "name": "X", "number": 9}, headers=owner)
+    circ = client.post("/api/v1/circuits",
+                       json={"cabinet_code": "CAB-X", "number": 1}, headers=owner).json()
+    client.post("/api/v1/lightpoints",
+                json={"cabinet_code": "CAB-X", "circuit_id": circ["id"], "number": 1,
+                      "phase": "L1"}, headers=owner)
+    # Borrar el cuadro arrastra todo.
+    r = client.delete("/api/v1/cabinets/registry/CAB-X", headers=owner)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["circuits"] == 1 and body["points"] == 1
+    # Y ya no aparece en el árbol.
+    tp = client.get("/api/v1/topology", headers=owner).json()
+    assert not any(c["code"] == "CAB-X" for c in tp["cabinets"])
+
+
+def test_wipe_topology_clears_everything(client):
+    owner = _owner(client)
+    client.post("/api/v1/cabinets/registry", json={"code": "AA", "name": "A"}, headers=owner)
+    client.post("/api/v1/cabinets/registry", json={"code": "BB", "name": "B"}, headers=owner)
+    r = client.post("/api/v1/cabinets/registry/wipe-all", headers=owner)
+    assert r.status_code == 200, r.text
+    assert r.json()["cabinets"] >= 2
+    tp = client.get("/api/v1/topology", headers=owner).json()
+    assert tp["cabinets"] == []

@@ -109,6 +109,67 @@ def update_cabinet(
     return cabinet
 
 
+@router.post("/registry/wipe-all")
+def wipe_topology(
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
+) -> dict:
+    """Owner-only nuclear option: drop every cabinet, circuit and light
+    point in the database. Useful to start from a blank slate after the
+    demo seed. Devices and audit entries are preserved (audit by design)."""
+    if not tenancy.is_global(actor):
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Solo el owner puede vaciar la topología completa")
+    from app.models.circuit import Circuit
+    from app.models.lightpoint import LightPoint
+    n_pts = db.query(LightPoint).delete(synchronize_session=False)
+    n_circs = db.query(Circuit).delete(synchronize_session=False)
+    n_cabs = db.query(Cabinet).delete(synchronize_session=False)
+    db.commit()
+    # Drop in-memory live state too — otherwise the deleted cabinets keep
+    # showing up as offline ghosts in /cabinets until the next restart.
+    bus._known_cabinets.clear()
+    bus.last_telemetry.clear()
+    bus.cabinet_state.clear()
+    bus.active_alarms.clear()
+    bus.last_lux.clear()
+    audit_log.record(
+        db, username=actor.username, action="topology.wipe",
+        detail={"cabinets": n_cabs, "circuits": n_circs, "points": n_pts},
+    )
+    return {"cabinets": n_cabs, "circuits": n_circs, "points": n_pts}
+
+
+@router.delete("/registry/{code}")
+def delete_cabinet(
+    code: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
+) -> dict:
+    """Delete a cabinet plus everything attached: circuits, light points and
+    its in-memory live state. Audited."""
+    cabinet = db.query(Cabinet).filter(Cabinet.code == code).first()
+    if not cabinet:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cabinet not found")
+    tenancy.ensure_visible(cabinet, actor)
+    from app.models.circuit import Circuit
+    from app.models.lightpoint import LightPoint
+    n_pts = db.query(LightPoint).filter(LightPoint.cabinet_code == code).delete()
+    n_circs = db.query(Circuit).filter(Circuit.cabinet_code == code).delete()
+    db.delete(cabinet)
+    db.commit()
+    bus._known_cabinets.discard(code)
+    bus.last_telemetry.pop(code, None)
+    bus.cabinet_state.pop(code, None)
+    bus.active_alarms.pop(code, None)
+    bus.last_lux.pop(code, None)
+    audit_log.record(
+        db, username=actor.username, action="cabinet.delete", target=code,
+        detail={"circuits": n_circs, "points": n_pts},
+    )
+    return {"deleted": True, "circuits": n_circs, "points": n_pts}
+
+
 @router.get("/{cabinet_id}/snapshot")
 def get_cabinet(
     cabinet_id: str,

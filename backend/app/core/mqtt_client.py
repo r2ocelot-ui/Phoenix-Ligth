@@ -267,8 +267,12 @@ class MQTTBus:
             for cid in _DEMO_CABINETS:
                 blown = cid == "CAB-003" and (tick % 14) in (6, 7, 8)
                 over = cid == "CAB-004" and (tick % 22) == 0
+                hot = cid == "CAB-002" and (tick % 18) in (2, 3, 4)
+                door = cid == "CAB-001" and (tick % 30) in (1, 2)
                 voltage = 255.6 if over else round(random.uniform(228.0, 232.0), 1)
                 current = 0.0 if blown else round(random.uniform(2.4, 3.3), 2)
+                # Simulación de sensores físicos del cuadro:
+                temp = 62.0 if hot else round(random.uniform(28.0, 42.0), 1)
                 measurement = Measurement(
                     cabinet_id=cid,
                     voltage_v=voltage,
@@ -277,6 +281,9 @@ class MQTTBus:
                     power_factor=0.0 if blown else 0.95,
                     lamp_circuit="L1",
                     ambient_lux=round(random.uniform(0.0, 55.0), 1),
+                    cabinet_temp_c=temp,
+                    door_open=door,
+                    intrusion=False,
                 )
                 await self.ingest(measurement)
 

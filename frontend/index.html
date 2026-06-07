@@ -941,9 +941,12 @@
         key: cab.cabinet_id + ":" + a.type,
       })),
     );
-    // Últimos eventos de seguridad si soy admin.
+    // Eventos de seguridad (login fallido, IPs baneadas, nuevos dispositivos,
+    // cambios de rango...): solo admins / owner. El resto de rangos
+    // (ingeniero, supervisor, técnico, operador, visualizador) ven SOLO las
+    // alarmas operativas de cuadros, fases, circuitos y luminarias.
     let secEvents = [];
-    if (has("audit:read")) {
+    if (has("user:manage")) {
       try {
         const r = await api("/audit/security?limit=20");
         secEvents = r.map(e => ({

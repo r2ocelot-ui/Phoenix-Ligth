@@ -75,4 +75,49 @@ def evaluate(measurement: Measurement, expected_on: bool = True) -> list[Alarm]:
             )
         )
 
+    if measurement.current_a > settings.alarm_overcurrent_threshold_a:
+        alarms.append(
+            Alarm(
+                cabinet_id=measurement.cabinet_id,
+                type=AlarmType.OVERCURRENT,
+                severity=AlarmSeverity.CRITICAL,
+                message=f"Overcurrent: {measurement.current_a:.2f} A.",
+                timestamp=now, value=measurement.current_a,
+            )
+        )
+
+    # --- Infraestructura del cuadro ----------------------------------------
+    if measurement.cabinet_temp_c is not None and (
+        measurement.cabinet_temp_c > settings.alarm_cabinet_temp_c
+    ):
+        alarms.append(
+            Alarm(
+                cabinet_id=measurement.cabinet_id,
+                type=AlarmType.CABINET_OVERTEMP,
+                severity=AlarmSeverity.WARNING,
+                message=f"Temperatura interior elevada ({measurement.cabinet_temp_c:.1f} °C).",
+                timestamp=now, value=measurement.cabinet_temp_c,
+            )
+        )
+    if measurement.door_open is True:
+        alarms.append(
+            Alarm(
+                cabinet_id=measurement.cabinet_id,
+                type=AlarmType.DOOR_OPEN,
+                severity=AlarmSeverity.WARNING,
+                message="Puerta del cuadro abierta.",
+                timestamp=now,
+            )
+        )
+    if measurement.intrusion is True:
+        alarms.append(
+            Alarm(
+                cabinet_id=measurement.cabinet_id,
+                type=AlarmType.INTRUSION,
+                severity=AlarmSeverity.CRITICAL,
+                message="¡Intento de intrusión detectado!",
+                timestamp=now,
+            )
+        )
+
     return alarms

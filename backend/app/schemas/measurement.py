@@ -16,6 +16,17 @@ class Measurement(BaseModel):
     ambient_lux: float | None = Field(
         None, ge=0, description="Optional ambient light reading; feeds the dimming scheduler."
     )
+    # Infrastructure sensors common to a real EMS cabinet.
+    cabinet_temp_c: float | None = Field(
+        None, ge=-40, le=120,
+        description="Internal cabinet temperature in °C (NTC/thermistor).",
+    )
+    door_open: bool | None = Field(
+        None, description="True if the cabinet door is open (reed switch / hall sensor).",
+    )
+    intrusion: bool | None = Field(
+        None, description="True if the tamper/intrusion sensor tripped.",
+    )
     device_serial: str | None = Field(
         None, max_length=64,
         description="Serial of the field device emitting this telemetry. "

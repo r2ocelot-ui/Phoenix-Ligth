@@ -164,7 +164,7 @@ Phoenix. Secciones:
 
 - **Inicio** — KPIs de la red (cuadros, online, alarmas, potencia total) e incidencias.
 - **Cuadros** — tarjetas con telemetría en vivo (V/I/P/cos φ) y nivel de dimming.
-- **Mapa** — centros de mando (CM) y farolas sobre Leaflet; colorear por **estado, CM, circuito o fase**, con números y leyenda.
+- **Mapa** — centros de mando (CM) y farolas sobre Leaflet; colorear por **estado, CM, circuito o fase**, con números y leyenda. Estilo de fondo conmutable **Oscuro / Claro / Satélite** (se recuerda tu elección).
 - **Topología** — árbol CM → circuitos → farolas, con colores y reparto de fases.
 - **Control** — encendido/apagado y regulación por cuadro (requiere `cabinet:control`).
 - **Alarmas** — incidencias activas y ACK (requiere `alarm:ack`).

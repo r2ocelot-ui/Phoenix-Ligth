@@ -233,7 +233,7 @@
   const API = "/api/v1";
   const LIVE_VIEWS = ["inicio", "cuadros", "alarmas", "control"];
   const STATUS_COLOR = { ok: "#22c55e", warning: "#f59e0b", critical: "#ef4444" };
-  const state = { token: localStorage.getItem("ph_token") || null, me: null, view: "inicio", cabinets: [], mapMode: "estado" };
+  const state = { token: localStorage.getItem("ph_token") || null, me: null, view: "inicio", cabinets: [], mapMode: "estado", tileStyle: localStorage.getItem("ph_tile") || "oscuro" };
 
   function emblemAll() {
     const tpl = document.getElementById("phoenix-svg").content;
@@ -416,23 +416,54 @@
   function metric(label, val) { const m = el("div", "m"); m.append(el("div", "ml", label), el("div", "mv", val)); return m; }
 
   // ============================ Mapa ============================
+  const TILE_STYLES = {
+    oscuro:   { label: "Oscuro",   url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", opts: { maxZoom: 19, subdomains: "abcd" } },
+    claro:    { label: "Claro",    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", opts: { maxZoom: 19, subdomains: "abcd" } },
+    satelite: { label: "Satélite", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", opts: { maxZoom: 19 } },
+  };
+  function applyTileStyle(map) {
+    if (!map) return;
+    if (window._tileLayer) map.removeLayer(window._tileLayer);
+    const st = TILE_STYLES[state.tileStyle] || TILE_STYLES.oscuro;
+    window._tileLayer = L.tileLayer(st.url, st.opts).addTo(map);
+    window._tileLayer.bringToBack();
+  }
+  function segGroup(pairs, isActive, onPick) {
+    const seg = el("div", "row");
+    pairs.forEach(([k, lbl]) => {
+      const b = el("button", "btn sm" + (isActive(k) ? "" : " ghost"), lbl);
+      b.onclick = () => { seg.querySelectorAll("button").forEach(x => x.classList.add("ghost")); b.classList.remove("ghost"); onPick(k); };
+      seg.append(b);
+    });
+    return seg;
+  }
+  function labeled(text, node) {
+    const wrap = el("div", "row"); const lab = el("span", "muted", text); lab.style.fontSize = "12px";
+    wrap.append(lab, node); return wrap;
+  }
   async function renderMapa(c) {
     c.innerHTML = "";
     if (typeof L === "undefined") { c.append(el("div", "empty", "El mapa requiere conexión a internet (Leaflet / tiles).")); return; }
-    const modes = [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]];
-    const bar = el("div", "row between"); bar.style.marginBottom = "12px";
-    const seg = el("div", "row");
-    modes.forEach(([k, lbl]) => { const b = el("button", "btn sm" + (state.mapMode === k ? "" : " ghost"), lbl); b.onclick = () => { state.mapMode = k; renderMapa(c); }; seg.append(b); });
-    bar.append(el("div", null, "<strong>Mapa</strong> · colorear por:"), seg);
+    const bar = el("div", "row between"); bar.style.marginBottom = "12px"; bar.style.gap = "16px"; bar.style.flexWrap = "wrap";
+    const colorSeg = segGroup(
+      [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]],
+      k => state.mapMode === k,
+      k => { state.mapMode = k; drawTopology(); });
+    const styleSeg = segGroup(
+      Object.entries(TILE_STYLES).map(([k, v]) => [k, v.label]),
+      k => state.tileStyle === k,
+      k => { state.tileStyle = k; localStorage.setItem("ph_tile", k); applyTileStyle(window._map); });
+    bar.append(labeled("colorear por:", colorSeg), labeled("mapa:", styleSeg));
     c.append(bar);
     const div = el("div"); div.id = "map"; c.append(div);
     const legend = el("div", "panel"); legend.id = "legend"; legend.style.marginTop = "12px"; c.append(legend);
     try { window._topology = await api("/topology"); } catch (e) { c.append(el("div", "empty", e.message)); return; }
     if (window._map) window._map.remove();
-    window._cmMarkers = {}; window._ptMarkers = {}; window._fitDone = false;
+    window._cmMarkers = {}; window._ptMarkers = {}; window._fitDone = false; window._tileLayer = null;
     const map = L.map("map", { attributionControl: false }).setView([40.4168, -3.7038], 13);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(map);
-    window._map = map; setTimeout(() => map.invalidateSize(), 60);
+    window._map = map;
+    applyTileStyle(map);
+    setTimeout(() => map.invalidateSize(), 60);
     drawTopology();
   }
 

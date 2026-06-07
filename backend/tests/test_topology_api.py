@@ -36,7 +36,13 @@ def _owner(client):
 
 
 def _novato(client):
-    client.post("/api/v1/auth/register", json={"username": "newbie", "password": "secret123"})
+    # 'boss' (owner) must already exist; create a novato via the admin endpoint.
+    owner = client.post("/api/v1/auth/login", data={"username": "boss", "password": "secret123"}).json()["access_token"]
+    client.post(
+        "/api/v1/users",
+        json={"username": "newbie", "password": "secret123", "rank": "novato"},
+        headers={"Authorization": f"Bearer {owner}"},
+    )
     tok = client.post("/api/v1/auth/login", data={"username": "newbie", "password": "secret123"}).json()["access_token"]
     return {"Authorization": f"Bearer {tok}"}
 

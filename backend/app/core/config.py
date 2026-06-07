@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./phoenix.db"
     jwt_secret: str = "dev-secret-change-me"
     access_token_expire_minutes: int = 480
+    # Auto-logout the web panel after this many minutes with no user activity.
+    session_idle_minutes: int = 10
 
     # Progression: if enabled, users auto-promote one step when eligible,
     # but never above auto_promote_max_rank. Disabled by default so promotions

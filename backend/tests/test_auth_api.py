@@ -58,6 +58,16 @@ def _token(client, username, password="secret123"):
     return r.json()["access_token"]
 
 
+def _create_user(client, owner_token, username, rank="novato", password="secret123"):
+    r = client.post(
+        "/api/v1/users",
+        json={"username": username, "password": password, "rank": rank},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
+
+
 def _auth(token):
     return {"Authorization": f"Bearer {token}"}
 
@@ -67,14 +77,20 @@ def _id_of(client, token, username):
     return next(u["id"] for u in users if u["username"] == username)
 
 
-def test_first_user_is_owner_rest_are_novato(client):
+def test_first_user_bootstraps_owner_then_registration_closed(client):
     assert _register(client, "boss").json()["rank"] == "owner"
-    assert _register(client, "newbie").json()["rank"] == "novato"
+    # Self-registration is closed once an account exists.
+    assert _register(client, "newbie").status_code == 403
 
 
-def test_duplicate_username_rejected(client):
+def test_admin_creates_users_and_dedups(client):
     _register(client, "boss")
-    assert _register(client, "boss").status_code == 409
+    boss = _token(client, "boss")
+    assert _create_user(client, boss, "dup")["rank"] == "novato"
+    again = client.post(
+        "/api/v1/users", json={"username": "dup", "password": "secret123"}, headers=_auth(boss)
+    )
+    assert again.status_code == 409
 
 
 def test_unauthenticated_requests_are_rejected(client):
@@ -103,8 +119,8 @@ def test_seeded_demo_admin_can_login(client):
 
 def test_novato_blocked_operador_allowed(client):
     _register(client, "boss")
-    _register(client, "newbie")
     boss = _token(client, "boss")
+    _create_user(client, boss, "newbie", rank="novato")
     newbie = _token(client, "newbie")
 
     blocked = client.post(
@@ -128,8 +144,8 @@ def test_novato_blocked_operador_allowed(client):
 
 def test_per_user_permission_override_grants_control(client):
     _register(client, "boss")
-    _register(client, "newbie")
     boss = _token(client, "boss")
+    _create_user(client, boss, "newbie")
     newbie = _token(client, "newbie")
     nid = _id_of(client, boss, "newbie")
 
@@ -149,13 +165,11 @@ def test_per_user_permission_override_grants_control(client):
 
 def test_cannot_assign_rank_above_own(client):
     _register(client, "boss")
-    _register(client, "user2")
     boss = _token(client, "boss")
     boss_id = _id_of(client, boss, "boss")
-    user2_id = _id_of(client, boss, "user2")
+    _create_user(client, boss, "user2", rank="admin")
 
-    # Make user2 an admin; an admin must not be able to make anyone owner.
-    client.post(f"/api/v1/users/{user2_id}/rank", json={"rank": "admin"}, headers=_auth(boss))
+    # An admin must not be able to promote anyone to owner.
     user2 = _token(client, "user2")
     r = client.post(
         f"/api/v1/users/{boss_id}/rank", json={"rank": "owner"}, headers=_auth(user2)
@@ -171,7 +185,7 @@ def test_audit_log_records_actions(client):
     r = client.get("/api/v1/audit", headers=_auth(boss))
     assert r.status_code == 200
     actions = {e["action"] for e in r.json()}
-    assert {"auth.register", "auth.login", "cabinet.dim"} <= actions
+    assert {"auth.bootstrap", "auth.login", "cabinet.dim"} <= actions
 
 
 def test_activity_points_accumulate(client):

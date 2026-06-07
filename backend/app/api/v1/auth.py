@@ -17,26 +17,24 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
 def register(body: UserCreate, db: Session = Depends(get_db)) -> User:
-    if db.query(User).filter(User.username == body.username).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, "Username already taken")
-
-    # The very first account bootstraps as owner; everyone else starts as novato.
-    is_first = db.query(User).count() == 0
+    """Bootstrap only. Self-registration is allowed *only* to create the very
+    first owner account on an empty system. After that, accounts are created by
+    an administrator from the Users section."""
+    if db.query(User).count() > 0:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "El registro está deshabilitado. Pide acceso a un administrador.",
+        )
     user = User(
         username=body.username,
         email=body.email,
         password_hash=hash_password(body.password),
-        rank=ranks.BOOTSTRAP_RANK if is_first else ranks.DEFAULT_RANK,
+        rank=ranks.BOOTSTRAP_RANK,
     )
     db.add(user)
     db.commit()
     db.refresh(user)
-    audit_log.record(
-        db,
-        username=user.username,
-        action="auth.register",
-        detail={"rank": user.rank, "bootstrap": is_first},
-    )
+    audit_log.record(db, username=user.username, action="auth.bootstrap", detail={"rank": user.rank})
     return user
 
 
@@ -65,7 +63,11 @@ def me(user: User = Depends(get_current_user)) -> UserDetail:
 def info() -> dict:
     """Public hint for the login screen. Demo credentials are only revealed
     while demo mode is on (turn it off in production)."""
-    data = {"app": settings.app_name, "demo_mode": settings.demo_mode}
+    data = {
+        "app": settings.app_name,
+        "demo_mode": settings.demo_mode,
+        "session_idle_minutes": settings.session_idle_minutes,
+    }
     if settings.demo_mode:
         data["demo_username"] = settings.demo_admin_username
         data["demo_password"] = settings.demo_admin_password

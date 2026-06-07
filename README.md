@@ -145,9 +145,10 @@ docker compose up -d
 python simulator/cabinet_simulator.py --cabinet-id CAB-001
 ```
 
-> **Acceso demo:** en modo demo el panel viene con un usuario sembrado
-> `admin` / `phoenix123` (rol `owner`) y el login aparece ya rellenado.
-> El **primer usuario** que registres tú también será `owner`.
+> **Acceso:** no hay auto-registro. En una instalación nueva la **primera**
+> cuenta es `owner` (bootstrap); a partir de ahí **el administrador da de alta**
+> a los usuarios desde la sección *Usuarios*. En modo demo viene sembrado
+> `admin` / `phoenix123` (owner) y el login aparece relleno.
 
 Endpoints útiles:
 - `http://localhost:8000/ui/` — **Panel web Phoenix Light**
@@ -206,9 +207,13 @@ que se derivan del **rango** del usuario más sus overrides individuales.
   `PHOENIX_AUTO_PROMOTE_ENABLED` (con tope `PHOENIX_AUTO_PROMOTE_MAX_RANK`).
 - **Overrides por usuario**: `extra_permissions` y `denied_permissions` ajustan permisos
   por encima/por debajo del rango (`POST /users/{id}/permissions`).
-- **Bootstrap**: el **primer usuario registrado** es `owner`; el resto nacen `novato`.
-- **Historial**: cada acción relevante (login, control, cambios de rango) queda en un
-  log append-only consultable en `GET /api/v1/audit`.
+- **Sin auto-registro**: la primera cuenta de una instalación nueva es `owner`;
+  el resto las **crea un administrador** desde *Usuarios* (usuario + contraseña +
+  rango, con reseteo de contraseña). No hay registro público.
+- **Inactividad**: el panel cierra sesión solo tras `PHOENIX_SESSION_IDLE_MINUTES`
+  (10 por defecto) sin actividad del usuario.
+- **Historial**: cada acción relevante (login, alta de usuario, control, cambios de
+  rango) queda en un log append-only consultable en `GET /api/v1/audit`.
 
 ```bash
 # 1) Registrar (el primero es owner) y obtener token

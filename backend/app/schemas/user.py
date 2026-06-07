@@ -33,6 +33,17 @@ class Token(BaseModel):
     rank: str
 
 
+class UserCreateAdmin(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=6)
+    email: str | None = None
+    rank: str = "novato"
+
+
+class PasswordSet(BaseModel):
+    password: str = Field(..., min_length=6)
+
+
 class RankChange(BaseModel):
     rank: str
 

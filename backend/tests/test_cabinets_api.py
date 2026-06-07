@@ -66,7 +66,11 @@ def test_cabinets_empty_then_snapshot(client):
 
 def test_create_cabinet_requires_manage(client):
     boss = _token(client)
-    client.post("/api/v1/auth/register", json={"username": "newbie", "password": "secret123"})
+    client.post(
+        "/api/v1/users",
+        json={"username": "newbie", "password": "secret123", "rank": "novato"},
+        headers={"Authorization": f"Bearer {boss}"},
+    )
     newbie = client.post(
         "/api/v1/auth/login", data={"username": "newbie", "password": "secret123"}
     ).json()["access_token"]

@@ -201,7 +201,60 @@
     .pp-dot-in { width: 20px; height: 20px; border-radius: 50%; background: var(--border-2); transition: transform .12s, background .12s, box-shadow .12s; }
     .pp-dot.on .pp-dot-in { background: var(--accent); box-shadow: 0 0 14px var(--accent); transform: scale(1.3); }
     footer.foot { color: var(--dim); font-size: 11px; letter-spacing: 1px; margin-top: 28px; text-align: center; text-transform: uppercase; }
-    @media (max-width: 760px) { #app { grid-template-columns: 1fr; } aside { flex-direction: row; flex-wrap: wrap; } }
+    /* ===== Inicio: el mapa ocupa el centro ===== */
+    .kpis-sm .kpi { padding: 10px 14px; }
+    .kpis-sm .k { font-size: 11px; letter-spacing: 0.6px; }
+    .kpis-sm .v { font-size: 22px; }
+    .inicio-map { height: calc(100vh - 380px); min-height: 380px; }
+    .inicio-map #map { height: 100%; border-radius: 12px; }
+    .legend-thin { padding: 8px 12px; font-size: 12px; }
+    /* ===== Dock flotante de eventos (estilo Hydra "Eventos recientes") ===== */
+    .event-dock {
+      position: fixed; right: 18px; bottom: 18px; width: 380px; max-width: calc(100vw - 36px);
+      background: rgba(15, 23, 42, 0.95); border: 1px solid var(--border-2);
+      border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.45); backdrop-filter: blur(8px);
+      z-index: 950; display: flex; flex-direction: column; overflow: hidden;
+      transition: max-height .25s ease, transform .2s ease;
+    }
+    .event-dock.collapsed { max-height: 44px; }
+    .event-dock:not(.collapsed) { max-height: 420px; }
+    .dock-bar {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      background: transparent; color: var(--fg); border: 0; cursor: pointer; width: 100%; text-align: left;
+      font: inherit; border-bottom: 1px solid var(--border);
+    }
+    .dock-bar:hover { background: rgba(255,255,255,0.04); }
+    .dock-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dock-pulse.warn { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+    .dock-pulse.bad { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
+    .dock-title { flex: 1; font-weight: 600; font-size: 13px; }
+    .dock-count {
+      background: var(--border-2); color: var(--fg); border-radius: 10px;
+      padding: 1px 8px; font-size: 11px; min-width: 22px; text-align: center;
+    }
+    .dock-count.bad { background: #ef4444; color: #fff; }
+    .dock-handle { color: var(--dim); transition: transform .2s; }
+    .event-dock:not(.collapsed) .dock-handle { transform: rotate(180deg); }
+    .dock-body { overflow-y: auto; flex: 1; }
+    .dock-row {
+      display: grid; grid-template-columns: 4px 1fr auto; gap: 10px;
+      padding: 8px 14px; border-bottom: 1px solid var(--border);
+      align-items: center; font-size: 12px;
+    }
+    .dock-row:last-child { border-bottom: 0; }
+    .dock-tick { width: 4px; height: 100%; border-radius: 2px; background: var(--dim); }
+    .dock-tick.ok { background: var(--ok); }
+    .dock-tick.warn { background: #f59e0b; }
+    .dock-tick.bad { background: #ef4444; }
+    .dock-msg .muted { font-size: 11px; }
+    .dock-time { color: var(--dim); font-size: 11px; font-family: var(--mono, monospace); white-space: nowrap; }
+    .dock-empty { padding: 14px; color: var(--dim); font-size: 12px; text-align: center; }
+    @media (max-width: 760px) {
+      #app { grid-template-columns: 1fr; } aside { flex-direction: row; flex-wrap: wrap; }
+      .event-dock { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
+      .inicio-map { height: 50vh; }
+    }
   </style>
 </head>
 <body>
@@ -255,7 +308,6 @@
       <nav id="nav">
         <a data-view="inicio" class="active"><span class="ico">◎</span> Inicio</a>
         <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">▦</span> Cuadros</a>
-        <a data-view="mapa" data-perm="cabinet:read"><span class="ico">◗</span> Mapa</a>
         <a data-view="topologia" data-perm="cabinet:read"><span class="ico">⌗</span> Topología</a>
         <a data-view="control" data-perm="cabinet:control"><span class="ico">⏻</span> Control</a>
         <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">⚠</span> Alarmas</a>
@@ -289,6 +341,17 @@
       <div id="content"></div>
       <footer class="foot">Kumiho Group · Phoenix Division · Tecnología · Innovación · Seguridad · Futuro</footer>
     </main>
+    <!-- Dock flotante de eventos recientes (estilo Hydra). Vive fuera del
+         flujo del contenido para mantener altura propia y poder minimizarse. -->
+    <div id="event-dock" class="event-dock collapsed" aria-live="polite">
+      <button class="dock-bar" id="dock-toggle" type="button">
+        <span class="dock-pulse" id="dock-pulse"></span>
+        <span class="dock-title">Eventos recientes</span>
+        <span class="dock-count" id="dock-count">0</span>
+        <span class="dock-handle" id="dock-handle">⌃</span>
+      </button>
+      <div class="dock-body" id="dock-body"></div>
+    </div>
   </section>
 
   <div class="toast" id="toast"></div>
@@ -372,6 +435,9 @@
   function logout() {
     state.token = null; state.me = null; localStorage.removeItem("ph_token");
     if (window._ws) { try { window._ws.close(); } catch (e) {} window._ws = null; }
+    if (window._dockTimer) { clearInterval(window._dockTimer); window._dockTimer = null; }
+    state.eventDock = []; state.dockOpen = false;
+    const dock = $("#event-dock"); if (dock) { dock._wired = false; dock.classList.add("collapsed"); }
     clearTimeout(window._idle);
     $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
   }
@@ -617,9 +683,102 @@
     await refreshLive();
     connectWS();
     startIdleWatch();
+    mountEventDock();
     if (!window._fallback) window._fallback = setInterval(() => {
       if (!window._ws || window._ws.readyState !== 1) refreshLive();
     }, 10000);
+  }
+
+  // ============================ Dock de eventos (estilo Hydra) ============================
+  // Acumula los últimos N eventos (alarmas, cambios de estado, login fallidos,
+  // bans, etc.) en una caja fija abajo a la derecha. Minimizable, con badge de
+  // conteo y "pulso" rojo cuando hay incidencias críticas activas.
+  const EVENT_DOCK_MAX = 50;
+  const EVENT_DOCK_LABELS = {
+    "auth.login": ["ok", "Inicio de sesión"],
+    "auth.login_failed": ["bad", "Login fallido"],
+    "auth.lockout": ["bad", "Cuenta bloqueada"],
+    "auth.unlock": ["ok", "Desbloqueo"],
+    "auth.unlock_failed": ["bad", "Desbloqueo fallido"],
+    "emergency.all_on": ["warn", "Modo emergencia"],
+    "security.ip_banned": ["bad", "IP baneada"],
+    "security.siege_on": ["bad", "Modo siege ON"],
+    "security.new_device": ["warn", "Nuevo dispositivo"],
+    "security.device_mismatch": ["bad", "Cuadro: serial impostor"],
+    "role.update": ["warn", "Rango editado"],
+    "user.create": ["ok", "Usuario creado"],
+  };
+  function mountEventDock() {
+    state.eventDock = state.eventDock || [];
+    state.dockOpen = state.dockOpen ?? false;
+    const dock = $("#event-dock"), toggle = $("#dock-toggle");
+    if (!dock || dock._wired) { renderEventDock(); pollDock(); return; }
+    dock._wired = true;
+    toggle.onclick = () => {
+      state.dockOpen = !state.dockOpen;
+      dock.classList.toggle("collapsed", !state.dockOpen);
+    };
+    dock.classList.toggle("collapsed", !state.dockOpen);
+    renderEventDock();
+    pollDock();
+    if (!window._dockTimer) window._dockTimer = setInterval(pollDock, 8000);
+  }
+  async function pollDock() {
+    // Cuadros con alarma activa → entrada al dock.
+    const liveAlarms = (state.cabinets || []).flatMap(cab =>
+      (cab.alarms || []).map(a => ({
+        timestamp: a.timestamp || new Date().toISOString(),
+        action: "alarm",
+        severity: (a.severity || "").toLowerCase(),
+        label: (a.type || "ALARMA") + " · " + cab.cabinet_id,
+        sub: a.message || "",
+        key: cab.cabinet_id + ":" + a.type,
+      })),
+    );
+    // Últimos eventos de seguridad si soy admin.
+    let secEvents = [];
+    if (has("audit:read")) {
+      try {
+        const r = await api("/audit/security?limit=20");
+        secEvents = r.map(e => ({
+          timestamp: e.timestamp,
+          action: e.action,
+          label: (EVENT_DOCK_LABELS[e.action] || ["", e.action])[1] + " · " + e.username,
+          sub: e.detail ? Object.entries(e.detail).slice(0, 2).map(([k, v]) => `${k}=${v}`).join(" · ") : "",
+          severity: (EVENT_DOCK_LABELS[e.action] || ["dim"])[0],
+          key: "sec:" + e.id,
+        }));
+      } catch (e) { /* sin permisos → silencio */ }
+    }
+    const merged = [...liveAlarms, ...secEvents]
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+      .slice(0, EVENT_DOCK_MAX);
+    state.eventDock = merged;
+    renderEventDock();
+  }
+  function renderEventDock() {
+    const body = $("#dock-body"), count = $("#dock-count"), pulse = $("#dock-pulse");
+    if (!body) return;
+    const list = state.eventDock || [];
+    const bad = list.filter(e => e.severity === "bad" || e.severity === "critical").length;
+    const warn = list.filter(e => e.severity === "warn" || e.severity === "warning").length;
+    count.textContent = list.length;
+    count.classList.toggle("bad", bad > 0);
+    pulse.className = "dock-pulse " + (bad > 0 ? "bad" : warn > 0 ? "warn" : "");
+    body.innerHTML = "";
+    if (!list.length) {
+      const e = el("div", "dock-empty", "Sin eventos. Red operando con normalidad.");
+      body.append(e); return;
+    }
+    list.forEach(ev => {
+      const row = el("div", "dock-row");
+      const tick = el("div", "dock-tick " + (ev.severity === "critical" ? "bad" : ev.severity || ""));
+      const msg = el("div", "dock-msg");
+      msg.innerHTML = `<div>${ev.label}</div>${ev.sub ? `<div class="muted">${ev.sub}</div>` : ""}`;
+      const time = el("div", "dock-time", new Date(ev.timestamp).toLocaleTimeString());
+      row.append(tick, msg, time);
+      body.append(row);
+    });
   }
 
   // ============================ Datos en vivo (REST + WebSocket) ============================
@@ -636,6 +795,7 @@
       state.cabinets = await api("/cabinets");   // lista completa con metadatos (nombre, lat/lon)
       if (!window._ws || window._ws.readyState !== 1) setLive("poll");
       rerenderLive();
+      if (state.eventDock) pollDock();
     } catch (e) { setLive("down"); }
   }
 
@@ -669,7 +829,7 @@
 
   // ============================ Navegación ============================
   const TITLES = {
-    inicio: ["Inicio", "Resumen de la red de alumbrado"],
+    inicio: ["Inicio", "Mapa operativo · cuadros, circuitos y luminarias"],
     cuadros: ["Cuadros", "Estado y telemetría de los cuadros"],
     mapa: ["Mapa", "Centros de mando y farolas sobre el plano"],
     topologia: ["Topología", "Centros de mando, circuitos y farolas"],
@@ -697,28 +857,69 @@
   function render() {
     const c = $("#content");
     if (state.view === "inicio") return renderInicio(c);
+    // Sidebar no longer exposes 'mapa' as its own entry — the inicio view
+    // hosts the operational map directly (Hydra-style). Direct deep links
+    // to /ui/#mapa still work and reuse the standalone renderer.
     if (state.view === "cuadros") return renderCuadros(c);
     if (state.view === "mapa") return renderMapa(c);
     if (state.view === "control") return renderControl(c);
     if (state.view === "alarmas") return renderAlarmas(c);
   }
 
+  // ============================== INICIO ==============================
+  // Hydra-style: the home view IS the operational map. KPIs sit above as a
+  // compact strip; the map fills the rest of the screen. The bottom event
+  // dock (mountEventDock) lives outside the view container and shows the
+  // last incidents without taking up real estate.
   function renderInicio(c) {
     const cabs = state.cabinets;
     const online = cabs.filter(x => x.online).length;
     const alarms = cabs.reduce((n, x) => n + x.alarms.length, 0);
     const kw = cabs.reduce((s, x) => s + (x.telemetry?.active_power_w || 0), 0) / 1000;
     c.innerHTML = "";
-    const kpis = el("div", "grid kpis");
-    kpis.append(kpi("Cuadros", cabs.length, false), kpi("Online", online + " / " + cabs.length, false),
-      kpi("Alarmas activas", alarms, alarms > 0), kpi("Potencia total", kw.toFixed(2) + " kW", false));
+
+    // Strip de KPIs compacto, sobrio. Los del modo emergencia y los conteos
+    // de cuadros van aquí para que el mapa quede como elemento principal.
+    const kpis = el("div", "grid kpis kpis-sm");
+    kpis.append(
+      kpi("Cuadros", cabs.length, false),
+      kpi("Online", online + " / " + cabs.length, online < cabs.length),
+      kpi("Alarmas activas", alarms, alarms > 0),
+      kpi("Potencia total", kw.toFixed(2) + " kW", false),
+    );
     c.append(kpis);
-    const allAlarms = cabs.flatMap(x => x.alarms.map(a => ({ ...a, cabinet_id: x.cabinet_id })));
-    const p = el("div", "panel"); p.style.marginTop = "18px";
-    p.append(el("div", "row between", "<strong>Incidencias activas</strong>"));
-    if (!allAlarms.length) p.append(el("div", "empty", "Sin alarmas. Red operando con normalidad."));
-    else p.append(alarmTable(allAlarms, false));
-    c.append(p);
+
+    if (typeof L === "undefined") {
+      c.append(el("div", "empty", "El mapa requiere conexión a internet (Leaflet)."));
+      return;
+    }
+
+    // Selector compacto del coloreado y de estilo de mapa.
+    const bar = el("div", "row between"); bar.style.margin = "12px 0 8px"; bar.style.gap = "12px"; bar.style.flexWrap = "wrap";
+    const colorSeg = segGroup(
+      [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]],
+      k => state.mapMode === k,
+      k => { state.mapMode = k; drawTopology(); });
+    bar.append(labeled("colorear por:", colorSeg));
+    c.append(bar);
+
+    const mapWrap = el("div", "map-wrap"); mapWrap.classList.add("inicio-map");
+    const div = el("div"); div.id = "map"; mapWrap.append(div, buildMapStylePicker());
+    c.append(mapWrap);
+
+    const legend = el("div", "panel legend-thin"); legend.id = "legend"; legend.style.marginTop = "10px";
+    c.append(legend);
+
+    (async () => {
+      try { window._topology = await api("/topology"); } catch (e) { c.append(el("div", "empty", e.message)); return; }
+      if (window._map) { try { window._map.remove(); } catch (e) {} }
+      window._cmMarkers = {}; window._ptMarkers = {}; window._fitDone = false; window._tileLayer = null;
+      const map = L.map("map", { attributionControl: false }).setView([40.4168, -3.7038], 13);
+      window._map = map;
+      applyTileStyle(map);
+      setTimeout(() => map.invalidateSize(), 60);
+      drawTopology();
+    })();
   }
   function kpi(k, v, accent) { const card = el("div", "card kpi"); card.append(el("div", "k", k), el("div", "v" + (accent ? " accent" : ""), v)); return card; }
 

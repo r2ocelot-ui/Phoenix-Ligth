@@ -64,4 +64,5 @@ def user_detail(user: User) -> UserDetail:
         rank_level=ranks.rank_level(user.rank),
         progression=ranks.promotion_eligibility(user),
         has_pin=bool(getattr(user, "pin_hash", None)),
+        has_pattern=bool(getattr(user, "pattern_hash", None)),
     )

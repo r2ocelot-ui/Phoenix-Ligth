@@ -26,6 +26,7 @@ class UserDetail(UserRead):
     rank_level: int
     progression: dict
     has_pin: bool = False
+    has_pattern: bool = False
 
 
 class Token(BaseModel):
@@ -49,8 +50,15 @@ class PinSet(BaseModel):
     pin: str = Field(..., pattern=r"^\d{4,8}$")
 
 
-class PinUnlock(BaseModel):
-    pin: str = Field(..., pattern=r"^\d{4,8}$")
+class PatternSet(BaseModel):
+    # Sequence of node indices on the 3×3 grid (0–8), 4–9 nodes, each once.
+    pattern: str = Field(..., pattern=r"^[0-8]{4,9}$")
+
+
+class Unlock(BaseModel):
+    """Unlock the locked session with whichever credential the user set."""
+    pin: str | None = Field(default=None, pattern=r"^\d{4,8}$")
+    pattern: str | None = Field(default=None, pattern=r"^[0-8]{4,9}$")
 
 
 class RankChange(BaseModel):

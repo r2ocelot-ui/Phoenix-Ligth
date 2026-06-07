@@ -17,7 +17,12 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Quick-unlock credentials (hashed like the password). Optional, per user.
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pattern_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Brute-force guard: consecutive failures and an auto-expiring lockout.
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     rank: Mapped[str] = mapped_column(String(32), default="novato")
     # Per-user permission overrides on top of the rank defaults.
     extra_permissions: Mapped[list] = mapped_column(JSON, default=list)

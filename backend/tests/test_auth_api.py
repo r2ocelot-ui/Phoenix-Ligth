@@ -188,6 +188,72 @@ def test_audit_log_records_actions(client):
     assert {"auth.bootstrap", "auth.login", "cabinet.dim"} <= actions
 
 
+def _login(client, username, password):
+    return client.post("/api/v1/auth/login", data={"username": username, "password": password})
+
+
+def test_account_locks_after_failed_logins(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")  # valid session captured before lockout
+
+    # 5 wrong passwords (default threshold) — each rejected with 401.
+    for _ in range(5):
+        assert _login(client, "boss", "wrong").status_code == 401
+    # Now even the *correct* password is refused: the account is locked (429).
+    locked = _login(client, "boss", "secret123")
+    assert locked.status_code == 429, locked.text
+
+    # The lockout and the failed attempts show up in the admin security feed.
+    feed = client.get("/api/v1/audit/security", headers=_auth(boss)).json()
+    actions = {e["action"] for e in feed}
+    assert "auth.login_failed" in actions
+    assert "auth.lockout" in actions
+
+
+def test_successful_login_resets_failed_counter(client):
+    _register(client, "boss")
+    # 4 failures stays under the threshold of 5...
+    for _ in range(4):
+        assert _login(client, "boss", "nope").status_code == 401
+    # ...a correct login clears the counter...
+    assert _login(client, "boss", "secret123").status_code == 200
+    # ...so 4 more failures still don't lock (would be 8 without the reset).
+    for _ in range(4):
+        assert _login(client, "boss", "nope").status_code == 401
+    assert _login(client, "boss", "secret123").status_code == 200
+
+
+def test_pin_and_pattern_unlock(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Set both quick-unlock credentials.
+    assert client.post("/api/v1/auth/pin", json={"pin": "1234"}, headers=_auth(boss)).status_code == 200
+    assert client.post("/api/v1/auth/pattern", json={"pattern": "0124"}, headers=_auth(boss)).status_code == 200
+
+    me = client.get("/api/v1/auth/me", headers=_auth(boss)).json()
+    assert me["has_pin"] and me["has_pattern"]
+
+    # Unlock works with either credential and rotates the token.
+    assert client.post("/api/v1/auth/unlock", json={"pin": "1234"}, headers=_auth(boss)).status_code == 200
+    assert client.post("/api/v1/auth/unlock", json={"pattern": "0124"}, headers=_auth(boss)).status_code == 200
+    # Wrong values are rejected.
+    assert client.post("/api/v1/auth/unlock", json={"pin": "9999"}, headers=_auth(boss)).status_code == 401
+    assert client.post("/api/v1/auth/unlock", json={"pattern": "8765"}, headers=_auth(boss)).status_code == 401
+
+
+def test_security_feed_is_admin_only(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    _create_user(client, boss, "sup", rank="supervisor")
+    sup = _token(client, "sup")
+
+    # Supervisor has audit:read but not user:manage → security feed is denied.
+    assert client.get("/api/v1/audit", headers=_auth(sup)).status_code == 200
+    assert client.get("/api/v1/audit/security", headers=_auth(sup)).status_code == 403
+    # Owner (wildcard) can read it.
+    assert client.get("/api/v1/audit/security", headers=_auth(boss)).status_code == 200
+
+
 def test_activity_points_accumulate(client):
     _register(client, "boss")
     boss = _token(client, "boss")

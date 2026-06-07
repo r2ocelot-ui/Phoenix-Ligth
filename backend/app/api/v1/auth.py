@@ -7,10 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
-from app.schemas.user import PinSet, PinUnlock
 from app.models.user import User
-from app.schemas.user import Token, UserCreate, UserDetail, UserRead
-from app.services import audit_log, ranks
+from app.schemas.user import PatternSet, PinSet, Token, Unlock, UserCreate, UserDetail, UserRead
+from app.services import audit_log, auth_guard, ranks
 from app.services.auth import get_current_user, user_detail
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -44,14 +43,27 @@ def login(
     form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)
 ) -> Token:
     user = db.query(User).filter(User.username == form.username).first()
+    if user and auth_guard.is_locked(user):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Cuenta bloqueada temporalmente. Inténtalo de nuevo en "
+            f"{auth_guard.lock_remaining_minutes(user)} min.",
+        )
     if not user or not verify_password(form.password, user.password_hash):
+        if user:
+            auth_guard.register_failure(db, user, action="auth.login_failed")
+        else:
+            # Log attempts on unknown usernames too — useful for spotting probes.
+            audit_log.record(
+                db, username=form.username or "?", action="auth.login_failed",
+                detail={"reason": "unknown_user"},
+            )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "User disabled")
 
     user.last_login_at = datetime.now(timezone.utc)
-    db.commit()
-    audit_log.record(db, username=user.username, action="auth.login")
+    auth_guard.register_success(db, user, action="auth.login")
     return Token(access_token=create_access_token(user.username), rank=user.rank)
 
 
@@ -84,17 +96,56 @@ def clear_pin(
     return {"ok": True}
 
 
+@router.post("/pattern")
+def set_pattern(
+    body: PatternSet,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """El propio usuario configura su patrón de desbloqueo (3×3, estilo móvil)."""
+    user.pattern_hash = hash_password(body.pattern)
+    db.commit()
+    audit_log.record(db, username=user.username, action="auth.pattern_set")
+    return {"ok": True}
+
+
+@router.delete("/pattern")
+def clear_pattern(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    user.pattern_hash = None
+    db.commit()
+    audit_log.record(db, username=user.username, action="auth.pattern_clear")
+    return {"ok": True}
+
+
 @router.post("/unlock", response_model=Token)
 def unlock(
-    body: PinUnlock,
+    body: Unlock,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> Token:
-    """Re-validar la sesión bloqueada con el PIN del propio usuario.
-    Devuelve un token nuevo (rotación) — la pantalla bloqueada lo guarda."""
-    if not user.pin_hash or not verify_password(body.pin, user.pin_hash):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "PIN incorrecto")
-    audit_log.record(db, username=user.username, action="auth.unlock")
+    """Re-validar la sesión bloqueada con el PIN o el patrón del propio usuario.
+    Devuelve un token nuevo (rotación) — la pantalla bloqueada lo guarda.
+    Tras demasiados fallos la cuenta se bloquea y obliga a iniciar sesión."""
+    if auth_guard.is_locked(user):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Bloqueado por intentos fallidos. Vuelve a iniciar sesión en "
+            f"{auth_guard.lock_remaining_minutes(user)} min.",
+        )
+    method = None
+    if body.pin is not None and user.pin_hash and verify_password(body.pin, user.pin_hash):
+        method = "pin"
+    elif body.pattern is not None and user.pattern_hash and verify_password(
+        body.pattern, user.pattern_hash
+    ):
+        method = "pattern"
+    if method is None:
+        auth_guard.register_failure(db, user, action="auth.unlock_failed")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Credencial incorrecta")
+    auth_guard.register_success(db, user, action="auth.unlock", detail={"method": method})
     return Token(access_token=create_access_token(user.username), rank=user.rank)
 
 

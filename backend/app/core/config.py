@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Auto-logout the web panel after this many minutes with no user activity.
     session_idle_minutes: int = 10
 
+    # Brute-force guard: lock an account after this many consecutive failed
+    # login/unlock attempts, for this many minutes (the lockout auto-clears).
+    auth_max_failed_attempts: int = 5
+    auth_lockout_minutes: int = 5
+
     # Progression: if enabled, users auto-promote one step when eligible,
     # but never above auto_promote_max_rank. Disabled by default so promotions
     # are an explicit admin action.

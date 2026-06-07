@@ -188,6 +188,18 @@
     .keypad button.cancel { color: var(--muted); }
     @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
     .countdown { font-family: var(--mono); font-size: 38px; font-weight: 800; color: var(--accent-3); text-align: center; margin: 10px 0; }
+    /* Security badge variants */
+    .badge.ok { color: #bbf7d0; border-color: #22c55e66; background: #22c55e18; }
+    .badge.warn { color: #fde68a; border-color: #f59e0b66; background: #f59e0b18; }
+    .badge.bad { color: #fecaca; border-color: #ef444466; background: #ef444418; }
+    /* Pattern pad (3×3, móvil) */
+    .pattern-pad { position: relative; width: 240px; height: 240px; margin: 8px auto 4px; touch-action: none; user-select: none; }
+    .pattern-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .pp-line { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
+    .pattern-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(3,1fr); }
+    .pp-dot { display: grid; place-items: center; }
+    .pp-dot-in { width: 20px; height: 20px; border-radius: 50%; background: var(--border-2); transition: transform .12s, background .12s, box-shadow .12s; }
+    .pp-dot.on .pp-dot-in { background: var(--accent); box-shadow: 0 0 14px var(--accent); transform: scale(1.3); }
     footer.foot { color: var(--dim); font-size: 11px; letter-spacing: 1px; margin-top: 28px; text-align: center; text-transform: uppercase; }
     @media (max-width: 760px) { #app { grid-template-columns: 1fr; } aside { flex-direction: row; flex-wrap: wrap; } }
   </style>
@@ -237,6 +249,7 @@
         <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">⚠</span> Alarmas</a>
         <a data-view="usuarios" data-perm="user:view"><span class="ico">☷</span> Usuarios</a>
         <a data-view="auditoria" data-perm="audit:read"><span class="ico">❑</span> Auditoría</a>
+        <a data-view="seguridad" data-perm="user:manage"><span class="ico">⛨</span> Seguridad</a>
       </nav>
       <div class="spacer"></div>
       <div class="userbox">
@@ -245,6 +258,7 @@
         <button class="btn sm" id="btn-emergency" style="width:100%;margin-bottom:6px;display:none">⚠ Emergencia</button>
         <button class="btn ghost sm" id="btn-lock" style="width:100%;margin-bottom:6px;display:none">🔒 Bloquear</button>
         <button class="btn ghost sm" id="btn-pin" style="width:100%;margin-bottom:6px">Mi PIN</button>
+        <button class="btn ghost sm" id="btn-pattern" style="width:100%;margin-bottom:6px">Mi patrón</button>
         <button class="btn ghost sm" id="btn-logout" style="width:100%">Cerrar sesión</button>
       </div>
     </aside>
@@ -303,9 +317,16 @@
     const body = new URLSearchParams({ username: user, password: pass });
     const r = await fetch(API + "/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
     const data = await r.json().catch(() => ({}));
+    if (r.status === 429) throw new Error(data.detail || "Cuenta bloqueada temporalmente.");
     if (!r.ok) throw new Error(data.detail || "Credenciales inválidas");
     state.token = data.access_token; localStorage.setItem("ph_token", state.token);
     await boot();
+  }
+  async function refreshMe() {
+    try {
+      state.me = await api("/auth/me");
+      $("#btn-lock").style.display = (state.me.has_pin || state.me.has_pattern) ? "" : "none";
+    } catch (e) {}
   }
   function logout() {
     state.token = null; state.me = null; localStorage.removeItem("ph_token");
@@ -357,46 +378,126 @@
     armIdle();
   }
 
-  // ====== Bloqueo manual + desbloqueo con PIN ============
+  // ====== Patrón de 9 puntos (estilo móvil) ============
+  // Widget reutilizable: rejilla 3×3 + línea SVG. Captura el trazo con
+  // pointer events (ratón y táctil) y reporta la secuencia "0..8" vía onChange.
+  function makePatternPad(onChange) {
+    const wrap = el("div", "pattern-pad");
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg"); svg.setAttribute("class", "pattern-lines"); svg.setAttribute("viewBox", "0 0 300 300");
+    const poly = document.createElementNS(NS, "polyline"); poly.setAttribute("class", "pp-line"); svg.append(poly);
+    wrap.append(svg);
+    const grid = el("div", "pattern-grid"); const dots = [];
+    for (let i = 0; i < 9; i++) { const d = el("div", "pp-dot"); d.append(el("div", "pp-dot-in")); grid.append(d); dots.push(d); }
+    wrap.append(grid);
+    let seq = [], drawing = false;
+    const centers = () => { const pr = wrap.getBoundingClientRect(); return dots.map(d => { const r = d.getBoundingClientRect(); return { x: (r.left + r.width / 2 - pr.left) / pr.width * 300, y: (r.top + r.height / 2 - pr.top) / pr.height * 300 }; }); };
+    const redraw = (px, py) => { const c = centers(); const pts = seq.map(i => `${c[i].x},${c[i].y}`); if (px != null) pts.push(`${px},${py}`); poly.setAttribute("points", pts.join(" ")); };
+    const addDot = i => { if (seq.includes(i)) return; seq.push(i); dots[i].classList.add("on"); if (navigator.vibrate) navigator.vibrate(12); redraw(); onChange && onChange(seq.join("")); };
+    const hit = (x, y) => { for (let i = 0; i < 9; i++) { const r = dots[i].getBoundingClientRect(); const cx = r.left + r.width / 2, cy = r.top + r.height / 2, rad = r.width * 0.5; if ((x - cx) ** 2 + (y - cy) ** 2 <= rad * rad) return i; } return -1; };
+    const reset = () => { seq = []; dots.forEach(d => d.classList.remove("on")); poly.setAttribute("points", ""); onChange && onChange(""); };
+    const move = e => { if (!drawing) return; const i = hit(e.clientX, e.clientY); if (i >= 0) addDot(i); const pr = wrap.getBoundingClientRect(); redraw((e.clientX - pr.left) / pr.width * 300, (e.clientY - pr.top) / pr.height * 300); e.preventDefault(); };
+    const end = () => { if (!drawing) return; drawing = false; redraw(); };
+    wrap.addEventListener("pointerdown", e => { reset(); drawing = true; move(e); });
+    wrap.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", end);
+    wrap.reset = reset;
+    return wrap;
+  }
+
+  function showSetPattern() {
+    const modal = el("div", "modal"); const card = el("div", "modal-card");
+    card.innerHTML = `<h3>Mi patrón</h3><p class="desc">Une al menos <strong>4 puntos</strong> sin levantar el dedo. Sirve para desbloquear la sesión.</p>`;
+    let current = "";
+    const err = el("div", "err"); err.style.textAlign = "center"; err.style.minHeight = "16px";
+    const pad = makePatternPad(seq => { current = seq; err.textContent = ""; });
+    card.append(pad, err);
+    const actions = el("div", "actions");
+    const save = el("button", "btn", "Guardar");
+    save.onclick = async () => {
+      if (current.length < 4) { err.textContent = "Une al menos 4 puntos."; return; }
+      try { await api("/auth/pattern", { method: "POST", body: JSON.stringify({ pattern: current }) }); toast("Patrón guardado"); modal.remove(); await refreshMe(); }
+      catch (e) { err.textContent = e.message; }
+    };
+    const rep = el("button", "btn ghost", "Repetir"); rep.onclick = () => { pad.reset(); current = ""; };
+    const del = el("button", "btn ghost", state.me?.has_pattern ? "Borrar" : "Cancelar");
+    del.onclick = async () => { if (state.me?.has_pattern) { try { await api("/auth/pattern", { method: "DELETE" }); toast("Patrón borrado"); await refreshMe(); } catch (e) { toast(e.message, true); } } modal.remove(); };
+    actions.append(save, rep, del); card.append(actions); modal.append(card); document.body.append(modal);
+  }
+
+  // ====== Bloqueo manual + desbloqueo con PIN o patrón ============
   function showLockScreen() {
     if (!state.token || !state.me) return;
     if (document.getElementById("lock-modal")) return;
+    const hasPin = !!state.me.has_pin, hasPattern = !!state.me.has_pattern;
+    if (!hasPin && !hasPattern) { toast("Define primero un PIN o un patrón.", true); return; }
     const modal = el("div", "modal"); modal.id = "lock-modal";
     const card = el("div", "modal-card");
-    card.innerHTML = `<h3>Pantalla bloqueada</h3><p class="desc">Sesión de <strong>${state.me.username}</strong>. Introduce tu PIN para desbloquear.</p><div class="pin-display" id="pin-dots"></div><div id="pin-err" class="err" style="text-align:center"></div>`;
-    const kp = el("div", "keypad");
-    let pin = "";
-    const renderDots = () => { const d = document.getElementById("pin-dots"); d.innerHTML = ""; for (let i = 0; i < Math.max(pin.length, 4); i++) { const x = el("div", "pin-dot" + (i < pin.length ? " on" : "")); d.append(x); } };
-    const tryUnlock = async () => {
+    card.innerHTML = `<h3>Pantalla bloqueada</h3><p class="desc">Sesión de <strong>${state.me.username}</strong>.</p>`;
+    const err = el("div", "err"); err.style.textAlign = "center"; err.style.minHeight = "16px"; err.id = "unlock-err";
+    const body = el("div"); card.append(body, err);
+
+    let mode = hasPin ? "pin" : "pattern";
+
+    const tryUnlock = async (payload, badMsg) => {
       try {
-        const r = await fetch(API + "/auth/unlock", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + state.token }, body: JSON.stringify({ pin }) });
+        const r = await fetch(API + "/auth/unlock", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + state.token }, body: JSON.stringify(payload) });
         const d = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(d.detail || "PIN incorrecto");
+        if (r.status === 429) { modal.remove(); logout(); toast(d.detail || "Cuenta bloqueada por intentos fallidos.", true); return; }
+        if (!r.ok) throw new Error(d.detail || badMsg);
         state.token = d.access_token; localStorage.setItem("ph_token", state.token);
-        document.getElementById("lock-modal").remove(); armIdle(); toast("Desbloqueado.");
-      } catch (e) { document.getElementById("pin-err").textContent = e.message; pin = ""; renderDots(); }
+        modal.remove(); armIdle(); toast("Desbloqueado.");
+      } catch (e) { err.textContent = e.message; renderMode(); }
     };
-    ["1","2","3","4","5","6","7","8","9","⌫","0","✓"].forEach(k => {
-      const b = el("button", null, k);
-      if (k === "⌫" || k === "✓") b.classList.add("cancel");
-      b.onclick = () => {
-        if (k === "⌫") { pin = pin.slice(0, -1); renderDots(); document.getElementById("pin-err").textContent = ""; }
-        else if (k === "✓") { if (pin.length >= 4) tryUnlock(); }
-        else if (pin.length < 8) { pin += k; renderDots(); if (pin.length >= 4) document.getElementById("pin-err").textContent = ""; }
-      };
-      kp.append(b);
-    });
-    card.append(kp);
+
+    const renderMode = () => {
+      body.innerHTML = "";
+      if (mode === "pin") {
+        let pin = "";
+        const dots = el("div", "pin-display"); dots.id = "pin-dots";
+        const renderDots = () => { dots.innerHTML = ""; for (let i = 0; i < Math.max(pin.length, 4); i++) dots.append(el("div", "pin-dot" + (i < pin.length ? " on" : ""))); };
+        body.append(dots);
+        const kp = el("div", "keypad");
+        ["1","2","3","4","5","6","7","8","9","⌫","0","✓"].forEach(k => {
+          const b = el("button", null, k);
+          if (k === "⌫" || k === "✓") b.classList.add("cancel");
+          b.onclick = () => {
+            if (k === "⌫") { pin = pin.slice(0, -1); renderDots(); err.textContent = ""; }
+            else if (k === "✓") { if (pin.length >= 4) tryUnlock({ pin }, "PIN incorrecto"); }
+            else if (pin.length < 8) { pin += k; renderDots(); }
+          };
+          kp.append(b);
+        });
+        body.append(kp); renderDots();
+        body._key = ev => {
+          if (/^\d$/.test(ev.key) && pin.length < 8) { pin += ev.key; renderDots(); err.textContent = ""; }
+          else if (ev.key === "Backspace") { pin = pin.slice(0, -1); renderDots(); }
+          else if (ev.key === "Enter" && pin.length >= 4) tryUnlock({ pin }, "PIN incorrecto");
+        };
+      } else {
+        let current = "";
+        const pad = makePatternPad(seq => {
+          current = seq;
+          if (seq.length >= 4) { setTimeout(() => tryUnlock({ pattern: current }, "Patrón incorrecto"), 150); }
+        });
+        body.append(pad);
+        body._key = null;
+      }
+    };
+
     const actions = el("div", "actions");
+    if (hasPin && hasPattern) {
+      const sw = el("button", "btn ghost", "Usar patrón");
+      sw.onclick = () => { mode = mode === "pin" ? "pattern" : "pin"; sw.textContent = mode === "pin" ? "Usar patrón" : "Usar PIN"; err.textContent = ""; renderMode(); };
+      actions.append(sw);
+    }
     const out = el("button", "btn ghost", "Cerrar sesión"); out.onclick = () => { modal.remove(); logout(); };
     actions.append(out); card.append(actions);
     modal.append(card); document.body.append(modal);
-    renderDots();
+    renderMode();
     document.addEventListener("keydown", function onKey(ev) {
       if (!document.getElementById("lock-modal")) { document.removeEventListener("keydown", onKey); return; }
-      if (/^\d$/.test(ev.key) && pin.length < 8) { pin += ev.key; renderDots(); document.getElementById("pin-err").textContent = ""; }
-      else if (ev.key === "Backspace") { pin = pin.slice(0, -1); renderDots(); }
-      else if (ev.key === "Enter" && pin.length >= 4) tryUnlock();
+      if (body._key) body._key(ev);
     });
   }
 
@@ -413,7 +514,7 @@
     $("#ub-user").textContent = state.me.username;
     $("#ub-rank").textContent = state.me.rank;
     $("#btn-emergency").style.display = has("cabinet:control") ? "" : "none";
-    $("#btn-lock").style.display = state.me.has_pin ? "" : "none";
+    $("#btn-lock").style.display = (state.me.has_pin || state.me.has_pattern) ? "" : "none";
     document.querySelectorAll("#nav a").forEach(a => {
       const perm = a.dataset.perm; a.style.display = (!perm || has(perm)) ? "" : "none";
     });
@@ -482,6 +583,7 @@
     alarmas: ["Alarmas", "Incidencias activas en la red"],
     usuarios: ["Usuarios", "Cuentas, rangos y permisos"],
     auditoria: ["Auditoría", "Historial de acciones"],
+    seguridad: ["Seguridad", "Inicios de sesión, bloqueos y desbloqueos"],
   };
   function go(view) {
     state.view = view;
@@ -492,6 +594,7 @@
     if (view === "topologia") loadTopologia();
     if (view === "usuarios") loadUsers();
     if (view === "auditoria") loadAudit();
+    if (view === "seguridad") loadSecurity();
   }
 
   // ============================ Render por sección ============================
@@ -839,6 +942,56 @@
     } catch (e) { c.append(el("div", "empty", e.message)); }
   }
 
+  // ============================ Seguridad (solo admins) ============================
+  // Vista solo para 'user:manage'. Cuenta los logins fallidos / bloqueos del
+  // último día y lista el feed de eventos auth.* y emergency.* con badges
+  // codificados por color para distinguir lo bueno de lo sospechoso.
+  const SEC_BADGE = {
+    "auth.login": "ok", "auth.unlock": "ok", "auth.pin_set": "ok", "auth.pattern_set": "ok",
+    "auth.pin_clear": "warn", "auth.pattern_clear": "warn", "auth.bootstrap": "ok",
+    "auth.login_failed": "bad", "auth.unlock_failed": "bad", "auth.lockout": "bad",
+    "emergency.all_on": "warn",
+  };
+  const SEC_LABEL = {
+    "auth.login": "Inicio de sesión", "auth.login_failed": "Login fallido",
+    "auth.unlock": "Desbloqueo", "auth.unlock_failed": "Desbloqueo fallido",
+    "auth.lockout": "Cuenta bloqueada", "auth.bootstrap": "Cuenta raíz creada",
+    "auth.pin_set": "PIN definido", "auth.pin_clear": "PIN borrado",
+    "auth.pattern_set": "Patrón definido", "auth.pattern_clear": "Patrón borrado",
+    "emergency.all_on": "Modo emergencia",
+  };
+  async function loadSecurity() {
+    const c = $("#content"); c.innerHTML = "";
+    try {
+      const entries = await api("/audit/security?limit=200");
+      const dayAgo = Date.now() - 24 * 3600 * 1000;
+      const recent = entries.filter(e => new Date(e.timestamp).getTime() >= dayAgo);
+      const fails = recent.filter(e => e.action === "auth.login_failed").length;
+      const locks = recent.filter(e => e.action === "auth.lockout").length;
+      const oks = recent.filter(e => e.action === "auth.login").length;
+      const kpis = el("div", "grid kpis");
+      kpis.append(kpi("Logins OK (24 h)", oks, false), kpi("Logins fallidos (24 h)", fails, fails > 0), kpi("Bloqueos (24 h)", locks, locks > 0), kpi("Eventos totales", entries.length, false));
+      c.append(kpis);
+      const p = el("div", "panel"); p.style.marginTop = "18px";
+      p.append(el("div", "row between", "<strong>Historial de seguridad</strong> <span class='muted' style='font-size:12px'>solo administradores · append-only</span>"));
+      const t = el("table");
+      t.innerHTML = `<thead><tr><th>Hora</th><th>Usuario</th><th>Evento</th><th>Detalle</th></tr></thead>`;
+      const tb = el("tbody");
+      entries.forEach(e => {
+        const tr = el("tr");
+        const when = new Date(e.timestamp).toLocaleString();
+        const cls = SEC_BADGE[e.action] || "";
+        const label = SEC_LABEL[e.action] || e.action;
+        const det = e.detail ? Object.entries(e.detail).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ") : "";
+        tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge ${cls}">${label}</span></td><td class="muted" style="font-size:12px">${det}</td>`;
+        tb.append(tr);
+      });
+      t.append(tb); p.append(t);
+      if (!entries.length) p.append(el("div", "empty", "Sin eventos de seguridad."));
+      c.append(p);
+    } catch (e) { c.append(el("div", "empty", e.message)); }
+  }
+
   // ============================ Info / demo ============================
   async function loadInfo() {
     try {
@@ -870,9 +1023,10 @@
     try {
       if (np === "") { await api("/auth/pin", { method: "DELETE" }); toast("PIN borrado"); }
       else { await api("/auth/pin", { method: "POST", body: JSON.stringify({ pin: np }) }); toast("PIN actualizado"); }
-      state.me = await api("/auth/me"); $("#btn-lock").style.display = state.me.has_pin ? "" : "none";
+      await refreshMe();
     } catch (e) { toast(e.message, true); }
   };
+  $("#btn-pattern").onclick = showSetPattern;
   document.querySelectorAll("#nav a").forEach(a => a.onclick = () => go(a.dataset.view));
   $("#li-pass").addEventListener("keydown", e => { if (e.key === "Enter") $("#btn-login").click(); });
 

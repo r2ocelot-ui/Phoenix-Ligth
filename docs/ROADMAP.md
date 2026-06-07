@@ -81,10 +81,30 @@ sí filtrar.
 ## 🟣 Prioridad baja / futuro
 
 ### 8. Hardware real
-Cuando llegue el primer despliegue físico:
-- ESP32-S3 en cuadros con firmware que publique MQTT.
-- Raspberry Pi 5 + Hailo-8 como gateway por defecto (DECISIONS §6).
-- Drivers `pymodbus` para hablar con contadores.
+Cuando llegue el primer despliegue físico (ver DECISIONS §6.3 para el
+diseño eléctrico completo del CM Phoenix CM-P1):
+
+**Fase 1 · Cuadro abierto con PLC + telemetría por circuito:**
+- PLC **Phoenix Contact PLCnext AXC F 2152** + módulos Axioline DI/DO.
+- Fuente 24 V DC + relés intermedios 24 V DC para aislar PLC ↔ bobinas
+  230 V AC de los contactores. **Nunca cablear PLC → bobina directo.**
+- Analizador de red trifásico Modbus (Socomec DIRIS A-40 / Carlo
+  Gavazzi EM340) + 3 TIs.
+- Router 4G industrial Teltonika RUT241 + switch DIN.
+- Lógica orden + confirmación + consumo (la matriz de DECISIONS §6.3
+  detecta: contactor no cerró, contactor pegado, línea caída).
+- Firmware del PLC publica vía **MQTT** los topics que el bus de
+  Phoenix-Light ya consume (`phoenix/cabinets/<code>/telemetry`,
+  `/status`, `/cmd/...`).
+
+**Fase 2 · Edge en el gateway:**
+- Raspberry Pi 5 + Hailo-8 HAT en el centro de mando.
+- Phoenix-Light corre ahí, recibe MQTT de todos los CMs.
+
+**Fase 3 · Detección luminaria-a-luminaria (futuro):**
+- DALI si es instalación nueva.
+- LoRa/NB-IoT si es retrofit.
+- PLC por línea (narrowband sobre cableado eléctrico) si no hay otra.
 
 ### 9. ML — Predicción de consumo
 - Servicio aislado (mismo Python) que entrena un modelo sobre el

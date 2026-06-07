@@ -273,3 +273,99 @@ junto con la analítica de IA.
 - Detección de averías por autoencoder (TFLite).
 - Dimming inteligente por afluencia (rule-based + opcional ML).
 - Computer vision con cámara para iluminación adaptativa (YOLO en Hailo).
+
+### 6.3 Arquitectura del Centro de Mando (CM) — diseño eléctrico
+Decidido tras revisar Citilux V3/NXT 4G de Arelsa y los esquemas Phoenix
+CM (vista interior + diagramas de potencia/control + unifilar). Phoenix
+no será un Citilux clonado: arquitectura **abierta** con PLC + E/S +
+Modbus + telemetría propia.
+
+**Disposición física del cuadro (4 zonas, separación obligatoria):**
+
+```
+ZONA 1 · POTENCIA 230/400 V AC ──── entrada de red, seccionador 4P,
+                                    magnetotérmico general 4P,
+                                    diferencial 4P 300 mA,
+                                    magnetotérmicos por circuito (QF1-4),
+                                    contactores (KM1-4), borneros N + PE
+ZONA 2 · MEDIDA ──────────────────── analizador de red Modbus (Socomec
+                                    DIRIS A-40 / Siemens PAC3220), TIs
+                                    (transformadores de intensidad)
+ZONA 3 · CONTROL 24 V DC ─────────── fuente DIN 24 V DC, PLC Phoenix
+                                    Contact PLCnext AXC F 2152, módulos
+                                    Axioline DI/DO, relés intermedios
+                                    (con diodo flyback)
+ZONA 4 · COMUNICACIONES ──────────── router 4G industrial (Teltonika
+                                    RUT241/RUT956), switch industrial
+                                    DIN (Phoenix/Moxa)
+```
+
+**Cadena de control de un contactor (la decisión clave):**
+- PLC = 24 V DC, contactor = bobina 230 V AC → **no se conecta directo nunca**.
+- Entre medias un **relé intermedio 24 V DC** (KA1-KA4):
+  ```
+  DO Axioline (+24V) → bobina KA (24 V DC, con diodo flyback)
+                     → contacto KA conmuta 230 V AC
+                     → fusible F (2 A gG típico)
+                     → bobina KM (230 V AC, A1/A2)
+                     → contactos de potencia KM cierran L1/L2/L3
+                     → circuito de alumbrado
+  ```
+- **Razón:** aislamiento galvánico PLC ↔ potencia, mantenimiento barato
+  (un relé KA se cambia en 30 s, un módulo Axioline cuesta cientos €),
+  protección anti-ruido de los buses Modbus/Ethernet.
+
+**Confirmación (closed-loop, lo que diferencia un buen CM):**
+- Cada KM lleva **contacto auxiliar 13-14 (NO)** → entrada digital del PLC.
+- El PLC ejecuta la lógica orden + confirmación + consumo:
+  | Orden DO | Aux KM | Consumo (analizador) | Diagnóstico |
+  |---|---|---|---|
+  | ON | Cerrado | > 0 | Correcto |
+  | ON | Abierto | 0 | Contactor no cerró |
+  | ON | Cerrado | 0 | Línea/luminarias averiadas |
+  | OFF | Cerrado | > 0 | Contactor pegado (crítico) |
+  | OFF | Abierto | 0 | Correcto |
+- Esta es la base para las alarmas `LAMP_OUT`, `LINE_FAILURE`,
+  `CONTACTOR_STUCK`, `CIRCUIT_LOAD_DROP` que el motor del software ya
+  reconoce. Lo único que falta es publicarlas desde el firmware del PLC
+  vía MQTT (futuro).
+
+**Entradas digitales mínimas que cablear al PLC:**
+| Señal | Origen | Alarma resultante |
+|---|---|---|
+| Puerta abierta | Final de carrera / reed switch | `DOOR_OPEN` |
+| Diferencial disparado | Contacto auxiliar del diferencial | `LINE_FAILURE` (subtipo) |
+| Magnetotérmico general | Aux del 4P general | `LINE_FAILURE` |
+| Magnetotérmico circuito 1-4 | Aux de cada QF | Por circuito |
+| Confirmación KM1-4 cerrado | 13-14 del contactor | (lógica feedback) |
+| Modo manual/auto | Selector frontal | `MANUAL_OVERRIDE` (futuro) |
+| Fallo de fase L1/L2/L3 | Relé de fases / analizador | `LINE_FAILURE` |
+| Tamper / intrusión | Sensor adicional | `INTRUSION` |
+
+**Hardware mínimo para una primera maqueta funcional (Phoenix CM-P1):**
+- 1× PLC Phoenix Contact PLCnext AXC F 2152
+- 1× fuente 24 V DC DIN (5 A, p.ej. Phoenix Quint Power)
+- 1× módulo Axioline 16 DI (o 2 × 8 DI)
+- 1× módulo Axioline 8 DO
+- 4× contactores 4 polos, bobina 230 V AC, con auxiliar 1NO
+- 4× relés intermedios 24 V DC con base DIN (+ diodo flyback)
+- 1× analizador de red trifásico Modbus RS-485 (DIRIS A-40 o EM340)
+- 3× TIs según corriente máxima esperada
+- 1× router 4G industrial Teltonika RUT241/RUT956
+- 1× switch DIN 5 puertos
+- 1× sensor de puerta (reed magnético o final de carrera)
+- 1× protector sobretensiones (SPD tipo 2)
+- Protecciones: 1 seccionador 4P, 1 magneto 4P general, 1 diferencial 4P
+  300 mA, 4 magnetos 2P por circuito, fusibles para bobinas de KMs
+
+**Por qué Phoenix Contact PLCnext y no WAGO PFC200:**
+- Coherencia de nombre con el proyecto Phoenix.
+- Linux abierto, IEC 61131-3, soporta MQTT y Modbus TCP/RTU.
+- Módulos Axioline son robustos y modulares.
+- WAGO es perfectamente válido como alternativa de coste si hace falta.
+
+**Lo que NO entra en la Fase 1 (queda para fases 2/3):**
+- Detección luminaria-a-luminaria → necesita DALI, nodos LoRa/NB-IoT o
+  PLC por línea (PLC narrowband sobre el propio cableado). En Fase 1
+  solo detectamos anomalías a nivel de circuito (consumo esperado vs
+  real).

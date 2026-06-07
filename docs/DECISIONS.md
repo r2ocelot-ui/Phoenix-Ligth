@@ -369,3 +369,71 @@ ZONA 4 · COMUNICACIONES ──────────── router 4G industri
   PLC por línea (PLC narrowband sobre el propio cableado). En Fase 1
   solo detectamos anomalías a nivel de circuito (consumo esperado vs
   real).
+
+### 6.4 Por qué NO usamos Citilux (Arelsa V3 / NXT 4G)
+Lo evaluamos durante el diseño y queda como referencia cerrada de la
+que nos diferenciamos a propósito:
+
+- **Equipo propietario**, sin pantalla local. Toda la gestión va por su
+  software CITIGIS (también propietario) → licencias y dependencia.
+- Alimentación 12 V DC (bornes 36 +, 35 −) o 230 V AC para medida.
+- Acceso solo por Ethernet con configuración por instalador Arelsa.
+- Funcionalidades aceptables (mando, analizador, alarmas, datalogger)
+  pero el ecosistema es cerrado: no puedes meter tu propio software
+  central sin pagar integración o licenciar CITIGIS.
+- **Razón para Phoenix:** queremos exactamente lo que ofrece Citilux,
+  pero con stack abierto (Phoenix Contact PLCnext + Python/FastAPI).
+  Mismo control, sin licencias, sin proveedor único, sin firmware
+  cerrado, con la posibilidad de añadir IA y módulos propios sin pagar
+  a nadie.
+
+Citilux nos sirve como **catálogo de funciones a igualar o superar**:
+mando, medición, alarmas físicas, comunicaciones 4G, eventos.
+
+### 6.5 Plan por fases del despliegue hardware
+Refinamos las fases para distinguir mejor el "control por cuadro" del
+"control por luminaria" (cada uno necesita hardware muy distinto):
+
+| Fase | Alcance hardware | Alcance software | Estado |
+|---|---|---|---|
+| **F1** | PLC + Axioline DI/DO + contactores con auxiliar + analizador Modbus + router 4G | Control por cuadro: encender/apagar circuitos, alarmas físicas (puerta, fases, magnetos, diferencial), telemetría a la plataforma | El software ya está; falta el firmware del PLC publicando MQTT |
+| **F2** | Mismo F1 + histórico de consumos | Detección de **consumo anómalo por circuito** (esperado vs real), alarmas automáticas, calendario y planificación de mantenimiento | El motor ya tiene los hooks; falta `expected_power_w` y las 3 alarmas (LOAD_DROP, OVERLOAD, CONTACTOR_STUCK) |
+| **F3** | Nodos por luminaria: DALI (instalación nueva), LoRa/NB-IoT (retrofit inalámbrico) o PLC narrowband sobre cableado | Detección **luminaria-a-luminaria**: "farola 17 averiada", dimming individual, mapa de drivers | Diseño pendiente |
+| **F4** | Sin hardware extra | IA predictiva: detectar luminarias **degradadas antes** del fallo total, predicción de consumo, optimización tarifaria | Diseño pendiente |
+
+### 6.6 Lógica de detección "consumo esperado vs real" (Fase 2)
+La pieza estrella del software de alumbrado público. Se basa en
+comparar la medida del analizador contra la potencia nominal del
+circuito y el estado ordenado por el PLC:
+
+| Estado ordenado | Aux contactor | Consumo medido | Diagnóstico |
+|---|---|---|---|
+| ON (relay=on, dim>0) | Cerrado | ≈ esperado (±20 %) | ✅ Correcto |
+| ON | Cerrado | < 50 % del esperado | ⚠ `CIRCUIT_LOAD_DROP` — luminarias fundidas |
+| ON | Cerrado | > 130 % del esperado | 🔴 `CIRCUIT_OVERLOAD` — fuga, derivación, cortocircuito |
+| ON | Cerrado | 0 | 🔴 `LAMP_OUT` (ya implementado) |
+| ON | **Abierto** | 0 | 🔴 `CONTACTOR_FAIL_TO_CLOSE` — contactor no cerró |
+| OFF (relay=off) | **Cerrado** | > 0 | 🔴 `CONTACTOR_STUCK` — contactor pegado, no abre |
+| OFF | Abierto | 0 | ✅ Correcto |
+
+**Cómo se obtiene el valor esperado:**
+- A nivel circuito: suma de `power_w` de sus luminarias × factor de
+  dimming actual.
+- Permite tolerancias por circuito (algunos LED tienen drift térmico
+  +/- 5 %).
+- En despliegues mixtos (vapor sodio + LED), el cálculo es por
+  luminaria.
+
+**Por qué el `expected_power_w` es campo del Circuit y no del Cabinet:**
+- Un cuadro puede tener 4 circuitos con 10, 14, 8 y 12 luminarias.
+- Cada circuito tiene su nominal propio.
+- El diagnóstico es por circuito porque ahí está el contactor y el
+  magnetotérmico (la unidad de detección).
+
+### 6.7 Aviso legal — instalación de baja tensión
+Trabajos eléctricos a 230/400 V requieren empresa o personal con
+**habilitación de instalador de baja tensión**, regulada en España
+por la ITC-BT-03 del REBT. El software Phoenix-Light no sustituye
+esta habilitación: ofrece la capa de telegestión/diagnóstico, pero el
+cuadro físico debe ser instalado y certificado por un profesional
+autorizado.

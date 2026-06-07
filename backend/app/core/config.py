@@ -36,6 +36,27 @@ class Settings(BaseSettings):
     auth_max_failed_attempts: int = 5
     auth_lockout_minutes: int = 5
 
+    # Network-level guard (fail2ban-style). An IP is auto-banned after this many
+    # failed logins inside the window, for this many minutes.
+    ip_ban_failed_threshold: int = 10
+    ip_ban_window_minutes: int = 10
+    ip_ban_duration_minutes: int = 30
+
+    # Siege / lockdown mode — when on, only whitelisted IPs may connect.
+    # Toggled from the panel by an Owner. Default off in env; runtime state
+    # lives in the IpBan table via a sentinel row, see services/ip_guard.
+    siege_mode_default: bool = False
+
+    # Device-id cookie used by the "known devices" tracker. The cookie value is
+    # opaque (a UUID); identity is validated against the user_devices table.
+    device_cookie_name: str = "phoenix_device"
+    device_cookie_max_age_days: int = 365
+
+    # Hardware binding: when ON, telemetry without device_serial (or with a
+    # wrong one) is rejected. Off by default so the demo loop still works;
+    # turn on once every cabinet has a registered controller.
+    require_device_serial: bool = False
+
     # Progression: if enabled, users auto-promote one step when eligible,
     # but never above auto_promote_max_rank. Disabled by default so promotions
     # are an explicit admin action.

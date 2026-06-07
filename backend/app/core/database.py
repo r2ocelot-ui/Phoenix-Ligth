@@ -34,7 +34,9 @@ def get_db() -> Iterator[Session]:
 
 def init_db() -> None:
     # Import models so their tables register on Base.metadata before create_all.
-    from app.models import audit, cabinet, circuit, lightpoint, project, user  # noqa: F401
+    from app.models import (  # noqa: F401
+        audit, cabinet, circuit, device, lightpoint, project, security, user,
+    )
 
     Base.metadata.create_all(engine)
     _autopatch_columns()

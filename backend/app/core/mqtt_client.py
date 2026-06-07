@@ -129,6 +129,16 @@ class MQTTBus:
     # ----- Core ingest (shared by MQTT and demo) ----------------------------
     async def ingest(self, measurement: Measurement) -> None:
         cid = measurement.cabinet_id
+        # SICE-style hardware binding: when a cabinet has a registered device,
+        # only that serial may publish for it. Mismatch -> drop + audit log.
+        from app.services.device_registry import allow_telemetry
+        ok, reason = allow_telemetry(
+            cid, measurement.device_serial, strict=settings.require_device_serial,
+        )
+        if not ok:
+            log.warning("Rejected telemetry for %s (%s)", cid, reason)
+            return
+
         self._known_cabinets.add(cid)
         self.last_telemetry[cid] = measurement.model_dump(mode="json")
         if measurement.ambient_lux is not None:

@@ -17,7 +17,7 @@ def client():
     )
     TestSession = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
-    from app.models import audit, user  # noqa: F401 - register tables
+    from app.models import audit, device, project, security, user  # noqa: F401
 
     Base.metadata.create_all(engine)
 
@@ -338,6 +338,67 @@ def test_security_feed_is_admin_only(client):
     assert client.get("/api/v1/audit/security", headers=_auth(sup)).status_code == 403
     # Owner (wildcard) can read it.
     assert client.get("/api/v1/audit/security", headers=_auth(boss)).status_code == 200
+
+
+def test_ip_ban_blocks_subsequent_requests(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Ban the client's IP for an hour.
+    r = client.post("/api/v1/security/bans",
+                    json={"ip": "testclient", "reason": "pruebas", "minutes": 60},
+                    headers=_auth(boss))
+    assert r.status_code == 201, r.text
+    # Any further request from this IP is 403, including login.
+    blocked = client.post("/api/v1/auth/login",
+                         data={"username": "boss", "password": "secret123"})
+    assert blocked.status_code == 403
+    assert "bloqueado" in blocked.json()["detail"].lower()
+
+
+def test_device_cookie_set_on_login(client):
+    _register(client, "boss")
+    r = _login(client, "boss", "secret123")
+    assert r.status_code == 200
+    # The login response should carry the phoenix_device cookie.
+    assert any("phoenix_device=" in h for h in r.headers.get_list("set-cookie") if r.headers)
+
+
+def test_device_revoke_endpoint(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # The login above already registered a device. List & revoke it.
+    devices = client.get("/api/v1/security/devices", headers=_auth(boss)).json()
+    assert len(devices) >= 1
+    target = devices[0]["device_id"]
+    assert client.delete(f"/api/v1/security/devices/{target}",
+                         headers=_auth(boss)).status_code == 200
+    after = client.get("/api/v1/security/devices", headers=_auth(boss)).json()
+    assert all(d["device_id"] != target for d in after)
+
+
+def test_device_registry_binds_cabinet_and_serial(client):
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.cabinet import Cabinet
+
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Seed two cabinets so the device endpoint can bind to them.
+    db = next(_app.dependency_overrides[get_db]())
+    db.add(Cabinet(code="CAB-001", name="Test 1"))
+    db.add(Cabinet(code="CAB-002", name="Test 2"))
+    db.commit()
+
+    r = client.post("/api/v1/devices",
+                    json={"cabinet_code": "CAB-001", "serial": "ESP32-AABB", "imei": "353111000000001"},
+                    headers=_auth(boss))
+    assert r.status_code == 201, r.text
+    assert r.json()["serial"] == "ESP32-AABB"
+    # Same serial twice → 409.
+    again = client.post("/api/v1/devices",
+                        json={"cabinet_code": "CAB-002", "serial": "ESP32-AABB"},
+                        headers=_auth(boss))
+    assert again.status_code == 409
 
 
 def test_activity_points_accumulate(client):

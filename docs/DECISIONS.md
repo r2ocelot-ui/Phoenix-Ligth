@@ -46,7 +46,41 @@ decisión se anota con su fecha aproximada y el **porqué**, no sólo el
   / lockouts) y feed con badges de color (verde / rojo / ámbar).
 - El Supervisor sigue viendo `/audit` general; sólo Admin/Owner ve esto.
 
-### 1.6 Pendiente: 2FA TOTP estilo Google Authenticator
+### 1.6 Defensa activa (anti-sabotaje) — 2026-06
+Cuatro piezas que comparten infraestructura:
+
+- **Rate-limit por IP + auto-ban** (`services/ip_guard.py`):
+  tras `PHOENIX_IP_BAN_FAILED_THRESHOLD` (default **10**) fallos de login en
+  `PHOENIX_IP_BAN_WINDOW_MINUTES` (default **10**) min, la IP queda baneada
+  `PHOENIX_IP_BAN_DURATION_MINUTES` (default **30**) min. Persiste en BD.
+- **Banlist gestionable** desde el panel de Seguridad: ver, banear a mano
+  (con motivo y duración), quitar. Auditado.
+- **Dispositivos del usuario** (`services/device_guard.py`): cookie
+  `phoenix_device` opaca firmada por el servidor, lista de dispositivos
+  conocidos. Login desde uno nuevo → evento `security.new_device` en el
+  feed. El usuario ve sus dispositivos y puede revocar.
+- **Modo Siege** (sólo Owner): cuando está ON, solo IPs whitelisted pueden
+  entrar — todo lo demás recibe 403. Útil ante sabotaje en curso. El Owner
+  añade/quita IPs whitelisted desde la pestaña de Seguridad.
+
+El IP guard se aplica como dependencia a nivel router HTTP (no global ni
+middleware) para que respete los overrides de `get_db` en los tests y
+para que las rutas WebSocket — que no tienen `Request` — sigan funcionando.
+
+### 1.7 Vinculación con hardware (estilo SICE PADRO) — 2026-06
+Modelo `Device` (`cabinet_code`, `serial`, `imei`, `model`, `firmware`).
+Endpoints `/api/v1/devices` para registrar/listar/desactivar. Cada cuadro
+físico puede tener un controlador vinculado (uno activo a la vez).
+
+El bus MQTT consulta `device_registry.allow_telemetry()` antes de aceptar
+una medida: si el cuadro tiene un device vinculado y el `device_serial`
+del payload no coincide → la medida se descarta y el intento queda como
+`security.device_mismatch` en el feed. Telemetría sin `device_serial` se
+acepta sólo si `PHOENIX_REQUIRE_DEVICE_SERIAL=false` (default), para no
+romper la demo. Activarlo en producción una vez todos los cuadros estén
+registrados.
+
+### 1.8 Pendiente: 2FA TOTP estilo Google Authenticator
 - Decidido en sesión 2026-06: lo añadiremos como **cuarta credencial**
   encima de contraseña + PIN + patrón, no en sustitución.
 - Probablemente como tercer paso opcional, activable por usuario.

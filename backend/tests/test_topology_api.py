@@ -13,7 +13,7 @@ def client():
         "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool
     )
     TestSession = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    from app.models import audit, cabinet, circuit, lightpoint, user  # noqa: F401
+    from app.models import audit, cabinet, circuit, device, lightpoint, security, user  # noqa: F401
 
     Base.metadata.create_all(engine)
 

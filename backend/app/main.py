@@ -7,15 +7,18 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
-from app.api.v1 import alarms, audit, auth, cabinets, control, realtime, topology, users
+from app.api.v1 import alarms, audit, auth, cabinets, control, devices, realtime, security, topology, users
 from app.core.config import settings
-from app.core.database import SessionLocal, init_db
+from app.core.database import SessionLocal, get_db, init_db
 from app.core.mqtt_client import bus
+from app.services import ip_guard
 from app.services.seed import seed_demo_admin, seed_demo_cabinets
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -33,7 +36,32 @@ async def lifespan(_: FastAPI):
     await bus.stop()
 
 
+# Health and the static UI are exempt so a banned admin can still reach the
+# panel when the ban lapses.
+_IP_GUARD_EXEMPT_PREFIXES = ("/health", "/ui/")
+
+
+async def ip_guard_dependency(
+    request: Request, db: Session = Depends(get_db),
+) -> None:
+    """Per-HTTP-router gate: blocks any request from an IP on the banlist (or
+    any IP that isn't whitelisted while siege mode is on). Applied at router
+    level (not global) so WebSocket routes — which don't get a Request — keep
+    working. WS endpoints check the IP guard manually if they need to."""
+    if request.url.path.startswith(_IP_GUARD_EXEMPT_PREFIXES):
+        return
+    ip = ip_guard.client_ip(request)
+    try:
+        blocked, reason = ip_guard.check_blocked(db, ip)
+    except OperationalError:
+        # First boot before init_db() finished — fail open.
+        return
+    if blocked:
+        raise HTTPException(status_code=403, detail=f"Acceso bloqueado: {reason}")
+
+
 app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
+_HTTP_GUARD = [Depends(ip_guard_dependency)]
 
 # Open CORS by default so integrator dashboards (ETRA/SICE Smart City portals)
 # can call the API from a browser. Tighten via PHOENIX_CORS_ORIGINS in prod.
@@ -44,14 +72,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix=settings.api_v1_prefix)
-app.include_router(users.router, prefix=settings.api_v1_prefix)
-app.include_router(audit.router, prefix=settings.api_v1_prefix)
-app.include_router(cabinets.router, prefix=settings.api_v1_prefix)
-app.include_router(topology.router, prefix=settings.api_v1_prefix)
-app.include_router(alarms.router, prefix=settings.api_v1_prefix)
-app.include_router(control.router, prefix=settings.api_v1_prefix)
-app.include_router(control.emergency_router, prefix=settings.api_v1_prefix)
+
+app.include_router(auth.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(users.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(audit.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(security.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(cabinets.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(topology.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(devices.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(alarms.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(control.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(control.emergency_router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+# realtime carries WebSocket endpoints — they don't get a Request, so the
+# guard is skipped for them. WS connections still go through auth.
 app.include_router(realtime.router, prefix=settings.api_v1_prefix)
 
 

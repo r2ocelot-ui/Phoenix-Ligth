@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Form, HTTPException, status
+from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -26,7 +26,7 @@ from app.schemas.user import (
     UserDetail,
     UserRead,
 )
-from app.services import audit_log, auth_guard, ranks
+from app.services import audit_log, auth_guard, device_guard, ip_guard, ranks
 from app.services.auth import get_current_user, user_detail
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -60,9 +60,12 @@ _STEP1_TTL_SECONDS = 90
 
 @router.post("/login", response_model=LoginStep1Result)
 def login(
+    request: Request,
+    response: Response,
     username: str = Form(...),
     password: str = Form(...),
     pin: str | None = Form(default=None),
+    phoenix_device: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ) -> LoginStep1Result:
     """Step 1 of the login flow: username + password + PIN (Hydra-style).
@@ -73,6 +76,8 @@ def login(
     pattern yet, the full access token is returned here so they can sign in,
     configure their pattern from inside, and rotate next time.
     """
+    ip = ip_guard.client_ip(request)
+    ua = request.headers.get("user-agent")
     user = db.query(User).filter(User.username == username).first()
     if user and auth_guard.is_locked(user):
         raise HTTPException(
@@ -87,8 +92,9 @@ def login(
         else:
             audit_log.record(
                 db, username=username or "?", action="auth.login_failed",
-                detail={"reason": "unknown_user"},
+                detail={"reason": "unknown_user", "ip": ip},
             )
+        ip_guard.register_failure(db, ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario o contraseña inválidos")
     if not user.is_active:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Usuario desactivado")
@@ -99,24 +105,39 @@ def login(
         if not pin or not verify_password(pin, user.pin_hash):
             auth_guard.register_failure(db, user, action="auth.login_failed",
                                         target="pin")
+            ip_guard.register_failure(db, ip)
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "PIN incorrecto")
 
     user.last_login_at = datetime.now(timezone.utc)
+    ip_guard.register_success(ip)
 
-    # No pattern set yet → finish the login here so the user can get in and
-    # configure the pattern from the panel.
-    if not user.pattern_hash:
-        auth_guard.register_success(db, user, action="auth.login",
-                                    detail={"step": 1, "pattern_required": False})
+    def _finish_login() -> LoginStep1Result:
+        """Issue the JWT, record the device fingerprint and set the cookie."""
+        device_id, is_new = device_guard.touch_device(
+            db, user_id=user.id, username=user.username,
+            device_id=phoenix_device, user_agent=ua, ip=ip,
+        )
+        response.set_cookie(
+            settings.device_cookie_name, device_id,
+            max_age=settings.device_cookie_max_age_days * 86400,
+            httponly=True, samesite="lax",
+        )
+        detail = {"step": 1, "pattern_required": False, "ip": ip}
+        if is_new:
+            detail["new_device"] = True
+        auth_guard.register_success(db, user, action="auth.login", detail=detail)
         return LoginStep1Result(
             step=1, rank=user.rank,
             access_token=create_access_token(user.username),
         )
 
-    # Pattern required → hand out the step-1 challenge. Do NOT clear the
-    # failure counter yet; only a finished login clears it.
+    # No pattern set yet → finish the login here.
+    if not user.pattern_hash:
+        return _finish_login()
+
+    # Pattern required → hand out the step-1 challenge.
     audit_log.record(db, username=user.username, action="auth.login_step1",
-                     detail={"pattern_required": True})
+                     detail={"pattern_required": True, "ip": ip})
     db.commit()
     return LoginStep1Result(
         step=1, rank=user.rank,
@@ -128,9 +149,15 @@ def login(
 
 @router.post("/login/pattern", response_model=Token)
 def login_step2(
-    body: LoginStep2, db: Session = Depends(get_db)
+    body: LoginStep2,
+    request: Request,
+    response: Response,
+    phoenix_device: str | None = Cookie(default=None),
+    db: Session = Depends(get_db),
 ) -> Token:
     """Step 2: trade the step-1 challenge + the unlock pattern for a JWT."""
+    ip = ip_guard.client_ip(request)
+    ua = request.headers.get("user-agent")
     try:
         payload = decode_access_token(body.challenge_token)
     except TokenError:
@@ -149,9 +176,22 @@ def login_step2(
     if not user.pattern_hash or not verify_password(body.pattern, user.pattern_hash):
         auth_guard.register_failure(db, user, action="auth.login_failed",
                                     target="pattern")
+        ip_guard.register_failure(db, ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Patrón incorrecto")
-    auth_guard.register_success(db, user, action="auth.login",
-                                detail={"step": 2})
+    ip_guard.register_success(ip)
+    device_id, is_new = device_guard.touch_device(
+        db, user_id=user.id, username=user.username,
+        device_id=phoenix_device, user_agent=ua, ip=ip,
+    )
+    response.set_cookie(
+        settings.device_cookie_name, device_id,
+        max_age=settings.device_cookie_max_age_days * 86400,
+        httponly=True, samesite="lax",
+    )
+    detail = {"step": 2, "ip": ip}
+    if is_new:
+        detail["new_device"] = True
+    auth_guard.register_success(db, user, action="auth.login", detail=detail)
     return Token(access_token=create_access_token(user.username), rank=user.rank)
 
 

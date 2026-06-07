@@ -16,3 +16,8 @@ class Measurement(BaseModel):
     ambient_lux: float | None = Field(
         None, ge=0, description="Optional ambient light reading; feeds the dimming scheduler."
     )
+    device_serial: str | None = Field(
+        None, max_length=64,
+        description="Serial of the field device emitting this telemetry. "
+        "When the cabinet is bound (see /devices) the bus enforces it.",
+    )

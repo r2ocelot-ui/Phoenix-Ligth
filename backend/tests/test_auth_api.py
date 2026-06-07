@@ -17,7 +17,7 @@ def client():
     )
     TestSession = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
-    from app.models import audit, device, project, security, user  # noqa: F401
+    from app.models import audit, device, project, role, security, user  # noqa: F401
 
     Base.metadata.create_all(engine)
 
@@ -399,6 +399,108 @@ def test_device_registry_binds_cabinet_and_serial(client):
                         json={"cabinet_code": "CAB-002", "serial": "ESP32-AABB"},
                         headers=_auth(boss))
     assert again.status_code == 409
+
+
+def test_role_editor_lists_seven_default_ranks(client):
+    from app.services import role_store
+    from app.core.database import get_db
+    db = next(app.dependency_overrides[get_db]())
+    role_store.seed_default_roles(db)
+
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    roles = client.get("/api/v1/roles", headers=_auth(boss)).json()
+    ids = [r["id"] for r in roles]
+    assert "owner" in ids and "visualizador" in ids and len(roles) == 7
+    # Owner is flagged protected.
+    own = next(r for r in roles if r["id"] == "owner")
+    assert own["is_owner"] is True
+
+
+def test_role_update_changes_effective_permissions(client):
+    from app.services import role_store
+    from app.core.database import get_db
+    db = next(app.dependency_overrides[get_db]())
+    role_store.seed_default_roles(db)
+
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Create a técnico — by default cabinet:manage is NOT granted.
+    _create_user(client, boss, "newbie", rank="tecnico")
+    me = client.get("/api/v1/auth/me",
+                    headers=_auth(_token(client, "newbie"))).json()
+    assert "cabinet:manage" not in me["permissions"]
+
+    # Owner grants cabinet:manage to the técnico role at the catalogue level.
+    upd = client.patch("/api/v1/roles/tecnico",
+                       json={"permissions": ["cabinet:read", "cabinet:control",
+                                             "alarm:ack", "cabinet:manage"]},
+                       headers=_auth(boss))
+    assert upd.status_code == 200
+    # The técnico we created earlier now has cabinet:manage without changing rank.
+    me2 = client.get("/api/v1/auth/me",
+                     headers=_auth(_token(client, "newbie"))).json()
+    assert "cabinet:manage" in me2["permissions"]
+
+
+def test_role_editor_protects_owner(client):
+    from app.services import role_store
+    from app.core.database import get_db
+    db = next(app.dependency_overrides[get_db]())
+    role_store.seed_default_roles(db)
+
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    r = client.patch("/api/v1/roles/owner",
+                     json={"label": "Sneaky"}, headers=_auth(boss))
+    assert r.status_code == 403
+
+
+def test_role_editor_rejects_privilege_escalation(client):
+    from app.services import role_store
+    from app.core.database import get_db
+    db = next(app.dependency_overrides[get_db]())
+    role_store.seed_default_roles(db)
+
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Make alice an admin_proyecto, then bump her to a level low enough to
+    # legally edit "tecnico" but not "ingeniero".
+    client.post("/api/v1/users",
+                json={"username": "alice", "password": "secret123", "rank": "admin_proyecto"},
+                headers=_auth(boss))
+    # Strip role:manage actually no — admin_proyecto has it by default.
+    alice = _token(client, "alice")
+    # alice cannot edit roles ≥ her level (admin_proyecto / owner).
+    r = client.patch("/api/v1/roles/admin_proyecto",
+                     json={"label": "Self-edit"}, headers=_auth(alice))
+    assert r.status_code == 403
+
+
+def test_role_editor_creates_and_uses_custom_role(client):
+    from app.services import role_store
+    from app.core.database import get_db
+    db = next(app.dependency_overrides[get_db]())
+    role_store.seed_default_roles(db)
+
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    cr = client.post("/api/v1/roles",
+                     json={"id": "auditor", "label": "Auditor externo",
+                           "description": "Sólo lectura con auditoría",
+                           "level": 1, "permissions": ["cabinet:read", "audit:read"]},
+                     headers=_auth(boss))
+    assert cr.status_code == 201
+    # Now create a user with that brand-new rank.
+    cu = client.post("/api/v1/users",
+                     json={"username": "ext", "password": "secret123", "rank": "auditor"},
+                     headers=_auth(boss))
+    assert cu.status_code == 201
+    ext = _token(client, "ext")
+    me = client.get("/api/v1/auth/me", headers=_auth(ext)).json()
+    assert me["rank"] == "auditor"
+    assert "audit:read" in me["permissions"]
+    assert "cabinet:control" not in me["permissions"]
 
 
 def test_activity_points_accumulate(client):

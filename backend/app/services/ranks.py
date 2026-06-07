@@ -3,6 +3,11 @@
 Each rank carries a default permission set. A user's *effective* permissions are
 (rank defaults ∪ per-user extra) − per-user denied; owners hold the wildcard.
 
+The ``RANKS`` dict is a live, mutable view of what's in the ``roles`` table —
+``reload_ranks(db)`` rebuilds it after edits, and a startup hook hydrates it
+once the database is up. Code outside the editor consumes ``RANKS`` exactly
+as before, so the rest of the app didn't have to change.
+
 Progression is mostly informational: it reports whether a user meets the
 points/tenure bar for the next rank. Actual promotion is an admin action unless
 auto-promote is enabled (and even then only up to a configured ceiling), so
@@ -19,28 +24,45 @@ P_CABINET_MANAGE = "cabinet:manage"
 P_AUDIT_READ = "audit:read"
 P_USER_VIEW = "user:view"
 P_USER_MANAGE = "user:manage"
+P_ROLE_MANAGE = "role:manage"
 WILDCARD = "*"
 
-ALL_PERMISSIONS = [
-    P_CABINET_READ,
-    P_CABINET_CONTROL,
-    P_ALARM_ACK,
-    P_CABINET_MANAGE,
-    P_AUDIT_READ,
-    P_USER_VIEW,
-    P_USER_MANAGE,
+# Catalogue surfaced to the panel — each permission carries a short label so
+# the role editor's checklist reads in Spanish, not in API jargon.
+PERMISSION_CATALOG: list[dict] = [
+    {"id": P_CABINET_READ, "label": "Ver cuadros",
+     "description": "Listar cuadros, ver mapa, telemetría y alarmas."},
+    {"id": P_CABINET_CONTROL, "label": "Operar cuadros",
+     "description": "Encender, apagar y regular (dimming) los cuadros."},
+    {"id": P_ALARM_ACK, "label": "Reconocer alarmas",
+     "description": "Marcar alarmas como reconocidas / cerradas."},
+    {"id": P_CABINET_MANAGE, "label": "Gestionar cuadros",
+     "description": "Crear, editar y borrar cuadros, circuitos y puntos de luz."},
+    {"id": P_AUDIT_READ, "label": "Ver auditoría",
+     "description": "Acceso al registro de auditoría general."},
+    {"id": P_USER_VIEW, "label": "Ver usuarios",
+     "description": "Listar usuarios y ver sus detalles."},
+    {"id": P_USER_MANAGE, "label": "Gestionar usuarios",
+     "description": "Crear, desactivar, cambiar rango/contraseña y permisos de usuario."},
+    {"id": P_ROLE_MANAGE, "label": "Gestionar rangos",
+     "description": "Editar los permisos por defecto de cada rango y crear rangos custom."},
 ]
 
-# --- Rank ladder (ordered low -> high) --------------------------------------
+ALL_PERMISSIONS = [p["id"] for p in PERMISSION_CATALOG]
+
+# --- Built-in rank ladder (low -> high) -------------------------------------
 # 7-tier ladder inspired by Hydra's role separation: a clear divide between
 # "operates the software" (owner / project admin) and "operates a city's
 # lights" (engineer / supervisor / technician / operator / viewer).
-RANK_ORDER = [
+# These are *defaults* — used to seed the ``roles`` table the first time
+# Phoenix boots; after that, every read goes through the live ``RANKS`` dict
+# (which the editor in /api/v1/roles keeps fresh).
+BUILTIN_RANK_ORDER = [
     "visualizador", "operador", "tecnico", "supervisor",
     "ingeniero", "admin_proyecto", "owner",
 ]
 
-RANKS: dict[str, dict] = {
+DEFAULT_RANKS: dict[str, dict] = {
     "visualizador": {
         "level": 0, "label": "Visualizador",
         "description": "Solo lectura. Ve cuadros, alarmas y mapa, pero no opera.",
@@ -77,7 +99,7 @@ RANKS: dict[str, dict] = {
         "description": "Administra una ciudad/instalación: usuarios, roles y configuración del proyecto.",
         "permissions": {
             P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,
-            P_AUDIT_READ, P_USER_VIEW, P_USER_MANAGE,
+            P_AUDIT_READ, P_USER_VIEW, P_USER_MANAGE, P_ROLE_MANAGE,
         },
     },
     "owner": {
@@ -86,6 +108,41 @@ RANKS: dict[str, dict] = {
         "permissions": {WILDCARD},
     },
 }
+
+# Live view of the catalogue — populated from BD by reload_ranks() and used
+# as a fallback (defaults) the very first time the cache is empty.
+RANKS: dict[str, dict] = {rid: dict(r, permissions=set(r["permissions"]))
+                          for rid, r in DEFAULT_RANKS.items()}
+RANK_ORDER: list[str] = list(BUILTIN_RANK_ORDER)
+
+
+def reload_ranks(db) -> None:
+    """Refresh ``RANKS`` / ``RANK_ORDER`` from the ``roles`` table.
+
+    Called once at startup and after any role edit. Falls back to the built-in
+    defaults if the table is empty (typical during very-first-boot before the
+    seeder has run, or in tests that don't bother seeding).
+    """
+    from app.models.role import Role
+    rows = db.query(Role).order_by(Role.level).all()
+    if not rows:
+        return
+    new_ranks: dict[str, dict] = {}
+    for r in rows:
+        perms = set(r.permissions or [])
+        if r.is_owner:
+            perms.add(WILDCARD)
+        new_ranks[r.id] = {
+            "level": r.level,
+            "label": r.label,
+            "description": r.description or "",
+            "permissions": perms,
+        }
+    RANKS.clear()
+    RANKS.update(new_ranks)
+    RANK_ORDER.clear()
+    RANK_ORDER.extend(sorted(RANKS.keys(), key=lambda rid: RANKS[rid]["level"]))
+
 
 # Aliases for renamed ranks, so older databases keep working after upgrade.
 # Read-only mapping consumed by the migration step in init_db().
@@ -114,7 +171,9 @@ def canonicalize(rank: str) -> str:
 
 def rank_level(rank: str) -> int:
     rank = canonicalize(rank)
-    return RANKS.get(rank, RANKS[DEFAULT_RANK])["level"]
+    if rank in RANKS:
+        return RANKS[rank]["level"]
+    return RANKS.get(DEFAULT_RANK, {"level": 0})["level"]
 
 
 def next_rank(rank: str) -> str | None:
@@ -128,7 +187,9 @@ def next_rank(rank: str) -> str | None:
 
 def rank_permissions(rank: str) -> set[str]:
     rank = canonicalize(rank)
-    return set(RANKS.get(rank, RANKS[DEFAULT_RANK])["permissions"])
+    if rank in RANKS:
+        return set(RANKS[rank]["permissions"])
+    return set(RANKS.get(DEFAULT_RANK, {"permissions": set()})["permissions"])
 
 
 def effective_permissions(user) -> set[str]:

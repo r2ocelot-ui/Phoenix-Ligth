@@ -120,6 +120,29 @@ Notas:
   que se aplican sobre el set base.
 - Quien gestiona estos overrides es quien tenga `user:manage`.
 
+### 2.4 Editor de rangos (catálogo en BD) — 2026-06
+- Los 7 rangos por defecto se siembran en la tabla `roles` la primera vez
+  que la base de datos está vacía. A partir de ahí son **editables**:
+  un Owner o un admin de proyecto puede marcar/desmarcar los permisos de
+  cada rango desde la pestaña **Rangos** del panel.
+- También permite **crear rangos personalizados** (slug, label, descripción,
+  nivel, set de permisos) — útiles para auditores externos, ingenieros
+  júnior, etc.
+- Reglas:
+  - Owner es de solo lectura (siempre tiene wildcard).
+  - Nadie puede editar un rango con nivel ≥ al suyo (no autoescalado).
+  - Nadie puede otorgar a un rango un permiso que el editor no tenga.
+  - No se borran rangos por defecto. Los custom solo si nadie los tiene
+    asignado.
+- Implementación: módulo `services/role_store.py` (CRUD + audit), router
+  `api/v1/roles.py`, schemas en `schemas/role.py`. `ranks.RANKS` deja de
+  ser una constante: pasa a ser un cache que `reload_ranks(db)` rehidrata
+  desde la tabla tras cada edición. El resto del código consume `RANKS`
+  exactamente como antes — la API interna no cambió.
+- Nuevo permiso: `role:manage`, asignado por defecto a `admin_proyecto` y
+  cubierto por el wildcard de `owner`. Sin él la pestaña Rangos sale como
+  solo lectura (la podemos ver, no editar).
+
 ---
 
 ## 3. Multi-tenant

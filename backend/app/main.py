@@ -14,11 +14,11 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.api.v1 import alarms, audit, auth, cabinets, control, devices, realtime, security, topology, users
+from app.api.v1 import alarms, audit, auth, cabinets, control, devices, realtime, roles, security, topology, users
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db, init_db
 from app.core.mqtt_client import bus
-from app.services import ip_guard
+from app.services import ip_guard, role_store
 from app.services.seed import seed_demo_admin, seed_demo_cabinets
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -27,8 +27,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    if settings.demo_mode:
-        with SessionLocal() as db:
+    with SessionLocal() as db:
+        # Seed the editable role catalogue on first boot, then hydrate the
+        # in-memory RANKS view from the table. Runs in every mode (not just
+        # demo) so the editor has something to show out of the box.
+        role_store.seed_default_roles(db)
+        if settings.demo_mode:
             seed_demo_admin(db, settings.demo_admin_username, settings.demo_admin_password)
             seed_demo_cabinets(db)
     await bus.start()
@@ -75,6 +79,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(users.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(roles.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(audit.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(security.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(cabinets.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)

@@ -260,6 +260,7 @@
         <a data-view="control" data-perm="cabinet:control"><span class="ico">⏻</span> Control</a>
         <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">⚠</span> Alarmas</a>
         <a data-view="usuarios" data-perm="user:view"><span class="ico">☷</span> Usuarios</a>
+        <a data-view="rangos" data-perm="user:view"><span class="ico">⛬</span> Rangos</a>
         <a data-view="auditoria" data-perm="audit:read"><span class="ico">❑</span> Auditoría</a>
         <a data-view="seguridad" data-perm="user:manage"><span class="ico">⛨</span> Seguridad</a>
       </nav>
@@ -675,6 +676,7 @@
     control: ["Control", "Encendido, apagado y regulación (dimming)"],
     alarmas: ["Alarmas", "Incidencias activas en la red"],
     usuarios: ["Usuarios", "Cuentas, rangos y permisos"],
+    rangos: ["Rangos", "Define qué puede hacer cada rango"],
     auditoria: ["Auditoría", "Historial de acciones"],
     seguridad: ["Seguridad", "Inicios de sesión, bloqueos y desbloqueos"],
   };
@@ -686,6 +688,7 @@
     render();
     if (view === "topologia") loadTopologia();
     if (view === "usuarios") loadUsers();
+    if (view === "rangos") loadRoles();
     if (view === "auditoria") loadAudit();
     if (view === "seguridad") loadSecurity();
   }
@@ -1043,6 +1046,119 @@
   }
 
   // ============================ Auditoría ============================
+  // ============================ Rangos / permisos ============================
+  // Editor en vivo: cada card lista los permisos como checkboxes y se guarda
+  // entero al pulsar "Guardar cambios". El backend audita y rechaza permisos
+  // que el usuario actual no tiene él mismo (anti-escalado).
+  async function loadRoles() {
+    const c = $("#content"); c.innerHTML = "";
+    try {
+      const [perms, roles] = await Promise.all([
+        api("/roles/permissions"),
+        api("/roles"),
+      ]);
+      const canEdit = has("role:manage");
+
+      const intro = el("div", "panel");
+      intro.innerHTML = `<strong>Editor de rangos</strong> <span class="muted" style="font-size:12px">· marca o desmarca permisos por rango y guarda. El owner es de solo lectura; un admin solo puede editar rangos por debajo del suyo.</span>`;
+      c.append(intro);
+
+      // Crear rango custom (solo si puede gestionar).
+      if (canEdit) {
+        const cr = el("div", "panel"); cr.style.marginTop = "16px";
+        cr.append(el("div", null, "<strong>Crear rango personalizado</strong> <span class='muted' style='font-size:12px'>· útil para roles que no encajan en los 7 por defecto (p. ej. auditor externo)</span>"));
+        const row = el("div", "row"); row.style.marginTop = "10px"; row.style.gap = "8px"; row.style.flexWrap = "wrap";
+        const idIn = el("input"); idIn.placeholder = "id (minúsculas, sin espacios)"; idIn.style.width = "220px";
+        const lbIn = el("input"); lbIn.placeholder = "Nombre visible"; lbIn.style.width = "180px";
+        const lvIn = el("input"); lvIn.type = "number"; lvIn.placeholder = "Nivel"; lvIn.style.width = "80px"; lvIn.min = 0; lvIn.max = 99;
+        const desc = el("input"); desc.placeholder = "Descripción"; desc.style.flex = "1";
+        const btn = el("button", "btn sm", "Crear rango");
+        btn.onclick = async () => {
+          if (!idIn.value.trim() || !lbIn.value.trim() || !lvIn.value) { toast("Falta id, nombre o nivel.", true); return; }
+          try {
+            await api("/roles", { method: "POST", body: JSON.stringify({
+              id: idIn.value.trim(), label: lbIn.value.trim(),
+              description: desc.value, level: parseInt(lvIn.value, 10),
+              permissions: [],
+            })});
+            toast("Rango creado: " + idIn.value.trim());
+            idIn.value = lbIn.value = lvIn.value = desc.value = "";
+            loadRoles();
+          } catch (e) { toast(e.message, true); }
+        };
+        row.append(idIn, lbIn, lvIn, desc, btn);
+        cr.append(row); c.append(cr);
+      }
+
+      // Cards de rangos: de mayor a menor nivel (owner arriba).
+      const wrap = el("div"); wrap.style.marginTop = "16px"; wrap.style.display = "grid"; wrap.style.gridTemplateColumns = "1fr 1fr"; wrap.style.gap = "14px";
+      roles.slice().sort((a, b) => b.level - a.level).forEach(role => {
+        const card = el("div", "panel");
+        const myLevel = state.me ? (roles.find(r => r.id === (state.me.rank))?.level ?? 0) : 0;
+        const locked = role.is_owner || !canEdit || role.level >= myLevel;
+
+        const head = el("div", "row between");
+        const title = el("div");
+        const badges = [];
+        if (role.is_owner) badges.push(`<span class="badge bad">protegido</span>`);
+        else if (role.is_builtin) badges.push(`<span class="badge ok">por defecto</span>`);
+        else badges.push(`<span class="badge warn">custom</span>`);
+        if (locked && !role.is_owner) badges.push(`<span class="badge">solo lectura</span>`);
+        title.innerHTML = `<div style="font-weight:600;font-size:15px">${role.label} <span class="muted mono" style="font-size:11px">· id ${role.id} · nivel ${role.level}</span></div><div class="muted" style="font-size:12px">${role.description || ""}</div><div style="margin-top:4px">${badges.join(" ")}</div>`;
+        head.append(title);
+        card.append(head);
+
+        // Checklist
+        const list = el("div"); list.style.marginTop = "10px"; list.style.display = "grid"; list.style.gap = "6px";
+        const checkboxes = {};
+        if (role.is_owner) {
+          list.append(el("div", "muted", "El rango owner tiene todos los permisos (wildcard *) y no se puede editar."));
+        } else {
+          perms.forEach(p => {
+            const row = el("label"); row.style.display = "flex"; row.style.gap = "8px"; row.style.alignItems = "flex-start"; row.style.padding = "4px"; row.style.borderRadius = "6px"; row.style.cursor = locked ? "default" : "pointer";
+            const cb = el("input"); cb.type = "checkbox"; cb.checked = role.permissions.includes(p.id); cb.disabled = locked; cb.style.marginTop = "3px";
+            checkboxes[p.id] = cb;
+            const txt = el("div");
+            txt.innerHTML = `<div style="font-size:13px"><span class="mono">${p.id}</span> · ${p.label}</div><div class="muted" style="font-size:11px">${p.description}</div>`;
+            row.append(cb, txt); list.append(row);
+          });
+        }
+        card.append(list);
+
+        // Botones
+        if (!role.is_owner && !locked) {
+          const actions = el("div", "row"); actions.style.marginTop = "10px"; actions.style.gap = "8px";
+          const save = el("button", "btn sm", "Guardar cambios");
+          save.onclick = async () => {
+            const newPerms = Object.entries(checkboxes).filter(([, cb]) => cb.checked).map(([id]) => id);
+            try { await api(`/roles/${role.id}`, { method: "PATCH", body: JSON.stringify({ permissions: newPerms }) }); toast("Rango actualizado: " + role.label); loadRoles(); }
+            catch (e) { toast(e.message, true); }
+          };
+          const rename = el("button", "btn ghost sm", "Renombrar / descripción");
+          rename.onclick = async () => {
+            const nl = prompt("Nombre visible:", role.label); if (nl === null) return;
+            const nd = prompt("Descripción:", role.description || ""); if (nd === null) return;
+            try { await api(`/roles/${role.id}`, { method: "PATCH", body: JSON.stringify({ label: nl, description: nd }) }); toast("Actualizado"); loadRoles(); }
+            catch (e) { toast(e.message, true); }
+          };
+          actions.append(save, rename);
+          if (!role.is_builtin) {
+            const del = el("button", "btn ghost sm", "Borrar rango");
+            del.onclick = async () => {
+              if (!confirm(`¿Borrar el rango "${role.label}"? Solo se permite si nadie lo tiene asignado.`)) return;
+              try { await api(`/roles/${role.id}`, { method: "DELETE" }); toast("Rango borrado"); loadRoles(); }
+              catch (e) { toast(e.message, true); }
+            };
+            actions.append(del);
+          }
+          card.append(actions);
+        }
+        wrap.append(card);
+      });
+      c.append(wrap);
+    } catch (e) { c.append(el("div", "empty", e.message)); }
+  }
+
   async function loadAudit() {
     const c = $("#content"); c.innerHTML = "";
     try {

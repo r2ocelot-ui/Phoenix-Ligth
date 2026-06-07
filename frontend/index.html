@@ -136,6 +136,27 @@
     .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); border: 1px solid var(--border-2); }
     .leaflet-popup-content { font-size: 13px; }
     .leaflet-bar a { background: var(--panel); color: var(--text); border-color: var(--border-2); }
+
+    /* ===== Selector de estilo de mapa (botón flotante desplegable, estilo Hydra) ===== */
+    .map-wrap { position: relative; }
+    .map-fab { position: absolute; top: 12px; right: 12px; z-index: 500;
+      background: var(--panel); color: var(--text); border: 1px solid var(--border-2);
+      border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,.45); display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .map-fab:hover { border-color: var(--accent-line); }
+    .map-fab .caret { transition: transform .2s; }
+    .map-fab.open .caret { transform: rotate(180deg); }
+    .map-panel { position: absolute; top: 56px; right: 12px; z-index: 500;
+      background: var(--panel); border: 1px solid var(--border-2); border-radius: 12px;
+      padding: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.55); min-width: 200px;
+      display: flex; flex-direction: column; gap: 4px;
+      transform-origin: top right; transform: scale(.95); opacity: 0; pointer-events: none; transition: .18s; }
+    .map-panel.open { transform: none; opacity: 1; pointer-events: auto; }
+    .map-opt { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 8px;
+      cursor: pointer; font-size: 13px; color: var(--text); }
+    .map-opt:hover { background: #ffffff08; }
+    .map-opt.active { background: var(--accent-soft); border: 1px solid var(--accent-line); }
+    .map-opt .sw { width: 22px; height: 22px; border-radius: 5px; border: 1px solid #ffffff22; flex: none; }
     .leaflet-tooltip.cm-label, .leaflet-tooltip.pt-label { background: transparent; border: none; box-shadow: none; padding: 0; font-family: var(--mono); text-shadow: 0 1px 3px #000, 0 0 2px #000; }
     .leaflet-tooltip.cm-label { color: #fff; font-weight: 800; font-size: 11px; }
     .leaflet-tooltip.pt-label { color: #e2e8f0; font-weight: 600; font-size: 10px; }
@@ -417,9 +438,10 @@
 
   // ============================ Mapa ============================
   const TILE_STYLES = {
-    oscuro:   { label: "Oscuro",   url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", opts: { maxZoom: 19, subdomains: "abcd" } },
-    claro:    { label: "Claro",    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", opts: { maxZoom: 19, subdomains: "abcd" } },
-    satelite: { label: "Satélite", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", opts: { maxZoom: 19 } },
+    oscuro:   { label: "Oscuro",   swatch: "#0b1120", url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", opts: { maxZoom: 19, subdomains: "abcd" } },
+    claro:    { label: "Claro",    swatch: "#f1f5f9", url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", opts: { maxZoom: 19, subdomains: "abcd" } },
+    calle:    { label: "Calle",    swatch: "#e8d8a0", url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", opts: { maxZoom: 19, subdomains: "abc" } },
+    satelite: { label: "Satélite", swatch: "#2f4a2a", url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", opts: { maxZoom: 19 } },
   };
   function applyTileStyle(map) {
     if (!map) return;
@@ -441,6 +463,32 @@
     const wrap = el("div", "row"); const lab = el("span", "muted", text); lab.style.fontSize = "12px";
     wrap.append(lab, node); return wrap;
   }
+  function buildMapStylePicker() {
+    const wrap = el("div");
+    const cur = TILE_STYLES[state.tileStyle] || TILE_STYLES.oscuro;
+    const fab = el("button", "map-fab");
+    fab.innerHTML = `<span class="sw" style="display:inline-block;width:14px;height:14px;border-radius:4px;border:1px solid #ffffff22;background:${cur.swatch}"></span><span id="fab-label">${cur.label}</span><span class="caret">▾</span>`;
+    const panel = el("div", "map-panel");
+    Object.entries(TILE_STYLES).forEach(([k, v]) => {
+      const opt = el("div", "map-opt" + (state.tileStyle === k ? " active" : ""));
+      opt.innerHTML = `<span class="sw" style="background:${v.swatch}"></span><span>${v.label}</span>`;
+      opt.onclick = () => {
+        state.tileStyle = k; localStorage.setItem("ph_tile", k);
+        applyTileStyle(window._map);
+        panel.querySelectorAll(".map-opt").forEach(o => o.classList.remove("active")); opt.classList.add("active");
+        document.getElementById("fab-label").textContent = v.label;
+        fab.querySelector(".sw").style.background = v.swatch;
+        panel.classList.remove("open"); fab.classList.remove("open");
+      };
+      panel.append(opt);
+    });
+    fab.onclick = (e) => { e.stopPropagation(); panel.classList.toggle("open"); fab.classList.toggle("open"); };
+    document.addEventListener("click", (e) => {
+      if (!panel.contains(e.target) && e.target !== fab) { panel.classList.remove("open"); fab.classList.remove("open"); }
+    }, { once: false });
+    wrap.append(fab, panel);
+    return wrap;
+  }
   async function renderMapa(c) {
     c.innerHTML = "";
     if (typeof L === "undefined") { c.append(el("div", "empty", "El mapa requiere conexión a internet (Leaflet / tiles).")); return; }
@@ -449,13 +497,11 @@
       [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]],
       k => state.mapMode === k,
       k => { state.mapMode = k; drawTopology(); });
-    const styleSeg = segGroup(
-      Object.entries(TILE_STYLES).map(([k, v]) => [k, v.label]),
-      k => state.tileStyle === k,
-      k => { state.tileStyle = k; localStorage.setItem("ph_tile", k); applyTileStyle(window._map); });
-    bar.append(labeled("colorear por:", colorSeg), labeled("mapa:", styleSeg));
+    bar.append(labeled("colorear por:", colorSeg));
     c.append(bar);
-    const div = el("div"); div.id = "map"; c.append(div);
+    const mapWrap = el("div", "map-wrap");
+    const div = el("div"); div.id = "map"; mapWrap.append(div, buildMapStylePicker());
+    c.append(mapWrap);
     const legend = el("div", "panel"); legend.id = "legend"; legend.style.marginTop = "12px"; c.append(legend);
     try { window._topology = await api("/topology"); } catch (e) { c.append(el("div", "empty", e.message)); return; }
     if (window._map) window._map.remove();

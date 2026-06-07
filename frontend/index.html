@@ -1466,22 +1466,46 @@
     catch (e) { toast(e.message, true); }
   }
 
-  // ============================ Topología ============================
+  // ============================ Topología (con editor) ============================
   async function loadTopologia() {
     const c = $("#content"); c.innerHTML = "";
     try {
       const tp = await api("/topology");
-      // Filtro + búsqueda. Crucial cuando lleguen los 100+ cuadros de un
-      // municipio real (caso "Benidorm") — sin esto la pestaña sería ilegible.
-      const bar = el("div", "row"); bar.style.marginBottom = "12px"; bar.style.gap = "10px"; bar.style.flexWrap = "wrap";
-      const search = el("input"); search.placeholder = "Buscar por código, nombre o zona…"; search.style.flex = "1"; search.style.minWidth = "240px";
-      const counter = el("span", "muted"); counter.style.fontSize = "12px";
-      bar.append(search, counter);
+      window._topoCache = tp;  // usado por los formularios del editor
+      const canEdit = has("cabinet:manage");
+      const isOwner = isOwnerUser();
+
+      // Barra: búsqueda + acciones de alta (solo cabinet:manage).
+      const bar = el("div", "row between"); bar.style.marginBottom = "12px"; bar.style.gap = "10px"; bar.style.flexWrap = "wrap";
+      const leftBar = el("div", "row"); leftBar.style.gap = "10px"; leftBar.style.flex = "1"; leftBar.style.flexWrap = "wrap";
+      const search = el("input"); search.placeholder = "Buscar por código, nombre o zona…"; search.style.flex = "1"; search.style.minWidth = "220px";
+      const counter = el("span", "muted"); counter.style.fontSize = "12px"; counter.style.alignSelf = "center";
+      leftBar.append(search, counter);
+      bar.append(leftBar);
+      if (canEdit) {
+        const tools = el("div", "row"); tools.style.gap = "8px";
+        const addBtn = el("button", "btn sm", "➕ Nuevo CM");
+        addBtn.onclick = () => openCabinetForm(null);
+        tools.append(addBtn);
+        if (isOwner && tp.cabinets.length) {
+          const wipe = el("button", "btn ghost sm", "💣 Vaciar topología");
+          wipe.style.color = "#ef4444";
+          wipe.onclick = () => wipeTopology(tp.cabinets.length);
+          tools.append(wipe);
+        }
+        bar.append(tools);
+      }
       c.append(bar);
+
       const grid = el("div", "topo-grid"); c.append(grid);
 
       if (!tp.cabinets.length) {
-        c.append(el("div", "empty", "Sin topología todavía. Da de alta cuadros, circuitos y farolas."));
+        const empty = el("div", "empty");
+        empty.innerHTML = canEdit
+          ? "Sin topología todavía. Pulsa <strong>➕ Nuevo CM</strong> para dar de alta tu primer centro de mando."
+          : "Sin topología todavía.";
+        grid.append(empty);
+        counter.textContent = "0 cuadros";
         return;
       }
 
@@ -1495,7 +1519,7 @@
         });
         counter.textContent = `${items.length} de ${tp.cabinets.length} cuadros`;
         grid.innerHTML = "";
-        items.forEach(cab => grid.append(buildTopoCard(cab, tp)));
+        items.forEach(cab => grid.append(buildTopoCard(cab, tp, canEdit)));
         if (!items.length) grid.append(el("div", "empty", "Ningún cuadro coincide con la búsqueda."));
       };
       search.oninput = draw;
@@ -1503,7 +1527,7 @@
     } catch (e) { c.append(el("div", "empty", e.message)); }
   }
 
-  function buildTopoCard(cab, tp) {
+  function buildTopoCard(cab, tp, canEdit) {
     const card = el("div", "topo-card");
     const cpts = cab.points;
     const phases = [...new Set(cpts.map(pt => pt.phase))].sort();
@@ -1522,34 +1546,295 @@
         <div><span class="topo-num">${cpts.length}</span><span class="muted">luminarias</span></div>
         <div><span class="topo-num">${phases.length || "—"}</span><span class="muted">fases ${phases.join(" ") || ""}</span></div>
       </div>`;
-    card.onclick = () => openTopoDetail(cab, tp);
+    card.onclick = () => openTopoDetail(cab, tp, canEdit);
     return card;
   }
 
-  function openTopoDetail(cab, tp) {
+  // --- Editor master-detail del CM (modal con 3 pestañas) ----------------
+  function openTopoDetail(cab, tp, canEdit) {
     const modal = el("div", "modal");
-    const card = el("div", "modal-card");
-    card.style.maxWidth = "640px";
-    const cpts = cab.points;
-    card.innerHTML = `
-      <h3 style="margin:0 0 4px"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cab.color};margin-right:8px"></span>CM${cab.number} · ${cab.name || cab.code}</h3>
-      <div class="muted" style="font-size:12px; margin-bottom:12px">${cab.code} · ${cab.zone || "sin zona"} · ${cpts.length} luminarias · ${cab.circuits.length} circuitos</div>`;
+    const card = el("div", "modal-card"); card.style.maxWidth = "720px";
+    state.topoTab = state.topoTab || "cuadro";
+
+    const head = el("div", "row between");
+    head.innerHTML = `<h3 style="margin:0"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cab.color};margin-right:8px"></span>CM${cab.number} · ${cab.name || cab.code}</h3>`;
+    const closeX = el("button", "btn ghost sm", "✕"); closeX.onclick = () => modal.remove();
+    head.append(closeX);
+    card.append(head);
+    card.append(el("div", "muted", `${cab.code} · ${cab.zone || "sin zona"} · ${cab.points.length} luminarias · ${cab.circuits.length} circuitos`));
+
+    const tabs = el("div", "tabs"); tabs.style.marginTop = "12px";
+    [["cuadro", "Cuadro"], ["circuitos", "Circuitos"], ["luminarias", "Luminarias"]].forEach(([k, lbl]) => {
+      const b = el("button", "tab" + (state.topoTab === k ? " active" : ""), lbl);
+      b.onclick = () => { state.topoTab = k; modal.remove(); openTopoDetail(cab, tp, canEdit); };
+      tabs.append(b);
+    });
+    card.append(tabs);
+
+    const body = el("div"); body.style.marginTop = "14px"; card.append(body);
+    if (state.topoTab === "cuadro") renderCabinetTab(body, cab, canEdit, modal);
+    else if (state.topoTab === "circuitos") renderCircuitsTab(body, cab, canEdit);
+    else renderLightsTab(body, cab, canEdit);
+
+    modal.append(card); document.body.append(modal);
+  }
+
+  function renderCabinetTab(body, cab, canEdit, modal) {
+    const grid = el("div"); grid.style.display = "grid"; grid.style.gridTemplateColumns = "1fr 1fr"; grid.style.gap = "10px";
+    const rows = [
+      ["Código", cab.code, "mono"],
+      ["Nombre", cab.name || "—"],
+      ["Número (CM)", cab.number],
+      ["Zona", cab.zone || "—"],
+      ["Color", `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${cab.color};margin-right:6px"></span><span class="mono">${cab.color}</span>`],
+      ["Coordenadas", cab.latitude != null ? `${cab.latitude.toFixed(5)}, ${cab.longitude.toFixed(5)}` : "sin ubicar"],
+    ];
+    rows.forEach(([k, v, cls]) => {
+      const cell = el("div");
+      cell.innerHTML = `<div class="muted" style="font-size:11px">${k}</div><div class="${cls || ""}" style="font-size:14px">${v}</div>`;
+      grid.append(cell);
+    });
+    body.append(grid);
+
+    if (canEdit) {
+      const actions = el("div", "perm-actions");
+      const edit = el("button", "btn sm", "✏ Editar datos");
+      edit.onclick = () => { modal.remove(); openCabinetForm(cab); };
+      const del = el("button", "btn ghost sm", "🗑 Borrar cuadro"); del.style.color = "#ef4444";
+      del.onclick = () => { modal.remove(); deleteCabinet(cab); };
+      actions.append(edit, del);
+      body.append(actions);
+    }
+  }
+
+  function renderCircuitsTab(body, cab, canEdit) {
     const t = el("table");
-    t.innerHTML = `<thead><tr><th>Circuito</th><th>Color</th><th>Luminarias</th><th>Fases</th></tr></thead>`;
+    t.innerHTML = `<thead><tr><th>#</th><th>Nombre</th><th>Color</th><th>Fase</th><th>Nominal</th><th>Lumin.</th><th></th></tr></thead>`;
     const tb = el("tbody");
     cab.circuits.forEach(ci => {
-      const list = cpts.filter(pt => pt.circuit_id === ci.id);
-      const phases = [...new Set(list.map(pt => pt.phase))].sort().join(", ") || "—";
+      const list = cab.points.filter(pt => pt.circuit_id === ci.id);
       const tr = el("tr");
-      tr.innerHTML = `<td>Circuito ${ci.number}</td><td><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${ci.color};margin-right:6px"></span><span class="mono">${ci.color}</span></td><td class="mono">${list.length}</td><td>${phases}</td>`;
-      tb.append(tr);
+      tr.innerHTML = `<td class="mono">${ci.number}</td><td>${ci.name || "—"}</td>`
+        + `<td><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${ci.color};margin-right:6px"></span><span class="mono">${ci.color}</span></td>`
+        + `<td>${ci.phase}</td><td class="mono">${(ci.expected_power_w || 0).toFixed(0)} W</td><td class="mono">${list.length}</td>`;
+      const td = el("td");
+      if (canEdit) {
+        const e = el("button", "btn ghost sm", "✏"); e.onclick = () => openCircuitForm(cab, ci);
+        const d = el("button", "btn ghost sm", "🗑"); d.style.color = "#ef4444"; d.style.marginLeft = "4px";
+        d.onclick = () => deleteCircuit(cab, ci, list.length);
+        td.append(e, d);
+      }
+      tr.append(td); tb.append(tr);
     });
-    if (!cab.circuits.length) tb.append(el("tr", null, `<td colspan="4" class="muted" style="text-align:center; padding:10px">Sin circuitos definidos.</td>`));
-    t.append(tb); card.append(t);
-    const close = el("button", "btn ghost sm", "Cerrar"); close.style.marginTop = "12px";
-    close.onclick = () => modal.remove();
-    card.append(close);
+    if (!cab.circuits.length) tb.append(el("tr", null, `<td colspan="7" class="muted" style="text-align:center; padding:10px">Sin circuitos.</td>`));
+    t.append(tb); body.append(t);
+    if (canEdit) {
+      const add = el("button", "btn sm", "➕ Nuevo circuito"); add.style.marginTop = "12px";
+      add.onclick = () => openCircuitForm(cab, null);
+      body.append(add);
+    }
+  }
+
+  function renderLightsTab(body, cab, canEdit) {
+    const circById = Object.fromEntries(cab.circuits.map(c => [c.id, c]));
+    const t = el("table");
+    t.innerHTML = `<thead><tr><th>#</th><th>Etiqueta</th><th>Circuito</th><th>Fase</th><th>Potencia</th><th></th></tr></thead>`;
+    const tb = el("tbody");
+    cab.points.slice().sort((a, b) => a.number - b.number).forEach(pt => {
+      const ci = circById[pt.circuit_id];
+      const tr = el("tr");
+      tr.innerHTML = `<td class="mono">${pt.number}</td><td>${pt.label || "—"}</td>`
+        + `<td>${ci ? "Circuito " + ci.number : "<span class='muted'>?</span>"}</td>`
+        + `<td>${pt.phase}</td><td class="mono">${(pt.power_w || 0).toFixed(0)} W</td>`;
+      const td = el("td");
+      if (canEdit) {
+        const e = el("button", "btn ghost sm", "✏"); e.onclick = () => openLightForm(cab, pt);
+        const d = el("button", "btn ghost sm", "🗑"); d.style.color = "#ef4444"; d.style.marginLeft = "4px";
+        d.onclick = () => deleteLight(cab, pt);
+        td.append(e, d);
+      }
+      tr.append(td); tb.append(tr);
+    });
+    if (!cab.points.length) tb.append(el("tr", null, `<td colspan="6" class="muted" style="text-align:center; padding:10px">Sin luminarias.</td>`));
+    t.append(tb); body.append(t);
+    if (canEdit) {
+      const add = el("button", "btn sm", "➕ Nueva luminaria"); add.style.marginTop = "12px";
+      if (!cab.circuits.length) { add.disabled = true; add.title = "Crea antes un circuito"; }
+      add.onclick = () => openLightForm(cab, null);
+      body.append(add);
+    }
+  }
+
+  // --- Formularios de alta/edición ---------------------------------------
+  function openCabinetForm(cab) {
+    const editing = !!cab;
+    const modal = el("div", "modal"); const card = el("div", "modal-card");
+    card.innerHTML = `<h3 style="margin:0 0 12px">${editing ? "Editar cuadro" : "Nuevo centro de mando"}</h3>`;
+    const form = el("div"); form.style.display = "grid"; form.style.gap = "10px";
+    const code = el("input"); code.placeholder = "Código (p.ej. CAB-005)"; code.value = cab?.code || "";
+    if (editing) { code.disabled = true; code.style.opacity = ".6"; }
+    const name = el("input"); name.placeholder = "Nombre"; name.value = cab?.name || "";
+    const number = el("input"); number.type = "number"; number.placeholder = "Número de CM"; number.value = cab?.number ?? "";
+    const zone = el("input"); zone.placeholder = "Zona (opcional)"; zone.value = cab?.zone || "";
+    const color = el("input"); color.type = "color"; color.value = cab?.color || "#f97316";
+    const colorWrap = el("div", "row"); colorWrap.style.gap = "8px"; colorWrap.style.alignItems = "center";
+    colorWrap.append(el("span", "muted", "Color en el mapa"), color);
+    const lat = el("input"); lat.placeholder = "Latitud (opcional)"; lat.value = cab?.latitude ?? "";
+    const lon = el("input"); lon.placeholder = "Longitud (opcional)"; lon.value = cab?.longitude ?? "";
+    const coords = el("div", "row"); coords.style.gap = "8px"; coords.append(lat, lon);
+    form.append(code, name, number, zone, colorWrap, coords);
+    card.append(form);
+
+    const actions = el("div", "perm-actions");
+    const save = el("button", "btn sm", editing ? "Guardar" : "Crear");
+    save.onclick = async () => {
+      const payload = {
+        name: name.value.trim(), number: parseInt(number.value, 10) || 0,
+        zone: zone.value.trim() || null, color: color.value,
+        latitude: lat.value ? parseFloat(lat.value) : null,
+        longitude: lon.value ? parseFloat(lon.value) : null,
+      };
+      try {
+        if (editing) {
+          await api(`/cabinets/registry/${encodeURIComponent(cab.code)}`, { method: "PATCH", body: JSON.stringify(payload) });
+          toast("Cuadro actualizado");
+        } else {
+          if (code.value.trim().length < 2) { toast("El código debe tener al menos 2 caracteres.", true); return; }
+          payload.code = code.value.trim();
+          await api("/cabinets/registry", { method: "POST", body: JSON.stringify(payload) });
+          toast("Cuadro creado: " + payload.code);
+        }
+        modal.remove(); loadTopologia();
+      } catch (e) { toast(e.message, true); }
+    };
+    const cancel = el("button", "btn ghost sm", "Cancelar"); cancel.onclick = () => modal.remove();
+    actions.append(save, cancel); card.append(actions);
     modal.append(card); document.body.append(modal);
+  }
+
+  function openCircuitForm(cab, circ) {
+    const editing = !!circ;
+    const modal = el("div", "modal"); const card = el("div", "modal-card");
+    card.innerHTML = `<h3 style="margin:0 0 12px">${editing ? "Editar circuito" : "Nuevo circuito"} · ${cab.code}</h3>`;
+    const form = el("div"); form.style.display = "grid"; form.style.gap = "10px";
+    const number = el("input"); number.type = "number"; number.placeholder = "Número de circuito"; number.value = circ?.number ?? (cab.circuits.length + 1);
+    const name = el("input"); name.placeholder = "Nombre (opcional)"; name.value = circ?.name || "";
+    const phase = el("select"); ["III", "L1", "L2", "L3"].forEach(p => { const o = el("option", null, p); o.value = p; if ((circ?.phase || "III") === p) o.selected = true; phase.append(o); });
+    const phaseWrap = el("div", "row"); phaseWrap.style.gap = "8px"; phaseWrap.style.alignItems = "center"; phaseWrap.append(el("span", "muted", "Fase"), phase);
+    const color = el("input"); color.type = "color"; color.value = circ?.color || "#38bdf8";
+    const colorWrap = el("div", "row"); colorWrap.style.gap = "8px"; colorWrap.style.alignItems = "center"; colorWrap.append(el("span", "muted", "Color"), color);
+    const power = el("input"); power.type = "number"; power.placeholder = "Potencia nominal esperada (W)"; power.value = circ?.expected_power_w ?? 0;
+    const powerHint = el("div", "muted"); powerHint.style.fontSize = "11px";
+    powerHint.textContent = "Suma de las luminarias del circuito. Sirve para detectar carga caída / sobrecarga (0 = sin comprobación).";
+    form.append(number, name, phaseWrap, colorWrap, power, powerHint);
+    card.append(form);
+
+    const actions = el("div", "perm-actions");
+    const save = el("button", "btn sm", editing ? "Guardar" : "Crear");
+    save.onclick = async () => {
+      const payload = {
+        number: parseInt(number.value, 10) || 1, name: name.value.trim(),
+        phase: phase.value, color: color.value,
+        expected_power_w: parseFloat(power.value) || 0,
+      };
+      try {
+        if (editing) {
+          await api(`/circuits/${circ.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+          toast("Circuito actualizado");
+        } else {
+          payload.cabinet_code = cab.code;
+          await api("/circuits", { method: "POST", body: JSON.stringify(payload) });
+          toast("Circuito creado");
+        }
+        modal.remove(); reopenTopoAfterChange(cab.code, "circuitos");
+      } catch (e) { toast(e.message, true); }
+    };
+    const cancel = el("button", "btn ghost sm", "Cancelar"); cancel.onclick = () => modal.remove();
+    actions.append(save, cancel); card.append(actions);
+    modal.append(card); document.body.append(modal);
+  }
+
+  function openLightForm(cab, pt) {
+    const editing = !!pt;
+    const modal = el("div", "modal"); const card = el("div", "modal-card");
+    card.innerHTML = `<h3 style="margin:0 0 12px">${editing ? "Editar luminaria" : "Nueva luminaria"} · ${cab.code}</h3>`;
+    const form = el("div"); form.style.display = "grid"; form.style.gap = "10px";
+    const number = el("input"); number.type = "number"; number.placeholder = "Número"; number.value = pt?.number ?? (cab.points.length + 1);
+    const label = el("input"); label.placeholder = "Etiqueta (opcional)"; label.value = pt?.label || "";
+    const circuit = el("select");
+    cab.circuits.forEach(ci => { const o = el("option", null, `Circuito ${ci.number}${ci.name ? " · " + ci.name : ""}`); o.value = ci.id; if (pt?.circuit_id === ci.id) o.selected = true; circuit.append(o); });
+    const circWrap = el("div", "row"); circWrap.style.gap = "8px"; circWrap.style.alignItems = "center"; circWrap.append(el("span", "muted", "Circuito"), circuit);
+    const phase = el("select"); ["L1", "L2", "L3"].forEach(p => { const o = el("option", null, p); o.value = p; if ((pt?.phase || "L1") === p) o.selected = true; phase.append(o); });
+    const phaseWrap = el("div", "row"); phaseWrap.style.gap = "8px"; phaseWrap.style.alignItems = "center"; phaseWrap.append(el("span", "muted", "Fase"), phase);
+    const power = el("input"); power.type = "number"; power.placeholder = "Potencia (W)"; power.value = pt?.power_w ?? 100;
+    const lat = el("input"); lat.placeholder = "Latitud (opcional)"; lat.value = pt?.latitude ?? "";
+    const lon = el("input"); lon.placeholder = "Longitud (opcional)"; lon.value = pt?.longitude ?? "";
+    const coords = el("div", "row"); coords.style.gap = "8px"; coords.append(lat, lon);
+    form.append(number, label, circWrap, phaseWrap, power, coords);
+    card.append(form);
+
+    const actions = el("div", "perm-actions");
+    const save = el("button", "btn sm", editing ? "Guardar" : "Crear");
+    save.onclick = async () => {
+      const payload = {
+        number: parseInt(number.value, 10) || 1, label: label.value.trim(),
+        circuit_id: parseInt(circuit.value, 10), phase: phase.value,
+        power_w: parseFloat(power.value) || 0,
+        latitude: lat.value ? parseFloat(lat.value) : null,
+        longitude: lon.value ? parseFloat(lon.value) : null,
+      };
+      try {
+        if (editing) {
+          await api(`/lightpoints/${pt.id}`, { method: "PATCH", body: JSON.stringify(payload) });
+          toast("Luminaria actualizada");
+        } else {
+          payload.cabinet_code = cab.code;
+          await api("/lightpoints", { method: "POST", body: JSON.stringify(payload) });
+          toast("Luminaria creada");
+        }
+        modal.remove(); reopenTopoAfterChange(cab.code, "luminarias");
+      } catch (e) { toast(e.message, true); }
+    };
+    const cancel = el("button", "btn ghost sm", "Cancelar"); cancel.onclick = () => modal.remove();
+    actions.append(save, cancel); card.append(actions);
+    modal.append(card); document.body.append(modal);
+  }
+
+  // --- Borrados con confirmación -----------------------------------------
+  async function deleteCabinet(cab) {
+    if (!confirm(`¿Borrar el cuadro ${cab.code}?\n\nSe eliminarán también sus ${cab.circuits.length} circuitos y ${cab.points.length} luminarias. Esta acción no se puede deshacer.`)) return;
+    try { await api(`/cabinets/registry/${encodeURIComponent(cab.code)}`, { method: "DELETE" }); toast("Cuadro borrado: " + cab.code); loadTopologia(); }
+    catch (e) { toast(e.message, true); }
+  }
+  async function deleteCircuit(cab, ci, lightCount) {
+    if (lightCount > 0) { toast(`Tiene ${lightCount} luminaria(s). Bórralas o muévelas primero.`, true); return; }
+    if (!confirm(`¿Borrar el circuito ${ci.number} de ${cab.code}?`)) return;
+    try { await api(`/circuits/${ci.id}`, { method: "DELETE" }); toast("Circuito borrado"); reopenTopoAfterChange(cab.code, "circuitos"); }
+    catch (e) { toast(e.message, true); }
+  }
+  async function deleteLight(cab, pt) {
+    if (!confirm(`¿Borrar la luminaria ${pt.number}${pt.label ? " (" + pt.label + ")" : ""}?`)) return;
+    try { await api(`/lightpoints/${pt.id}`, { method: "DELETE" }); toast("Luminaria borrada"); reopenTopoAfterChange(cab.code, "luminarias"); }
+    catch (e) { toast(e.message, true); }
+  }
+  async function wipeTopology(count) {
+    if (!confirm(`💣 VACIAR TODA LA TOPOLOGÍA\n\nSe borrarán los ${count} cuadros con TODOS sus circuitos y luminarias.\n\nEsto es irreversible. ¿Continuar?`)) return;
+    if (!confirm("Última confirmación: ¿seguro que quieres empezar de cero?")) return;
+    try { const r = await api("/cabinets/registry/wipe-all", { method: "POST" }); toast(`Topología vaciada: ${r.cabinets} cuadros, ${r.circuits} circuitos, ${r.points} luminarias`); loadTopologia(); }
+    catch (e) { toast(e.message, true); }
+  }
+
+  // Tras un cambio en circuitos/luminarias, recargo la topología y reabro el
+  // editor del mismo CM en la pestaña donde estaba, para no perder el foco.
+  async function reopenTopoAfterChange(code, tab) {
+    try {
+      const tp = await api("/topology");
+      window._topoCache = tp;
+      const cab = tp.cabinets.find(x => x.code === code);
+      // Refresco la rejilla de fondo.
+      if (state.view === "topologia") loadTopologia();
+      if (cab) { state.topoTab = tab; openTopoDetail(cab, tp, has("cabinet:manage")); }
+    } catch (e) { toast(e.message, true); }
   }
 
   // ============================ Usuarios ============================

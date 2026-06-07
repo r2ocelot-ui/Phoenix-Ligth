@@ -188,7 +188,27 @@ Notas:
 - Saca al usuario del bucle de "borra `phoenix.db` y vuelve a empezar"
   cada vez que crece el esquema.
 
-### 5.2 Seed demo con credenciales conocidas
+### 5.2 Por qué Python (FastAPI) y no TypeScript — 2026-06
+Decisión revisitada cuando una IA de búsqueda sugirió migrar el núcleo a
+TypeScript+SQL "por concurrencia/tipado/industria". Repaso resumido:
+
+| Argumento | Veredicto |
+|---|---|
+| "El GIL bloquea concurrencia" | No para I/O. FastAPI/asyncio escala como Node para Phoenix (10k cuadros = ~700 msg/s ≪ límite). |
+| "Miles de pings/seg" | Es válido para semáforos con bucles magnéticos. Alumbrado reporta cada 1-15 s. No aplica. |
+| "Tipado dinámico → errores" | Mitigado con `mypy/pyright` (tipado estático en CI) y **Pydantic** que valida en runtime — TS sin librerías extra **no** valida en runtime. |
+| "Industria usa TS" | **Falso**. Schneider, Siemens y SICE usan C++/Java en el núcleo. Home Assistant es 100% Python. Casi nadie usa Node para el centro EMS. |
+| "Python es bueno para ML" | Cierto y conveniente: cuando llegue el motor de predicción de consumo eléctrico, ya está en el mismo runtime. |
+
+**Decisión:** **seguir en Python (FastAPI + SQLAlchemy + Pydantic)**.
+Migrar costaría 2-3 semanas y no añadiría valor práctico. Si llegamos a
+~50.000 cuadros con telemetría a 1 Hz, antes que TS consideraríamos
+Rust o Go para el ingestor MQTT — Node no resuelve mejor que asyncio.
+El frontend sigue siendo HTML + vanilla JS; cuando crezca, lo pasaremos
+a React/TypeScript dejando el backend en Python (combo estándar en la
+industria).
+
+### 5.3 Seed demo con credenciales conocidas
 - En modo demo, `admin` se siembra con:
   - contraseña: `phoenix123`
   - PIN: `1234`

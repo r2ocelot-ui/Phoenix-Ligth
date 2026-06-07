@@ -206,7 +206,12 @@
     .kpis-sm .k { font-size: 11px; letter-spacing: 0.6px; }
     .kpis-sm .v { font-size: 22px; }
     .inicio-map { height: calc(100vh - 380px); min-height: 380px; }
-    .inicio-map #map { height: 100%; border-radius: 12px; }
+    .inicio-map #map { height: 100%; border-radius: 12px; background: #0b1120; }
+    /* No fade-in on the map tiles themselves — defensive against the
+       "tile pulse" some browsers exhibit when Leaflet recomputes size. */
+    .leaflet-fade-anim .leaflet-tile, .leaflet-zoom-anim .leaflet-zoom-animated {
+      transition: none !important;
+    }
     .legend-thin { padding: 8px 12px; font-size: 12px; }
     /* ===== Dock flotante de eventos (estilo Hydra "Eventos recientes") ===== */
     .event-dock {
@@ -810,8 +815,34 @@
   }
 
   function rerenderLive() {
+    // Inicio has a persistent Leaflet map: a full re-render would tear it
+    // down and rebuild it on every WS frame, producing the "tile pulse" the
+    // user reported. Instead, patch the KPI numbers in place and let
+    // drawTopology() repaint the markers.
+    if (state.view === "inicio" && window._inicioMapWrap) {
+      updateInicioKpis();
+      drawTopology();
+      return;
+    }
     if (LIVE_VIEWS.includes(state.view)) render();
     else if (state.view === "mapa") drawTopology();
+  }
+
+  // Touch the values inside the existing KPI cards without re-creating them.
+  // Cheap, no layout shift, no map remount.
+  function updateInicioKpis() {
+    const cards = document.querySelectorAll("#content .kpis-sm .kpi .v");
+    if (cards.length < 4) return;
+    const cabs = state.cabinets;
+    const online = cabs.filter(x => x.online).length;
+    const alarms = cabs.reduce((n, x) => n + x.alarms.length, 0);
+    const kw = cabs.reduce((s, x) => s + (x.telemetry?.active_power_w || 0), 0) / 1000;
+    cards[0].textContent = String(cabs.length);
+    cards[1].textContent = online + " / " + cabs.length;
+    cards[1].classList.toggle("accent", online < cabs.length);
+    cards[2].textContent = String(alarms);
+    cards[2].classList.toggle("accent", alarms > 0);
+    cards[3].textContent = kw.toFixed(2) + " kW";
   }
 
   function connectWS() {
@@ -871,15 +902,27 @@
   // compact strip; the map fills the rest of the screen. The bottom event
   // dock (mountEventDock) lives outside the view container and shows the
   // last incidents without taking up real estate.
+  //
+  // The Leaflet instance is kept alive across view switches — destroying and
+  // re-creating it on every visit caused the famous "tile pulse from 0 to
+  // full" because Leaflet re-runs fitBounds with animation each time. We
+  // detach the DOM node and re-attach it when the user comes back, which
+  // keeps the same map, same zoom, same markers.
   function renderInicio(c) {
     const cabs = state.cabinets;
     const online = cabs.filter(x => x.online).length;
     const alarms = cabs.reduce((n, x) => n + x.alarms.length, 0);
     const kw = cabs.reduce((s, x) => s + (x.telemetry?.active_power_w || 0), 0) / 1000;
+
+    // If the map is alive, detach its container before we wipe the content,
+    // so we can re-attach it intact below.
+    const persistedWrap = window._inicioMapWrap || null;
+    const persistedLegend = window._inicioLegend || null;
+    if (persistedWrap && persistedWrap.parentNode) persistedWrap.parentNode.removeChild(persistedWrap);
+    if (persistedLegend && persistedLegend.parentNode) persistedLegend.parentNode.removeChild(persistedLegend);
+
     c.innerHTML = "";
 
-    // Strip de KPIs compacto, sobrio. Los del modo emergencia y los conteos
-    // de cuadros van aquí para que el mapa quede como elemento principal.
     const kpis = el("div", "grid kpis kpis-sm");
     kpis.append(
       kpi("Cuadros", cabs.length, false),
@@ -894,7 +937,6 @@
       return;
     }
 
-    // Selector compacto del coloreado y de estilo de mapa.
     const bar = el("div", "row between"); bar.style.margin = "12px 0 8px"; bar.style.gap = "12px"; bar.style.flexWrap = "wrap";
     const colorSeg = segGroup(
       [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]],
@@ -903,21 +945,41 @@
     bar.append(labeled("colorear por:", colorSeg));
     c.append(bar);
 
+    if (persistedWrap && window._map) {
+      // Reuse the existing map: re-attach the same nodes, redraw markers with
+      // fresh telemetry, ask Leaflet to recompute its size — no fitBounds, no
+      // animation, no pulse.
+      c.append(persistedWrap);
+      c.append(persistedLegend);
+      requestAnimationFrame(() => {
+        try { window._map.invalidateSize(false); } catch (e) {}
+        drawTopology();
+      });
+      return;
+    }
+
+    // First mount: build the map container and initialise Leaflet.
     const mapWrap = el("div", "map-wrap"); mapWrap.classList.add("inicio-map");
     const div = el("div"); div.id = "map"; mapWrap.append(div, buildMapStylePicker());
     c.append(mapWrap);
+    window._inicioMapWrap = mapWrap;
 
     const legend = el("div", "panel legend-thin"); legend.id = "legend"; legend.style.marginTop = "10px";
     c.append(legend);
+    window._inicioLegend = legend;
 
     (async () => {
       try { window._topology = await api("/topology"); } catch (e) { c.append(el("div", "empty", e.message)); return; }
-      if (window._map) { try { window._map.remove(); } catch (e) {} }
       window._cmMarkers = {}; window._ptMarkers = {}; window._fitDone = false; window._tileLayer = null;
-      const map = L.map("map", { attributionControl: false }).setView([40.4168, -3.7038], 13);
+      // fadeAnimation off + zoomAnimation off → the very first paint also
+      // lands at the final size, instead of fading in from a smaller frame.
+      const map = L.map("map", {
+        attributionControl: false,
+        fadeAnimation: false, zoomAnimation: false, markerZoomAnimation: false,
+      }).setView([40.4168, -3.7038], 13);
       window._map = map;
       applyTileStyle(map);
-      setTimeout(() => map.invalidateSize(), 60);
+      requestAnimationFrame(() => map.invalidateSize(false));
       drawTopology();
     })();
   }

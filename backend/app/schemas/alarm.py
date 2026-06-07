@@ -10,6 +10,10 @@ class AlarmType(str, Enum):
     OVERVOLTAGE = "OVERVOLTAGE"
     UNDERVOLTAGE = "UNDERVOLTAGE"
     OVERCURRENT = "OVERCURRENT"
+    # Detección por desviación de consumo (DECISIONS §6.6)
+    CIRCUIT_LOAD_DROP = "CIRCUIT_LOAD_DROP"      # consumo muy bajo respecto al esperado
+    CIRCUIT_OVERLOAD = "CIRCUIT_OVERLOAD"        # consumo muy alto: fuga, derivación
+    CONTACTOR_STUCK = "CONTACTOR_STUCK"          # ordenado OFF pero sigue consumiendo
     # Infraestructura del cuadro
     DOOR_OPEN = "DOOR_OPEN"
     CABINET_OVERTEMP = "CABINET_OVERTEMP"

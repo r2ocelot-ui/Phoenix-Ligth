@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     alarm_undervoltage_threshold_v: float = 207.0
     alarm_overcurrent_threshold_a: float = 30.0
     alarm_cabinet_temp_c: float = 55.0  # umbral de "exceso de temperatura"
+    # Detección por desviación de consumo (matriz §6.6).
+    # Si lo medido es < load_drop_ratio × esperado → CIRCUIT_LOAD_DROP.
+    # Si > overload_ratio × esperado → CIRCUIT_OVERLOAD.
+    # Si el cuadro está OFF y se mide más de stuck_min_w → CONTACTOR_STUCK.
+    alarm_load_drop_ratio: float = 0.5     # cae a la mitad o menos
+    alarm_overload_ratio: float = 1.30     # supera el 130 % del nominal
+    alarm_contactor_stuck_min_w: float = 10.0
 
     dimming_interval_s: int = 60
     communication_loss_timeout_s: int = 300

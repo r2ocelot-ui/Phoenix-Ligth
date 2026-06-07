@@ -7,6 +7,7 @@ class CircuitCreate(BaseModel):
     name: str = ""
     color: str = "#38bdf8"
     phase: str = "III"
+    expected_power_w: float = Field(0.0, ge=0)
 
 
 class CircuitUpdate(BaseModel):
@@ -14,6 +15,7 @@ class CircuitUpdate(BaseModel):
     name: str | None = None
     color: str | None = None
     phase: str | None = None
+    expected_power_w: float | None = Field(default=None, ge=0)
 
 
 class CircuitRead(BaseModel):
@@ -25,6 +27,7 @@ class CircuitRead(BaseModel):
     name: str
     color: str
     phase: str
+    expected_power_w: float = 0.0
 
 
 class LightPointCreate(BaseModel):

@@ -51,7 +51,9 @@ def get_topology(
                 "status": snap.get("status", "ok"),
                 "telemetry": snap.get("telemetry"),
                 "circuits": [
-                    {"id": c.id, "number": c.number, "name": c.name, "color": c.color, "phase": c.phase}
+                    {"id": c.id, "number": c.number, "name": c.name,
+                     "color": c.color, "phase": c.phase,
+                     "expected_power_w": c.expected_power_w or 0.0}
                     for c in circuits
                     if c.cabinet_code == cab.code
                 ],

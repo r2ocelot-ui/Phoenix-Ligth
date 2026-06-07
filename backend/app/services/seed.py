@@ -75,6 +75,13 @@ def seed_demo_cabinets(db: Session) -> None:
             circuit = Circuit(
                 cabinet_code=code, number=ci + 1, name=f"Circuito {ci + 1}",
                 color=_CIRCUIT_COLORS[ci % len(_CIRCUIT_COLORS)], phase="III",
+                # Half the points hang off each circuit; nominal is the sum
+                # of their power. Demo loop simulates departures from this.
+                expected_power_w=sum(
+                    100 + k * 5
+                    for k in range(_POINTS_PER_CABINET)
+                    if k % 2 == ci
+                ),
             )
             db.add(circuit)
             db.flush()  # assign id

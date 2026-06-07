@@ -955,6 +955,22 @@
     "role.update": ["warn", "Rango editado"],
     "user.create": ["ok", "Usuario creado"],
   };
+  // Etiquetas en español para los AlarmType del motor (operativas). Se
+  // usan en el dock y en cualquier vista que muestre alarmas vivas.
+  const ALARM_LABELS = {
+    LAMP_OUT: "Luminarias apagadas",
+    LINE_FAILURE: "Caída de línea",
+    OVERVOLTAGE: "Sobretensión",
+    UNDERVOLTAGE: "Subtensión",
+    OVERCURRENT: "Sobreintensidad",
+    CIRCUIT_LOAD_DROP: "Carga caída",
+    CIRCUIT_OVERLOAD: "Sobrecarga del circuito",
+    CONTACTOR_STUCK: "Contactor pegado",
+    DOOR_OPEN: "Puerta abierta",
+    CABINET_OVERTEMP: "Temperatura alta en el cuadro",
+    INTRUSION: "Intrusión",
+    COMMUNICATION_LOSS: "Sin comunicación",
+  };
   function mountEventDock() {
     state.eventDock = state.eventDock || [];
     state.dockOpen = state.dockOpen ?? false;
@@ -977,7 +993,7 @@
         timestamp: a.timestamp || new Date().toISOString(),
         action: "alarm",
         severity: (a.severity || "").toLowerCase(),
-        label: (a.type || "ALARMA") + " · " + cab.cabinet_id,
+        label: (ALARM_LABELS[a.type] || a.type || "ALARMA") + " · " + cab.cabinet_id,
         sub: a.message || "",
         key: cab.cabinet_id + ":" + a.type,
       })),

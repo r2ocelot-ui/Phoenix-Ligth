@@ -16,7 +16,19 @@ from app.schemas.alarm import Alarm, AlarmSeverity, AlarmType
 from app.schemas.measurement import Measurement
 
 
-def evaluate(measurement: Measurement, expected_on: bool = True) -> list[Alarm]:
+def evaluate(
+    measurement: Measurement,
+    expected_on: bool = True,
+    expected_power_w: float = 0.0,
+) -> list[Alarm]:
+    """Run the rule-based alarm engine against a single telemetry sample.
+
+    ``expected_on`` mirrors the commanded relay state (True when the cabinet
+    is supposed to be drawing current). ``expected_power_w`` is the nominal
+    total of all the circuits in the cabinet — passed by the bus so this
+    function stays free of database access. When 0 the consumption-deviation
+    checks are skipped, so circuits without a configured nominal stay quiet.
+    """
     alarms: list[Alarm] = []
     now = datetime.now(timezone.utc)
 
@@ -119,5 +131,66 @@ def evaluate(measurement: Measurement, expected_on: bool = True) -> list[Alarm]:
                 timestamp=now,
             )
         )
+
+    # --- Desviación de consumo (matriz §6.6) -------------------------------
+    # Solo se evalúa cuando hay un nominal configurado y la línea está
+    # energizada (sin tensión todo es 0 W, y eso ya lo cubre LINE_FAILURE).
+    if expected_power_w > 0 and measurement.voltage_v > 50:
+        if expected_on:
+            # El cuadro está ordenado encendido: comparamos consumo real vs
+            # nominal. Sólo si ya hay algo de consumo (>0): LAMP_OUT cubre
+            # el caso "todo a cero".
+            if measurement.active_power_w > 0:
+                ratio = measurement.active_power_w / expected_power_w
+                if ratio < settings.alarm_load_drop_ratio:
+                    pct = (1 - ratio) * 100
+                    alarms.append(
+                        Alarm(
+                            cabinet_id=measurement.cabinet_id,
+                            type=AlarmType.CIRCUIT_LOAD_DROP,
+                            severity=AlarmSeverity.WARNING,
+                            message=(
+                                f"Carga caída: {measurement.active_power_w:.0f} W "
+                                f"sobre un nominal de {expected_power_w:.0f} W "
+                                f"(~{pct:.0f}% por debajo). Posibles luminarias fundidas."
+                            ),
+                            timestamp=now,
+                            value=measurement.active_power_w,
+                        )
+                    )
+                elif ratio > settings.alarm_overload_ratio:
+                    pct = (ratio - 1) * 100
+                    alarms.append(
+                        Alarm(
+                            cabinet_id=measurement.cabinet_id,
+                            type=AlarmType.CIRCUIT_OVERLOAD,
+                            severity=AlarmSeverity.CRITICAL,
+                            message=(
+                                f"Sobrecarga: {measurement.active_power_w:.0f} W "
+                                f"sobre un nominal de {expected_power_w:.0f} W "
+                                f"(~{pct:.0f}% por encima). Posible fuga, derivación o cortocircuito parcial."
+                            ),
+                            timestamp=now,
+                            value=measurement.active_power_w,
+                        )
+                    )
+        else:
+            # El cuadro está ordenado apagado, pero se mide consumo: el
+            # contactor no abrió (contactos soldados, bobina pegada, ...).
+            if measurement.active_power_w > settings.alarm_contactor_stuck_min_w:
+                alarms.append(
+                    Alarm(
+                        cabinet_id=measurement.cabinet_id,
+                        type=AlarmType.CONTACTOR_STUCK,
+                        severity=AlarmSeverity.CRITICAL,
+                        message=(
+                            f"Contactor pegado: ordenado OFF pero sigue consumiendo "
+                            f"{measurement.active_power_w:.0f} W. Riesgo de no poder "
+                            f"apagar el circuito de forma remota."
+                        ),
+                        timestamp=now,
+                        value=measurement.active_power_w,
+                    )
+                )
 
     return alarms

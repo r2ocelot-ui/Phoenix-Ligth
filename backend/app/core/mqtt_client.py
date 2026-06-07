@@ -145,9 +145,29 @@ class MQTTBus:
             self.last_lux[cid] = measurement.ambient_lux
 
         expected_on = self._is_expected_on(cid)
-        current = alarm_engine.evaluate(measurement, expected_on=expected_on)
+        expected_w = self._cabinet_expected_power(cid)
+        current = alarm_engine.evaluate(
+            measurement, expected_on=expected_on, expected_power_w=expected_w,
+        )
         await self._reconcile_alarms(cid, current)
         self.notify()
+
+    def _cabinet_expected_power(self, cabinet_id: str) -> float:
+        """Sum of expected_power_w across this cabinet's circuits, scaled by
+        the commanded dim level (so a 1200 W cabinet ordered at 60 % dimming
+        legitimately consumes ~720 W and won't trip CIRCUIT_LOAD_DROP)."""
+        try:
+            from app.core.database import SessionLocal
+            from app.models.circuit import Circuit
+            with SessionLocal() as db:
+                total = sum(
+                    (c.expected_power_w or 0)
+                    for c in db.query(Circuit).filter(Circuit.cabinet_code == cabinet_id).all()
+                )
+        except Exception:
+            return 0.0
+        dim = (self.cabinet_state.get(cabinet_id) or {}).get("dim", 100)
+        return total * (dim / 100.0)
 
     # ----- MQTT loop --------------------------------------------------------
     async def _run(self) -> None:
@@ -265,20 +285,45 @@ class MQTTBus:
             await asyncio.sleep(settings.demo_interval_s)
             tick += 1
             for cid in _DEMO_CABINETS:
+                # Cada cuadro tiene su "demonio simulado" para que el panel
+                # muestre toda la gama de alarmas sin esperar a hardware real.
                 blown = cid == "CAB-003" and (tick % 14) in (6, 7, 8)
-                over = cid == "CAB-004" and (tick % 22) == 0
+                overvolt = cid == "CAB-004" and (tick % 22) == 0
                 hot = cid == "CAB-002" and (tick % 18) in (2, 3, 4)
                 door = cid == "CAB-001" and (tick % 30) in (1, 2)
-                voltage = 255.6 if over else round(random.uniform(228.0, 232.0), 1)
-                current = 0.0 if blown else round(random.uniform(2.4, 3.3), 2)
-                # Simulación de sensores físicos del cuadro:
+                # NUEVAS simulaciones para la matriz §6.6:
+                load_drop = cid == "CAB-001" and (tick % 24) in (10, 11, 12)
+                overload = cid == "CAB-002" and (tick % 26) in (5, 6, 7)
+                contactor_stuck = cid == "CAB-004" and (tick % 32) in (15, 16)
+
+                expected = self._cabinet_expected_power(cid)
+                voltage = 255.6 if overvolt else round(random.uniform(228.0, 232.0), 1)
+                # Carga base = ~95 % del esperado (todo bien).
+                base_power = expected * 0.95 if expected > 0 else round(voltage * 2.8 * 0.95, 1)
+                if blown:
+                    active_w = 0.0
+                elif load_drop:
+                    active_w = expected * 0.35 if expected > 0 else base_power * 0.4
+                elif overload:
+                    active_w = expected * 1.55 if expected > 0 else base_power * 1.6
+                elif contactor_stuck:
+                    # El cuadro está en OFF pero seguimos midiendo consumo
+                    # → CONTACTOR_STUCK. Forzamos el "off" en el estado.
+                    self.record_command(cid, relay="off")
+                    active_w = expected * 0.7 if expected > 0 else 400.0
+                else:
+                    # En el resto del tiempo el contactor responde bien.
+                    if self.cabinet_state.get(cid, {}).get("relay") == "off":
+                        self.record_command(cid, relay="on")
+                    active_w = round(base_power + random.uniform(-15, 15), 1)
+                current = round(active_w / max(voltage, 1) / 0.95, 2) if active_w > 0 else 0.0
                 temp = 62.0 if hot else round(random.uniform(28.0, 42.0), 1)
                 measurement = Measurement(
                     cabinet_id=cid,
                     voltage_v=voltage,
                     current_a=current,
-                    active_power_w=round(voltage * current * 0.95, 1),
-                    power_factor=0.0 if blown else 0.95,
+                    active_power_w=round(active_w, 1),
+                    power_factor=0.95 if active_w > 0 else 0.0,
                     lamp_circuit="L1",
                     ambient_lux=round(random.uniform(0.0, 55.0), 1),
                     cabinet_temp_c=temp,

@@ -18,6 +18,21 @@ from app.services.auth import require_permission, user_detail
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+@router.get("/ranks")
+def list_ranks() -> list[dict]:
+    """Catálogo de rangos (público) — alimenta los selectores del panel con
+    nombre y descripción para que el admin elija con criterio."""
+    return [
+        {
+            "id": rid,
+            "label": r["label"],
+            "description": r["description"],
+            "level": r["level"],
+        }
+        for rid, r in ranks.RANKS.items()
+    ]
+
+
 def _get(db: Session, user_id: int) -> User:
     user = db.get(User, user_id)
     if not user:

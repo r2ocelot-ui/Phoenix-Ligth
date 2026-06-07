@@ -63,4 +63,5 @@ def user_detail(user: User) -> UserDetail:
         permissions=sorted(ranks.effective_permissions(user)),
         rank_level=ranks.rank_level(user.rank),
         progression=ranks.promotion_eligibility(user),
+        has_pin=bool(getattr(user, "pin_hash", None)),
     )

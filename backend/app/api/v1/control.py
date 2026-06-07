@@ -11,6 +11,34 @@ from app.services.auth import require_permission
 
 router = APIRouter(prefix="/cabinets", tags=["control"])
 
+emergency_router = APIRouter(prefix="/emergency", tags=["control"])
+
+
+@emergency_router.post("/all-on")
+async def emergency_all_on(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
+) -> dict:
+    """Modo emergencia: enciende todo y pone dimming al 100% en cada cuadro
+    conocido. Pensado para incidencias (corte de luz, accidente, evento)."""
+    affected = []
+    for cid in sorted(bus._known_cabinets):
+        try:
+            await bus.publish(f"phoenix/cabinets/{cid}/cmd/relay", {"state": "on"})
+            await bus.publish(f"phoenix/cabinets/{cid}/cmd/dim", {"level": 100})
+        except RuntimeError:
+            pass  # broker no conectado; el estado comandado igual se registra
+        bus.record_command(cid, relay="on", dim=100)
+        affected.append(cid)
+    bus.notify()
+    user.activity_points += 5
+    db.add(user)
+    audit_log.record(
+        db, username=user.username, action="emergency.all_on",
+        detail={"cabinets": affected},
+    )
+    return {"ok": True, "cabinets": affected}
+
 ACTIVITY_PER_COMMAND = 1
 
 

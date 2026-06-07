@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
+from app.schemas.user import PinSet, PinUnlock
 from app.models.user import User
 from app.schemas.user import Token, UserCreate, UserDetail, UserRead
 from app.services import audit_log, ranks
@@ -57,6 +58,44 @@ def login(
 @router.get("/me", response_model=UserDetail)
 def me(user: User = Depends(get_current_user)) -> UserDetail:
     return user_detail(user)
+
+
+@router.post("/pin")
+def set_pin(
+    body: PinSet,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """El propio usuario configura su PIN de desbloqueo rápido."""
+    user.pin_hash = hash_password(body.pin)
+    db.commit()
+    audit_log.record(db, username=user.username, action="auth.pin_set")
+    return {"ok": True}
+
+
+@router.delete("/pin")
+def clear_pin(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    user.pin_hash = None
+    db.commit()
+    audit_log.record(db, username=user.username, action="auth.pin_clear")
+    return {"ok": True}
+
+
+@router.post("/unlock", response_model=Token)
+def unlock(
+    body: PinUnlock,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> Token:
+    """Re-validar la sesión bloqueada con el PIN del propio usuario.
+    Devuelve un token nuevo (rotación) — la pantalla bloqueada lo guarda."""
+    if not user.pin_hash or not verify_password(body.pin, user.pin_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "PIN incorrecto")
+    audit_log.record(db, username=user.username, action="auth.unlock")
+    return Token(access_token=create_access_token(user.username), rank=user.rank)
 
 
 @router.get("/info")

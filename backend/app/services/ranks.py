@@ -35,43 +35,42 @@ ALL_PERMISSIONS = [
 RANK_ORDER = ["novato", "operador", "tecnico", "supervisor", "admin", "owner"]
 
 RANKS: dict[str, dict] = {
-    "novato": {"level": 0, "label": "Novato", "permissions": {P_CABINET_READ}},
+    "novato": {
+        "level": 0, "label": "Novato",
+        "description": "Solo lectura. Puede ver cuadros y alarmas, pero no operar.",
+        "permissions": {P_CABINET_READ},
+    },
     "operador": {
-        "level": 1,
-        "label": "Operador",
+        "level": 1, "label": "Operador",
+        "description": "Operación diaria: encender, apagar y regular cuadros.",
         "permissions": {P_CABINET_READ, P_CABINET_CONTROL},
     },
     "tecnico": {
-        "level": 2,
-        "label": "Técnico",
+        "level": 2, "label": "Técnico",
+        "description": "Operación + reconocimiento de alarmas y gestión de cuadros.",
         "permissions": {P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE},
     },
     "supervisor": {
-        "level": 3,
-        "label": "Supervisor",
+        "level": 3, "label": "Supervisor",
+        "description": "Visión global: añade ver la auditoría y los usuarios.",
         "permissions": {
-            P_CABINET_READ,
-            P_CABINET_CONTROL,
-            P_ALARM_ACK,
-            P_CABINET_MANAGE,
-            P_AUDIT_READ,
-            P_USER_VIEW,
+            P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,
+            P_AUDIT_READ, P_USER_VIEW,
         },
     },
     "admin": {
-        "level": 4,
-        "label": "Admin",
+        "level": 4, "label": "Admin",
+        "description": "Gestiona usuarios y rangos. Acceso completo salvo configuración crítica.",
         "permissions": {
-            P_CABINET_READ,
-            P_CABINET_CONTROL,
-            P_ALARM_ACK,
-            P_CABINET_MANAGE,
-            P_AUDIT_READ,
-            P_USER_VIEW,
-            P_USER_MANAGE,
+            P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,
+            P_AUDIT_READ, P_USER_VIEW, P_USER_MANAGE,
         },
     },
-    "owner": {"level": 5, "label": "Owner", "permissions": {WILDCARD}},
+    "owner": {
+        "level": 5, "label": "Owner",
+        "description": "Control total del sistema. Equivalente a superadmin.",
+        "permissions": {WILDCARD},
+    },
 }
 
 # Points / tenure (days) required to be eligible for each target rank.

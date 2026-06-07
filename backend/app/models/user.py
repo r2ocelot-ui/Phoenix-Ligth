@@ -17,6 +17,7 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     rank: Mapped[str] = mapped_column(String(32), default="novato")
     # Per-user permission overrides on top of the rank defaults.
     extra_permissions: Mapped[list] = mapped_column(JSON, default=list)

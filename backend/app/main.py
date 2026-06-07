@@ -51,6 +51,7 @@ app.include_router(cabinets.router, prefix=settings.api_v1_prefix)
 app.include_router(topology.router, prefix=settings.api_v1_prefix)
 app.include_router(alarms.router, prefix=settings.api_v1_prefix)
 app.include_router(control.router, prefix=settings.api_v1_prefix)
+app.include_router(control.emergency_router, prefix=settings.api_v1_prefix)
 app.include_router(realtime.router, prefix=settings.api_v1_prefix)
 
 

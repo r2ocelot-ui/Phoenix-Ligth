@@ -25,6 +25,7 @@ class UserDetail(UserRead):
     permissions: list[str]
     rank_level: int
     progression: dict
+    has_pin: bool = False
 
 
 class Token(BaseModel):
@@ -42,6 +43,14 @@ class UserCreateAdmin(BaseModel):
 
 class PasswordSet(BaseModel):
     password: str = Field(..., min_length=6)
+
+
+class PinSet(BaseModel):
+    pin: str = Field(..., pattern=r"^\d{4,8}$")
+
+
+class PinUnlock(BaseModel):
+    pin: str = Field(..., pattern=r"^\d{4,8}$")
 
 
 class RankChange(BaseModel):

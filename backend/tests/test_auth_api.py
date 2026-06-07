@@ -106,15 +106,27 @@ def test_auth_info_reveals_demo_credentials(client):
 
 
 def test_seeded_demo_admin_can_login(client):
-    from app.services.seed import seed_demo_admin
+    from app.services.seed import DEMO_PATTERN, DEMO_PIN, seed_demo_admin
 
-    # Seed through the same overridden session the app uses.
     db = next(app.dependency_overrides[get_db]())
     seed_demo_admin(db, "admin", "phoenix123")
 
-    r = client.post("/api/v1/auth/login", data={"username": "admin", "password": "phoenix123"})
-    assert r.status_code == 200
-    assert r.json()["rank"] == "owner"
+    # Step 1: username + password + PIN → challenge token (no access token yet,
+    # because the seeded admin has a pattern configured).
+    r1 = client.post("/api/v1/auth/login",
+                     data={"username": "admin", "password": "phoenix123", "pin": DEMO_PIN})
+    assert r1.status_code == 200, r1.text
+    payload = r1.json()
+    assert payload["access_token"] is None
+    assert payload["challenge_token"]
+
+    # Step 2: challenge + pattern → real JWT.
+    r2 = client.post(
+        "/api/v1/auth/login/pattern",
+        json={"challenge_token": payload["challenge_token"], "pattern": DEMO_PATTERN},
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["rank"] == "owner"
 
 
 def test_novato_blocked_operador_allowed(client):
@@ -239,6 +251,80 @@ def test_pin_and_pattern_unlock(client):
     # Wrong values are rejected.
     assert client.post("/api/v1/auth/unlock", json={"pin": "9999"}, headers=_auth(boss)).status_code == 401
     assert client.post("/api/v1/auth/unlock", json={"pattern": "8765"}, headers=_auth(boss)).status_code == 401
+
+
+def test_login_step1_returns_jwt_when_no_pattern_set(client):
+    # First user gets created without a pattern → step 1 finishes the login
+    # immediately, returning the access token.
+    _register(client, "boss")
+    r = _login(client, "boss", "secret123")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["access_token"], "Expected an access_token when no pattern is configured"
+    assert body["challenge_token"] is None
+
+
+def test_login_requires_both_pin_and_pattern_when_set(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Set the full credential stack.
+    client.post("/api/v1/auth/pin", json={"pin": "1234"}, headers=_auth(boss))
+    client.post("/api/v1/auth/pattern", json={"pattern": "01258"}, headers=_auth(boss))
+
+    # Forgetting the PIN now fails step 1.
+    assert _login(client, "boss", "secret123").status_code == 401
+    # Wrong PIN fails too.
+    r = client.post("/api/v1/auth/login",
+                    data={"username": "boss", "password": "secret123", "pin": "9999"})
+    assert r.status_code == 401
+
+    # Right password + right PIN → step 1 returns a challenge, not the JWT.
+    r1 = client.post("/api/v1/auth/login",
+                     data={"username": "boss", "password": "secret123", "pin": "1234"})
+    assert r1.status_code == 200
+    p = r1.json()
+    assert p["access_token"] is None and p["challenge_token"]
+
+    # Wrong pattern in step 2 → 401, right pattern → JWT.
+    bad = client.post("/api/v1/auth/login/pattern",
+                      json={"challenge_token": p["challenge_token"], "pattern": "8765"})
+    assert bad.status_code == 401
+    ok = client.post("/api/v1/auth/login/pattern",
+                     json={"challenge_token": p["challenge_token"], "pattern": "01258"})
+    assert ok.status_code == 200
+    assert ok.json()["access_token"]
+
+
+def test_credential_change_requires_current(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    client.post("/api/v1/auth/pin", json={"pin": "1234"}, headers=_auth(boss))
+
+    # Trying to rotate the PIN without the current one is refused.
+    refused = client.post("/api/v1/auth/pin", json={"pin": "5678"}, headers=_auth(boss))
+    assert refused.status_code == 401
+    # With the current PIN it goes through.
+    ok = client.post("/api/v1/auth/pin",
+                     json={"pin": "5678", "current_pin": "1234"}, headers=_auth(boss))
+    assert ok.status_code == 200
+
+
+def test_admin_can_create_user_with_full_credentials(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    r = client.post("/api/v1/users",
+                    json={"username": "alice", "password": "secret123", "rank": "operador",
+                          "pin": "4321", "pattern": "0481"},
+                    headers=_auth(boss))
+    assert r.status_code == 201, r.text
+    # Alice now needs the full 2-step flow.
+    step1 = client.post("/api/v1/auth/login",
+                        data={"username": "alice", "password": "secret123", "pin": "4321"})
+    assert step1.status_code == 200 and step1.json()["challenge_token"]
+    step2 = client.post("/api/v1/auth/login/pattern",
+                        json={"challenge_token": step1.json()["challenge_token"],
+                              "pattern": "0481"})
+    assert step2.status_code == 200
 
 
 def test_security_feed_is_admin_only(client):

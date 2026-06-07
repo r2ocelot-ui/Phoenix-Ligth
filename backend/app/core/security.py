@@ -47,8 +47,19 @@ class TokenError(Exception):
 
 def create_access_token(subject: str, expires_minutes: int | None = None) -> str:
     exp = int(time.time()) + (expires_minutes or settings.access_token_expire_minutes) * 60
+    return _sign({"sub": subject, "exp": exp})
+
+
+def create_step_token(subject: str, *, step: int, expires_seconds: int = 90) -> str:
+    """Short-lived token that only validates one step of a multi-step login.
+    Carries ``step`` so the next endpoint can refuse anything but its own stage.
+    Default 90 s — enough to draw a pattern, too short to be useful if stolen."""
+    exp = int(time.time()) + expires_seconds
+    return _sign({"sub": subject, "exp": exp, "step": step})
+
+
+def _sign(payload: dict) -> str:
     header = {"alg": "HS256", "typ": "JWT"}
-    payload = {"sub": subject, "exp": exp}
     segments = [
         _b64url_encode(json.dumps(header, separators=(",", ":")).encode()),
         _b64url_encode(json.dumps(payload, separators=(",", ":")).encode()),

@@ -14,11 +14,22 @@ from app.models.lightpoint import LightPoint
 from app.models.user import User
 
 
+DEMO_PIN = "1234"
+DEMO_PATTERN = "01258"  # diagonal Z — easy to remember in the demo
+
+
 def seed_demo_admin(db: Session, username: str, password: str) -> None:
-    """Create a known owner account for demo logins (idempotent)."""
+    """Create a known owner account with PIN + pattern so the demo can log in
+    through the full 4-credential flow out of the box (idempotent)."""
     if db.query(User).filter(User.username == username).first():
         return
-    db.add(User(username=username, password_hash=hash_password(password), rank="owner"))
+    db.add(User(
+        username=username,
+        password_hash=hash_password(password),
+        pin_hash=hash_password(DEMO_PIN),
+        pattern_hash=hash_password(DEMO_PATTERN),
+        rank="owner",
+    ))
     db.commit()
 
 # (code, name, zone, lat, lon, number, color) — around central Madrid.

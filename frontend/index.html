@@ -223,10 +223,22 @@
       </div>
       <p class="tag">Telegestión y eficiencia de alumbrado público.<br/>Accede con tu cuenta para operar la red.</p>
       <div id="form-login">
-        <label>Usuario</label><input id="li-user" autocomplete="username" />
-        <label>Contraseña</label><input id="li-pass" type="password" autocomplete="current-password" />
-        <button class="btn" id="btn-login">Entrar</button>
-        <div class="switch">¿No tienes acceso? Pídeselo a un administrador.</div>
+        <div id="login-step1">
+          <label>Usuario</label><input id="li-user" autocomplete="username" />
+          <label>Contraseña</label><input id="li-pass" type="password" autocomplete="current-password" />
+          <label>PIN <span class="muted" style="font-weight:400">(si lo tienes)</span></label>
+          <input id="li-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" />
+          <button class="btn" id="btn-login">Continuar</button>
+          <div class="switch">¿No tienes acceso? Pídeselo a un administrador.</div>
+        </div>
+        <div id="login-step2" class="hidden" style="text-align:center">
+          <p class="tag" style="margin-bottom:8px">Paso 2 · Dibuja tu <strong>patrón</strong> de seguridad para terminar.</p>
+          <div id="login-pattern-host"></div>
+          <div class="row" style="justify-content:center; gap:8px; margin-top:10px">
+            <button class="btn ghost sm" id="btn-pat-back">← Volver</button>
+            <button class="btn ghost sm" id="btn-pat-reset">Repetir</button>
+          </div>
+        </div>
       </div>
       <div class="err" id="login-err"></div>
       <div id="demo-hint" class="muted" style="margin-top:14px;font-size:12px;text-align:center"></div>
@@ -313,14 +325,41 @@
   }
 
   // ============================ Autenticación ============================
-  async function doLogin(user, pass) {
+  // Login en 2 pasos:
+  //   paso 1 → usuario + contraseña + PIN  → puede devolver el JWT (si la cuenta
+  //            no tiene patrón) o un challenge_token corto (90 s) si lo tiene.
+  //   paso 2 → challenge_token + patrón    → JWT real.
+  async function loginStep1(user, pass, pin) {
     const body = new URLSearchParams({ username: user, password: pass });
+    if (pin) body.append("pin", pin);
     const r = await fetch(API + "/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
     const data = await r.json().catch(() => ({}));
     if (r.status === 429) throw new Error(data.detail || "Cuenta bloqueada temporalmente.");
     if (!r.ok) throw new Error(data.detail || "Credenciales inválidas");
-    state.token = data.access_token; localStorage.setItem("ph_token", state.token);
-    await boot();
+    if (data.access_token) { await acceptToken(data.access_token); return { done: true }; }
+    return { done: false, challenge: data.challenge_token, expiresIn: data.expires_in };
+  }
+  async function loginStep2(challenge, pattern) {
+    const r = await fetch(API + "/auth/login/pattern", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge_token: challenge, pattern }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.status === 429) throw new Error(data.detail || "Cuenta bloqueada temporalmente.");
+    if (!r.ok) throw new Error(data.detail || "Patrón incorrecto");
+    await acceptToken(data.access_token);
+  }
+  async function acceptToken(tok) {
+    state.token = tok; localStorage.setItem("ph_token", tok); await boot();
+  }
+  function showLoginStep(step) {
+    $("#login-step1").classList.toggle("hidden", step !== 1);
+    $("#login-step2").classList.toggle("hidden", step !== 2);
+    $("#login-err").textContent = "";
+    if (step === 1) {
+      ["li-pass", "li-pin"].forEach(id => { const e = document.getElementById(id); if (e) e.value = ""; });
+      setTimeout(() => $("#li-user").focus(), 50);
+    }
   }
   async function refreshMe() {
     try {
@@ -405,24 +444,77 @@
     return wrap;
   }
 
-  function showSetPattern() {
+  // Anti-keylogger: para rotar PIN/patrón hay que demostrar que conoces el
+  // actual. Si no hay credencial previa, el "actual" se omite.
+  function showSetPin() {
+    const hasPin = !!state.me?.has_pin;
     const modal = el("div", "modal"); const card = el("div", "modal-card");
-    card.innerHTML = `<h3>Mi patrón</h3><p class="desc">Une al menos <strong>4 puntos</strong> sin levantar el dedo. Sirve para desbloquear la sesión.</p>`;
-    let current = "";
+    card.innerHTML = `<h3>${hasPin ? "Cambiar mi PIN" : "Definir mi PIN"}</h3><p class="desc">Entre 4 y 8 dígitos. Se usa en el paso 1 del login y para desbloquear la sesión.</p>`;
     const err = el("div", "err"); err.style.textAlign = "center"; err.style.minHeight = "16px";
-    const pad = makePatternPad(seq => { current = seq; err.textContent = ""; });
-    card.append(pad, err);
+    const form = el("div"); form.style.display = "grid"; form.style.gap = "8px";
+    let curIn = null;
+    if (hasPin) {
+      curIn = el("input"); curIn.type = "password"; curIn.inputMode = "numeric"; curIn.maxLength = 8; curIn.placeholder = "PIN actual";
+      form.append(curIn);
+    }
+    const newIn = el("input"); newIn.type = "password"; newIn.inputMode = "numeric"; newIn.maxLength = 8; newIn.placeholder = "PIN nuevo (4-8 dígitos)";
+    form.append(newIn);
+    card.append(form, err);
     const actions = el("div", "actions");
     const save = el("button", "btn", "Guardar");
     save.onclick = async () => {
-      if (current.length < 4) { err.textContent = "Une al menos 4 puntos."; return; }
-      try { await api("/auth/pattern", { method: "POST", body: JSON.stringify({ pattern: current }) }); toast("Patrón guardado"); modal.remove(); await refreshMe(); }
+      const np = newIn.value.trim();
+      if (!/^\d{4,8}$/.test(np)) { err.textContent = "El PIN debe tener 4-8 dígitos."; return; }
+      const payload = { pin: np };
+      if (hasPin) payload.current_pin = (curIn?.value || "").trim();
+      try { await api("/auth/pin", { method: "POST", body: JSON.stringify(payload) }); toast("PIN actualizado"); modal.remove(); await refreshMe(); }
       catch (e) { err.textContent = e.message; }
     };
-    const rep = el("button", "btn ghost", "Repetir"); rep.onclick = () => { pad.reset(); current = ""; };
-    const del = el("button", "btn ghost", state.me?.has_pattern ? "Borrar" : "Cancelar");
-    del.onclick = async () => { if (state.me?.has_pattern) { try { await api("/auth/pattern", { method: "DELETE" }); toast("Patrón borrado"); await refreshMe(); } catch (e) { toast(e.message, true); } } modal.remove(); };
-    actions.append(save, rep, del); card.append(actions); modal.append(card); document.body.append(modal);
+    const cancel = el("button", "btn ghost", "Cancelar"); cancel.onclick = () => modal.remove();
+    const del = hasPin ? el("button", "btn ghost", "Borrar PIN") : null;
+    if (del) del.onclick = async () => { try { await api("/auth/pin", { method: "DELETE" }); toast("PIN borrado"); modal.remove(); await refreshMe(); } catch (e) { err.textContent = e.message; } };
+    actions.append(save, ...(del ? [del] : []), cancel);
+    card.append(actions); modal.append(card); document.body.append(modal);
+    setTimeout(() => (curIn || newIn).focus(), 50);
+  }
+
+  function showSetPattern() {
+    const hasPat = !!state.me?.has_pattern;
+    const modal = el("div", "modal"); const card = el("div", "modal-card");
+    card.innerHTML = `<h3>${hasPat ? "Cambiar mi patrón" : "Definir mi patrón"}</h3><p class="desc">${hasPat ? "Dibuja primero tu <strong>patrón actual</strong>, luego el nuevo." : "Une al menos <strong>4 puntos</strong> sin levantar el dedo. Es el paso 2 del login."}</p>`;
+    const err = el("div", "err"); err.style.textAlign = "center"; err.style.minHeight = "16px";
+    const stage = el("div", "muted"); stage.style.textAlign = "center"; stage.style.fontSize = "12px";
+    let current = "", next = "";
+    let phase = hasPat ? "current" : "next";
+    const updateStage = () => { stage.textContent = phase === "current" ? "1) Patrón actual" : (hasPat ? "2) Nuevo patrón" : "Nuevo patrón"); };
+    const pad = makePatternPad(seq => {
+      if (phase === "current") { current = seq; err.textContent = ""; }
+      else { next = seq; err.textContent = ""; }
+    });
+    card.append(stage, pad, err);
+    updateStage();
+    const actions = el("div", "actions");
+    const main = el("button", "btn", hasPat ? "Siguiente" : "Guardar");
+    const setMainLabel = () => { main.textContent = (phase === "current") ? "Siguiente" : "Guardar"; };
+    main.onclick = async () => {
+      if (phase === "current") {
+        if (current.length < 4) { err.textContent = "Une al menos 4 puntos."; return; }
+        phase = "next"; pad.reset(); next = ""; updateStage(); setMainLabel(); return;
+      }
+      if (next.length < 4) { err.textContent = "Une al menos 4 puntos."; return; }
+      try {
+        const payload = { pattern: next };
+        if (hasPat) payload.current_pattern = current;
+        await api("/auth/pattern", { method: "POST", body: JSON.stringify(payload) });
+        toast("Patrón guardado"); modal.remove(); await refreshMe();
+      } catch (e) { err.textContent = e.message; if (hasPat) { phase = "current"; pad.reset(); current = ""; updateStage(); setMainLabel(); } }
+    };
+    const rep = el("button", "btn ghost", "Repetir"); rep.onclick = () => { pad.reset(); if (phase === "current") current = ""; else next = ""; };
+    const del = hasPat ? el("button", "btn ghost", "Borrar patrón") : null;
+    if (del) del.onclick = async () => { try { await api("/auth/pattern", { method: "DELETE" }); toast("Patrón borrado"); modal.remove(); await refreshMe(); } catch (e) { err.textContent = e.message; } };
+    const cancel = el("button", "btn ghost", "Cancelar"); cancel.onclick = () => modal.remove();
+    actions.append(main, rep, ...(del ? [del] : []), cancel);
+    card.append(actions); modal.append(card); document.body.append(modal);
   }
 
   // ====== Bloqueo manual + desbloqueo con PIN o patrón ============
@@ -875,22 +967,50 @@
       // Alta de usuarios (solo admins). No hay auto-registro: el admin da el acceso.
       if (has("user:manage")) {
         const cp = el("div", "panel"); cp.style.marginBottom = "14px";
-        cp.append(el("div", null, "<strong>Crear usuario</strong> <span class='muted' style='font-size:12px'>· el acceso lo concede el administrador</span>"));
-        const row = el("div", "row"); row.style.marginTop = "10px"; row.style.gap = "8px"; row.style.flexWrap = "wrap";
-        const u = el("input"); u.placeholder = "usuario"; u.style.width = "150px";
-        const pw = el("input"); pw.type = "password"; pw.placeholder = "contraseña (mín. 6)"; pw.style.width = "190px";
-        const rk = el("select"); rk.style.width = "180px";
+        cp.append(el("div", null, "<strong>Crear usuario</strong> <span class='muted' style='font-size:12px'>· define las 4 credenciales (PIN/patrón son opcionales, el propio usuario los podrá cambiar al entrar)</span>"));
+        const grid = el("div"); grid.style.display = "grid"; grid.style.gridTemplateColumns = "1fr 1fr"; grid.style.gap = "12px"; grid.style.marginTop = "12px";
+
+        // Columna izquierda: identidad + contraseña + PIN + rango.
+        const left = el("div"); left.style.display = "grid"; left.style.gap = "8px";
+        const u = el("input"); u.placeholder = "usuario";
+        const pw = el("input"); pw.type = "password"; pw.placeholder = "contraseña (mín. 6)";
+        const pin = el("input"); pin.type = "password"; pin.inputMode = "numeric"; pin.maxLength = 8; pin.placeholder = "PIN (4-8 dígitos, opcional)";
+        const rk = el("select");
         const allowed = (state.ranksCatalog || []).filter(r => r.id !== "owner");
         allowed.forEach(r => { const o = el("option", null, r.label); o.value = r.id; if (r.id === "novato") o.selected = true; rk.append(o); });
-        const hint = el("div", "muted"); hint.style.fontSize = "12px"; hint.style.flexBasis = "100%"; hint.style.marginTop = "4px";
+        const hint = el("div", "muted"); hint.style.fontSize = "12px";
         const updateHint = () => { const r = allowed.find(x => x.id === rk.value); hint.textContent = r ? r.description : ""; };
         rk.onchange = updateHint; updateHint();
-        const b = el("button", "btn sm", "Crear");
+        left.append(u, pw, pin, rk, hint);
+
+        // Columna derecha: widget de patrón inline.
+        const right = el("div"); right.style.display = "grid"; right.style.justifyItems = "center"; right.style.gap = "6px";
+        right.append(el("div", "muted", "Patrón (opcional)"));
+        let pattern = "";
+        const pad = makePatternPad(seq => { pattern = seq; });
+        right.append(pad);
+        const reset = el("button", "btn ghost sm", "Repetir patrón"); reset.onclick = () => { pad.reset(); pattern = ""; };
+        right.append(reset);
+
+        grid.append(left, right); cp.append(grid);
+
+        const b = el("button", "btn", "Crear usuario"); b.style.marginTop = "12px";
         b.onclick = async () => {
-          try { await api("/users", { method: "POST", body: JSON.stringify({ username: u.value.trim(), password: pw.value, rank: rk.value }) }); toast("Usuario creado: " + u.value.trim()); loadUsers(); }
-          catch (e) { toast(e.message, true); }
+          if (!u.value.trim()) { toast("Falta el usuario.", true); return; }
+          if (pw.value.length < 6) { toast("La contraseña debe tener al menos 6 caracteres.", true); return; }
+          if (pin.value && !/^\d{4,8}$/.test(pin.value)) { toast("PIN: 4-8 dígitos.", true); return; }
+          if (pattern && pattern.length < 4) { toast("El patrón debe unir al menos 4 puntos.", true); return; }
+          const body = { username: u.value.trim(), password: pw.value, rank: rk.value };
+          if (pin.value) body.pin = pin.value;
+          if (pattern) body.pattern = pattern;
+          try {
+            await api("/users", { method: "POST", body: JSON.stringify(body) });
+            toast("Usuario creado: " + body.username);
+            u.value = pw.value = pin.value = ""; pad.reset(); pattern = "";
+            loadUsers();
+          } catch (e) { toast(e.message, true); }
         };
-        row.append(u, pw, rk, b, hint); cp.append(row); c.append(cp);
+        cp.append(b); c.append(cp);
       }
       const p = el("div", "panel");
       const t = el("table");
@@ -1000,7 +1120,11 @@
       if (d.demo_mode && d.demo_username) {
         if (!$("#li-user").value) $("#li-user").value = d.demo_username;
         if (!$("#li-pass").value) $("#li-pass").value = d.demo_password || "";
-        $("#demo-hint").innerHTML = `Modo demo · entra con <span class="mono">${d.demo_username} / ${d.demo_password}</span>`;
+        if (!$("#li-pin").value && d.demo_pin) $("#li-pin").value = d.demo_pin;
+        state.demoPattern = d.demo_pattern || null;
+        const pinTxt = d.demo_pin ? ` · PIN <span class="mono">${d.demo_pin}</span>` : "";
+        const patTxt = d.demo_pattern ? ` · patrón <span class="mono">${d.demo_pattern}</span>` : "";
+        $("#demo-hint").innerHTML = `Modo demo · <span class="mono">${d.demo_username} / ${d.demo_password}</span>${pinTxt}${patTxt}`;
       }
     } catch (e) {}
   }
@@ -1012,23 +1136,37 @@
   } else {
     loadInfo();
   }
-  $("#btn-login").onclick = async () => { try { $("#login-err").textContent = ""; await doLogin($("#li-user").value.trim(), $("#li-pass").value); } catch (e) { $("#login-err").textContent = netMsg(e); } };
+  $("#btn-login").onclick = async () => {
+    $("#login-err").textContent = "";
+    const btn = $("#btn-login"); btn.disabled = true;
+    try {
+      const r = await loginStep1($("#li-user").value.trim(), $("#li-pass").value, $("#li-pin").value.trim());
+      if (r.done) return;
+      // Paso 2 — montar widget patrón. El challenge dura 90 s.
+      state.loginChallenge = r.challenge;
+      const host = $("#login-pattern-host"); host.innerHTML = "";
+      const pad = makePatternPad(async seq => {
+        if (seq.length < 4) return;
+        try { await loginStep2(state.loginChallenge, seq); }
+        catch (e) { $("#login-err").textContent = e.message; setTimeout(() => pad.reset(), 600); }
+      });
+      host.append(pad);
+      state.loginPad = pad;
+      showLoginStep(2);
+    } catch (e) { $("#login-err").textContent = netMsg(e); }
+    finally { btn.disabled = false; }
+  };
+  $("#btn-pat-back").onclick = () => { state.loginChallenge = null; showLoginStep(1); };
+  $("#btn-pat-reset").onclick = () => { if (state.loginPad) state.loginPad.reset(); $("#login-err").textContent = ""; };
   $("#btn-logout").onclick = logout;
   $("#btn-lock").onclick = showLockScreen;
   $("#btn-emergency").onclick = emergencyAllOn;
-  $("#btn-pin").onclick = async () => {
-    const cur = state.me?.has_pin;
-    const np = prompt(cur ? "Cambia tu PIN (4–8 dígitos). Vacío para borrarlo:" : "Define tu PIN (4–8 dígitos):");
-    if (np === null) return;
-    try {
-      if (np === "") { await api("/auth/pin", { method: "DELETE" }); toast("PIN borrado"); }
-      else { await api("/auth/pin", { method: "POST", body: JSON.stringify({ pin: np }) }); toast("PIN actualizado"); }
-      await refreshMe();
-    } catch (e) { toast(e.message, true); }
-  };
+  $("#btn-pin").onclick = showSetPin;
   $("#btn-pattern").onclick = showSetPattern;
   document.querySelectorAll("#nav a").forEach(a => a.onclick = () => go(a.dataset.view));
-  $("#li-pass").addEventListener("keydown", e => { if (e.key === "Enter") $("#btn-login").click(); });
+  ["li-pass", "li-pin"].forEach(id => {
+    $("#" + id).addEventListener("keydown", e => { if (e.key === "Enter") $("#btn-login").click(); });
+  });
 
   if (state.token) boot().catch(() => logout());
   </script>

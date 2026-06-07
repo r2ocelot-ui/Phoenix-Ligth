@@ -5,7 +5,7 @@ from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.user import (
-    PasswordSet,
+    PasswordReset,
     PermissionOverride,
     RankChange,
     UserCreateAdmin,
@@ -66,6 +66,8 @@ def create_user(
         username=body.username,
         email=body.email,
         password_hash=hash_password(body.password),
+        pin_hash=hash_password(body.pin) if body.pin else None,
+        pattern_hash=hash_password(body.pattern) if body.pattern else None,
         rank=body.rank,
     )
     db.add(user)
@@ -73,7 +75,8 @@ def create_user(
     db.refresh(user)
     audit_log.record(
         db, username=actor.username, action="user.create",
-        target=user.username, detail={"rank": user.rank},
+        target=user.username,
+        detail={"rank": user.rank, "pin": bool(body.pin), "pattern": bool(body.pattern)},
     )
     return user
 
@@ -81,7 +84,7 @@ def create_user(
 @router.post("/{user_id}/password")
 def set_password(
     user_id: int,
-    body: PasswordSet,
+    body: PasswordReset,
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> dict:

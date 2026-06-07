@@ -205,6 +205,47 @@
     .kpis-sm .kpi { padding: 10px 14px; }
     .kpis-sm .k { font-size: 11px; letter-spacing: 0.6px; }
     .kpis-sm .v { font-size: 22px; }
+    /* ===== Topología: grid de tarjetas compactas (escala a 100+ CMs) ===== */
+    .topo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .topo-card {
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0; cursor: pointer;
+      transition: background .15s, transform .12s;
+      overflow: hidden;
+    }
+    .topo-card:hover { background: rgba(255,255,255,0.05); transform: translateY(-1px); }
+    .topo-head { padding: 10px 12px; }
+    .topo-title { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .topo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+    .topo-dot.ok { background: var(--ok); }
+    .topo-dot.warn { background: #f59e0b; }
+    .topo-dot.bad { background: #ef4444; animation: pulse 1.6s infinite; }
+    .topo-dot.off { background: #475569; }
+    .topo-name { font-size: 11px; margin-top: 3px; }
+    .topo-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--border);
+    }
+    .topo-stats > div {
+      padding: 8px 6px; text-align: center; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .topo-stats > div:last-child { border-right: 0; }
+    .topo-num { font-size: 16px; font-weight: 600; }
+    .topo-stats .muted { font-size: 10px; }
+    /* ===== Paginador para tablas largas ===== */
+    .paginator {
+      display: grid; grid-template-columns: 1fr auto 1fr;
+      align-items: center; padding: 8px 4px; gap: 12px;
+    }
+    .paginator > div:last-child { display: flex; justify-content: flex-end; }
+    .paginator select { background: rgba(255,255,255,0.04); color: var(--fg);
+      border: 1px solid var(--border-2); border-radius: 6px; padding: 4px 8px; }
+    .paginator .row { gap: 8px; align-items: center; }
     /* ===== Permisos: tabs internas + acordeón de usuarios ===== */
     .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
     .tab {
@@ -1414,22 +1455,85 @@
     const c = $("#content"); c.innerHTML = "";
     try {
       const tp = await api("/topology");
-      if (!tp.cabinets.length) { c.append(el("div", "empty", "Sin topología todavía. Da de alta cuadros, circuitos y farolas.")); return; }
-      tp.cabinets.forEach(cab => {
-        const p = el("div", "panel"); p.style.marginBottom = "14px";
-        p.append(el("div", "row between", `<div><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cab.color};margin-right:8px"></span><strong>CM${cab.number} · ${cab.name || cab.code}</strong> <span class="muted">${cab.code}</span></div><span class="muted">${cab.points.length} farolas · ${cab.circuits.length} circuitos</span>`));
-        const t = el("table"); t.innerHTML = `<thead><tr><th>Circuito</th><th>Color</th><th>Farolas</th><th>Fases</th></tr></thead>`;
-        const tb = el("tbody");
-        cab.circuits.forEach(ci => {
-          const cpts = cab.points.filter(pt => pt.circuit_id === ci.id);
-          const phases = [...new Set(cpts.map(pt => pt.phase))].sort().join(", ") || "—";
-          const tr = el("tr");
-          tr.innerHTML = `<td>Circuito ${ci.number}</td><td><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${ci.color};margin-right:6px"></span><span class="mono">${ci.color}</span></td><td class="mono">${cpts.length}</td><td>${phases}</td>`;
-          tb.append(tr);
+      // Filtro + búsqueda. Crucial cuando lleguen los 100+ cuadros de un
+      // municipio real (caso "Benidorm") — sin esto la pestaña sería ilegible.
+      const bar = el("div", "row"); bar.style.marginBottom = "12px"; bar.style.gap = "10px"; bar.style.flexWrap = "wrap";
+      const search = el("input"); search.placeholder = "Buscar por código, nombre o zona…"; search.style.flex = "1"; search.style.minWidth = "240px";
+      const counter = el("span", "muted"); counter.style.fontSize = "12px";
+      bar.append(search, counter);
+      c.append(bar);
+      const grid = el("div", "topo-grid"); c.append(grid);
+
+      if (!tp.cabinets.length) {
+        c.append(el("div", "empty", "Sin topología todavía. Da de alta cuadros, circuitos y farolas."));
+        return;
+      }
+
+      const draw = () => {
+        const q = search.value.trim().toLowerCase();
+        const items = tp.cabinets.filter(cab => {
+          if (!q) return true;
+          return (cab.code || "").toLowerCase().includes(q)
+              || (cab.name || "").toLowerCase().includes(q)
+              || (cab.zone || "").toLowerCase().includes(q);
         });
-        t.append(tb); p.append(t); c.append(p);
-      });
+        counter.textContent = `${items.length} de ${tp.cabinets.length} cuadros`;
+        grid.innerHTML = "";
+        items.forEach(cab => grid.append(buildTopoCard(cab, tp)));
+        if (!items.length) grid.append(el("div", "empty", "Ningún cuadro coincide con la búsqueda."));
+      };
+      search.oninput = draw;
+      draw();
     } catch (e) { c.append(el("div", "empty", e.message)); }
+  }
+
+  function buildTopoCard(cab, tp) {
+    const card = el("div", "topo-card");
+    const cpts = cab.points;
+    const phases = [...new Set(cpts.map(pt => pt.phase))].sort();
+    const statusCls = !cab.online ? "off" : (cab.status === "critical" ? "bad" : (cab.status === "warning" ? "warn" : "ok"));
+    card.innerHTML = `
+      <div class="topo-head" style="border-left:3px solid ${cab.color}">
+        <div class="topo-title">
+          <span class="topo-dot ${statusCls}"></span>
+          <strong>CM${cab.number}</strong>
+          <span class="muted mono" style="font-size:11px">${cab.code}</span>
+        </div>
+        <div class="topo-name muted">${cab.name || ""}</div>
+      </div>
+      <div class="topo-stats">
+        <div><span class="topo-num">${cab.circuits.length}</span><span class="muted">circuitos</span></div>
+        <div><span class="topo-num">${cpts.length}</span><span class="muted">luminarias</span></div>
+        <div><span class="topo-num">${phases.length || "—"}</span><span class="muted">fases ${phases.join(" ") || ""}</span></div>
+      </div>`;
+    card.onclick = () => openTopoDetail(cab, tp);
+    return card;
+  }
+
+  function openTopoDetail(cab, tp) {
+    const modal = el("div", "modal");
+    const card = el("div", "modal-card");
+    card.style.maxWidth = "640px";
+    const cpts = cab.points;
+    card.innerHTML = `
+      <h3 style="margin:0 0 4px"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cab.color};margin-right:8px"></span>CM${cab.number} · ${cab.name || cab.code}</h3>
+      <div class="muted" style="font-size:12px; margin-bottom:12px">${cab.code} · ${cab.zone || "sin zona"} · ${cpts.length} luminarias · ${cab.circuits.length} circuitos</div>`;
+    const t = el("table");
+    t.innerHTML = `<thead><tr><th>Circuito</th><th>Color</th><th>Luminarias</th><th>Fases</th></tr></thead>`;
+    const tb = el("tbody");
+    cab.circuits.forEach(ci => {
+      const list = cpts.filter(pt => pt.circuit_id === ci.id);
+      const phases = [...new Set(list.map(pt => pt.phase))].sort().join(", ") || "—";
+      const tr = el("tr");
+      tr.innerHTML = `<td>Circuito ${ci.number}</td><td><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${ci.color};margin-right:6px"></span><span class="mono">${ci.color}</span></td><td class="mono">${list.length}</td><td>${phases}</td>`;
+      tb.append(tr);
+    });
+    if (!cab.circuits.length) tb.append(el("tr", null, `<td colspan="4" class="muted" style="text-align:center; padding:10px">Sin circuitos definidos.</td>`));
+    t.append(tb); card.append(t);
+    const close = el("button", "btn ghost sm", "Cerrar"); close.style.marginTop = "12px";
+    close.onclick = () => modal.remove();
+    card.append(close);
+    modal.append(card); document.body.append(modal);
   }
 
   // ============================ Usuarios ============================
@@ -1999,21 +2103,58 @@
   async function loadAudit() {
     const c = $("#content"); c.innerHTML = "";
     try {
-      const entries = await api("/audit?limit=150");
+      const entries = await api("/audit?limit=500");
       const p = el("div", "panel");
+      const tb = el("tbody");
       const t = el("table");
       t.innerHTML = `<thead><tr><th>Hora</th><th>Usuario</th><th>Acción</th><th>Objetivo</th><th>Detalle</th></tr></thead>`;
-      const tb = el("tbody");
-      entries.forEach(e => {
-        const tr = el("tr");
-        const when = new Date(e.timestamp).toLocaleString();
-        tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge">${e.action}</span></td><td class="mono">${e.target || "—"}</td><td class="muted" style="font-size:12px">${e.detail ? JSON.stringify(e.detail) : ""}</td>`;
-        tb.append(tr);
-      });
       t.append(tb); p.append(t);
+      const renderPage = (rows) => {
+        tb.innerHTML = "";
+        rows.forEach(e => {
+          const tr = el("tr");
+          const when = new Date(e.timestamp).toLocaleString();
+          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge">${e.action}</span></td><td class="mono">${e.target || "—"}</td><td class="muted" style="font-size:12px">${e.detail ? JSON.stringify(e.detail) : ""}</td>`;
+          tb.append(tr);
+        });
+      };
+      const pager = paginator(entries, renderPage);
+      p.append(pager);
       if (!entries.length) p.append(el("div", "empty", "Sin registros."));
       c.append(p);
     } catch (e) { c.append(el("div", "empty", e.message)); }
+  }
+
+  // Paginador genérico para tablas largas (auditoría, seguridad…). Inyecta
+  // controles "‹ ›" y un select de tamaño de página. Llama a renderPage(rows)
+  // cada vez que el usuario cambia de página o de tamaño.
+  function paginator(rows, renderPage, opts = {}) {
+    const sizes = opts.sizes || [10, 25, 50, 100];
+    const wrap = el("div", "paginator");
+    let page = 0; let size = sizes[0];
+    const update = () => {
+      const total = rows.length;
+      const pages = Math.max(1, Math.ceil(total / size));
+      page = Math.min(page, pages - 1);
+      const slice = rows.slice(page * size, (page + 1) * size);
+      renderPage(slice);
+      wrap.innerHTML = "";
+      const left = el("div", "muted"); left.style.fontSize = "12px";
+      left.textContent = `${total ? page * size + 1 : 0}–${Math.min((page + 1) * size, total)} de ${total}`;
+      const center = el("div", "row");
+      const prev = el("button", "btn ghost sm", "‹"); prev.disabled = page === 0;
+      const next = el("button", "btn ghost sm", "›"); next.disabled = page >= pages - 1;
+      const label = el("span", "muted"); label.style.fontSize = "12px"; label.textContent = `Página ${page + 1} / ${pages}`;
+      prev.onclick = () => { page = Math.max(0, page - 1); update(); };
+      next.onclick = () => { page = Math.min(pages - 1, page + 1); update(); };
+      center.append(prev, label, next);
+      const sizeSel = el("select"); sizeSel.style.fontSize = "12px";
+      sizes.forEach(s => { const o = el("option", null, s + " / pág"); o.value = s; if (s === size) o.selected = true; sizeSel.append(o); });
+      sizeSel.onchange = () => { size = parseInt(sizeSel.value, 10); page = 0; update(); };
+      wrap.append(left, center, sizeSel);
+    };
+    update();
+    return wrap;
   }
 
   // ============================ Seguridad (solo admins) ============================
@@ -2152,22 +2293,25 @@
       } catch (e) { dev.append(el("div", "empty", e.message)); }
       c.append(dev);
 
-      // ----- Feed de eventos -----
+      // ----- Feed de eventos (paginado) -----
       const p = el("div", "panel"); p.style.marginTop = "16px";
       p.append(el("div", "row between", "<strong>Historial de seguridad</strong> <span class='muted' style='font-size:12px'>append-only</span>"));
       const t = el("table");
       t.innerHTML = `<thead><tr><th>Hora</th><th>Usuario</th><th>Evento</th><th>Detalle</th></tr></thead>`;
-      const tb = el("tbody");
-      entries.forEach(e => {
-        const tr = el("tr");
-        const when = new Date(e.timestamp).toLocaleString();
-        const cls = SEC_BADGE[e.action] || "";
-        const label = SEC_LABEL[e.action] || e.action;
-        const det = e.detail ? Object.entries(e.detail).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ") : "";
-        tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge ${cls}">${label}</span></td><td class="muted" style="font-size:12px">${det}</td>`;
-        tb.append(tr);
-      });
-      t.append(tb); p.append(t);
+      const tb = el("tbody"); t.append(tb); p.append(t);
+      const renderPage = (rows) => {
+        tb.innerHTML = "";
+        rows.forEach(e => {
+          const tr = el("tr");
+          const when = new Date(e.timestamp).toLocaleString();
+          const cls = SEC_BADGE[e.action] || "";
+          const label = SEC_LABEL[e.action] || e.action;
+          const det = e.detail ? Object.entries(e.detail).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ") : "";
+          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge ${cls}">${label}</span></td><td class="muted" style="font-size:12px">${det}</td>`;
+          tb.append(tr);
+        });
+      };
+      p.append(paginator(entries, renderPage));
       if (!entries.length) p.append(el("div", "empty", "Sin eventos de seguridad."));
       c.append(p);
     } catch (e) { c.append(el("div", "empty", e.message)); }

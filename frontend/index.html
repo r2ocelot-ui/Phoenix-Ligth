@@ -377,6 +377,13 @@
     .project-picker .opt.active { background: rgba(34, 197, 94, 0.12); }
     .project-picker .opt small { color: var(--dim); font-size: 11px; }
     .inicio-map { height: calc(100vh - 380px); min-height: 380px; }
+    /* Banner guía del modo "añadir CM en el mapa" (estilo Hydra). */
+    .map-add-banner {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 800; background: rgba(34, 197, 94, 0.95); color: #04210f;
+      font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 999px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4); pointer-events: none; white-space: nowrap;
+    }
     .inicio-map #map { height: 100%; border-radius: 12px; background: #0b1120; }
     /* No fade-in on the map tiles themselves — defensive against the
        "tile pulse" some browsers exhibit when Leaflet recomputes size. */
@@ -1165,6 +1172,43 @@
     if (state.view === "alarmas") return renderAlarmas(c);
   }
 
+  // Modo "añadir CM en el mapa" (estilo Hydra "activar modo añadir"). Al
+  // activarlo, el siguiente click en el mapa captura lat/lon y abre el
+  // formulario de nuevo cuadro con esas coordenadas ya rellenas.
+  function toggleAddCmMode(btn) {
+    const map = window._map;
+    if (!map) { toast("El mapa aún no está listo.", true); return; }
+    state.addCmMode = !state.addCmMode;
+    btn.classList.toggle("ghost", !state.addCmMode);
+    btn.textContent = state.addCmMode ? "✕ Cancelar (click en el mapa…)" : "➕ Añadir CM en el mapa";
+    const host = document.getElementById("map");
+    if (host) host.style.cursor = state.addCmMode ? "crosshair" : "";
+    if (state.addCmMode) {
+      // Banner guía sobre el mapa.
+      if (!document.getElementById("add-cm-banner")) {
+        const banner = el("div", null, "📍 Haz click en el punto del mapa donde está el centro de mando");
+        banner.id = "add-cm-banner"; banner.className = "map-add-banner";
+        host?.parentElement?.append(banner);
+      }
+      map.once("click", (ev) => {
+        // Captura una sola vez; resetea el modo y abre el form.
+        finishAddCmMode();
+        openCabinetForm(null, { latitude: ev.latlng.lat, longitude: ev.latlng.lng });
+      });
+    } else {
+      finishAddCmMode();
+    }
+  }
+  function finishAddCmMode() {
+    state.addCmMode = false;
+    const btn = state.addCmBtn;
+    if (btn) { btn.classList.add("ghost"); btn.textContent = "➕ Añadir CM en el mapa"; }
+    const host = document.getElementById("map");
+    if (host) host.style.cursor = "";
+    if (window._map) window._map.off("click");
+    document.getElementById("add-cm-banner")?.remove();
+  }
+
   // ============================== INICIO ==============================
   // Hydra-style: the home view IS the operational map. KPIs sit above as a
   // compact strip; the map fills the rest of the screen. The bottom event
@@ -1177,6 +1221,9 @@
   // detach the DOM node and re-attach it when the user comes back, which
   // keeps the same map, same zoom, same markers.
   function renderInicio(c) {
+    // Limpia un posible modo "añadir CM" que quedara activo de una visita
+    // anterior (el mapa persiste entre vistas, así que el listener también).
+    if (state.addCmMode || document.getElementById("add-cm-banner")) finishAddCmMode();
     const cabs = state.cabinets;
     const online = cabs.filter(x => x.online).length;
     const alarms = cabs.reduce((n, x) => n + x.alarms.length, 0);
@@ -1211,6 +1258,15 @@
       k => state.mapMode === k,
       k => { state.mapMode = k; drawTopology(); });
     bar.append(labeled("colorear por:", colorSeg));
+    // Botón estilo Hydra "Activar modo añadir": click en el mapa → form con
+    // las coordenadas ya rellenas. Solo lo ven quienes pueden gestionar.
+    if (has("cabinet:manage")) {
+      const addBtn = el("button", "btn sm ghost", "➕ Añadir CM en el mapa");
+      addBtn.onclick = () => toggleAddCmMode(addBtn);
+      state.addCmBtn = addBtn;
+      state.addCmMode = false;
+      bar.append(addBtn);
+    }
     c.append(bar);
 
     if (persistedWrap && window._map) {
@@ -1671,10 +1727,15 @@
   }
 
   // --- Formularios de alta/edición ---------------------------------------
-  function openCabinetForm(cab) {
+  function openCabinetForm(cab, prefill) {
     const editing = !!cab;
     const modal = el("div", "modal"); const card = el("div", "modal-card");
     card.innerHTML = `<h3 style="margin:0 0 12px">${editing ? "Editar cuadro" : "Nuevo centro de mando"}</h3>`;
+    if (!editing && prefill) {
+      const hint = el("div", "muted"); hint.style.fontSize = "12px"; hint.style.marginBottom = "10px";
+      hint.innerHTML = `📍 Coordenadas captadas del mapa: <span class="mono">${prefill.latitude.toFixed(5)}, ${prefill.longitude.toFixed(5)}</span>`;
+      card.append(hint);
+    }
     const form = el("div"); form.style.display = "grid"; form.style.gap = "10px";
     const code = el("input"); code.placeholder = "Código (p.ej. CAB-005)"; code.value = cab?.code || "";
     if (editing) { code.disabled = true; code.style.opacity = ".6"; }
@@ -1684,8 +1745,8 @@
     const color = el("input"); color.type = "color"; color.value = cab?.color || "#f97316";
     const colorWrap = el("div", "row"); colorWrap.style.gap = "8px"; colorWrap.style.alignItems = "center";
     colorWrap.append(el("span", "muted", "Color en el mapa"), color);
-    const lat = el("input"); lat.placeholder = "Latitud (opcional)"; lat.value = cab?.latitude ?? "";
-    const lon = el("input"); lon.placeholder = "Longitud (opcional)"; lon.value = cab?.longitude ?? "";
+    const lat = el("input"); lat.placeholder = "Latitud (opcional)"; lat.value = cab?.latitude ?? prefill?.latitude ?? "";
+    const lon = el("input"); lon.placeholder = "Longitud (opcional)"; lon.value = cab?.longitude ?? prefill?.longitude ?? "";
     const coords = el("div", "row"); coords.style.gap = "8px"; coords.append(lat, lon);
     form.append(code, name, number, zone, colorWrap, coords);
     card.append(form);
@@ -1709,7 +1770,15 @@
           await api("/cabinets/registry", { method: "POST", body: JSON.stringify(payload) });
           toast("Cuadro creado: " + payload.code);
         }
-        modal.remove(); loadTopologia();
+        modal.remove();
+        // Si estoy en Inicio (mapa), refresco topología y redibujo. En
+        // Topología, recargo la rejilla.
+        if (state.view === "inicio") {
+          try { window._topology = await api("/topology"); drawTopology(); } catch (e) {}
+          await refreshLive();
+        } else {
+          loadTopologia();
+        }
       } catch (e) { toast(e.message, true); }
     };
     const cancel = el("button", "btn ghost sm", "Cancelar"); cancel.onclick = () => modal.remove();
@@ -2224,6 +2293,29 @@
       catch (e) { toast(e.message, true); }
     };
     acts.append(pw);
+    // El backend ya rechaza borrarse a uno mismo y borrar a iguales/superiores;
+    // ocultamos el botón en esos casos para evitar al usuario el error.
+    const myId = state.me?.id;
+    const canDelete = u.id !== myId
+      && (state.ranksCatalog || []).find(r => r.id === u.rank)
+      && (() => {
+        const myLevel = (state.ranksCatalog || []).find(r => r.id === state.me?.rank)?.level ?? 0;
+        const targetLevel = (state.ranksCatalog || []).find(r => r.id === u.rank)?.level ?? 0;
+        return targetLevel < myLevel;
+      })();
+    if (canDelete) {
+      const del = el("button", "btn ghost sm", "🗑 Eliminar usuario"); del.style.color = "#ef4444";
+      del.onclick = async () => {
+        if (!confirm(`¿Eliminar al usuario "${u.username}"?\n\nEsta acción no se puede deshacer.`)) return;
+        try {
+          await api(`/users/${u.id}`, { method: "DELETE" });
+          toast(`Usuario "${u.username}" eliminado`);
+          state.expandedUser = null;
+          loadPermisos();
+        } catch (e) { toast(e.message, true); }
+      };
+      acts.append(del);
+    }
     wrap.append(acts);
     return wrap;
   }

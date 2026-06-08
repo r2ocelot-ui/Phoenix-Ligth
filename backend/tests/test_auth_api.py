@@ -327,6 +327,39 @@ def test_admin_can_create_user_with_full_credentials(client):
     assert step2.status_code == 200
 
 
+def test_delete_user_happy_path(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    _create_user(client, boss, "alice", rank="tecnico")
+    alice_id = next(u["id"] for u in client.get("/api/v1/users", headers=_auth(boss)).json()
+                    if u["username"] == "alice")
+    r = client.delete(f"/api/v1/users/{alice_id}", headers=_auth(boss))
+    assert r.status_code == 200
+    assert all(u["username"] != "alice" for u in client.get("/api/v1/users", headers=_auth(boss)).json())
+
+
+def test_delete_user_refuses_self(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    boss_id = client.get("/api/v1/auth/me", headers=_auth(boss)).json()["id"]
+    r = client.delete(f"/api/v1/users/{boss_id}", headers=_auth(boss))
+    assert r.status_code == 403
+
+
+def test_delete_user_refuses_equal_or_higher_rank(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Crear otro owner sería contradictorio porque solo el primero es owner.
+    # Probamos con dos admin_proyecto: uno no puede borrar al otro.
+    _create_user(client, boss, "ana", rank="admin_proyecto")
+    _create_user(client, boss, "bea", rank="admin_proyecto")
+    ana = _token(client, "ana")
+    bea_id = next(u["id"] for u in client.get("/api/v1/users", headers=_auth(boss)).json()
+                  if u["username"] == "bea")
+    r = client.delete(f"/api/v1/users/{bea_id}", headers=_auth(ana))
+    assert r.status_code == 403
+
+
 def test_security_feed_is_admin_only(client):
     _register(client, "boss")
     boss = _token(client, "boss")

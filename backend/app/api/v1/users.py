@@ -114,6 +114,34 @@ def get_user(
     return user_detail(_get(db, user_id, actor))
 
 
+@router.delete("/{user_id}")
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+) -> dict:
+    """Borra un usuario. Reglas defensivas:
+    - No puedes borrarte a ti mismo (evita quedarse sin admins).
+    - No puedes borrar un usuario de rango ≥ al tuyo (anti-escalado).
+    - Aplica el filtro de proyecto (un admin de Madrid no borra a Barcelona).
+    """
+    user = _get(db, user_id, actor)
+    if user.id == actor.id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "No puedes borrarte a ti mismo")
+    if ranks.rank_level(user.rank) >= ranks.rank_level(actor.rank):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "No puedes borrar a un usuario de tu mismo rango o superior",
+        )
+    username = user.username
+    db.delete(user)
+    db.commit()
+    audit_log.record(
+        db, username=actor.username, action="user.delete", target=username,
+    )
+    return {"ok": True}
+
+
 @router.post("/{user_id}/rank", response_model=UserRead)
 def change_rank(
     user_id: int,

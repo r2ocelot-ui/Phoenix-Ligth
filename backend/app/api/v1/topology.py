@@ -116,11 +116,31 @@ def update_circuit(
     circuit = db.get(Circuit, circuit_id)
     if not circuit:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Circuit not found")
-    for key, value in body.model_dump(exclude_unset=True).items():
+    data = body.model_dump(exclude_unset=True)
+
+    # Reasignación a otro CM: validar destino y arrastrar las luminarias del
+    # circuito (su cabinet_code) para que no queden huérfanas en el viejo CM.
+    moved_lights = 0
+    new_code = data.pop("cabinet_code", None)
+    if new_code and new_code != circuit.cabinet_code:
+        if not db.query(Cabinet).filter(Cabinet.code == new_code).first():
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"CM destino no encontrado: {new_code}")
+        old_code = circuit.cabinet_code
+        circuit.cabinet_code = new_code
+        for lp in db.query(LightPoint).filter(LightPoint.circuit_id == circuit.id):
+            lp.cabinet_code = new_code
+            moved_lights += 1
+        audit_log.record(
+            db, username=actor.username, action="circuit.reassign",
+            target=str(circuit_id), detail={"from": old_code, "to": new_code, "lights": moved_lights},
+        )
+
+    for key, value in data.items():
         setattr(circuit, key, value)
     db.commit()
     db.refresh(circuit)
-    audit_log.record(db, username=actor.username, action="circuit.update", target=str(circuit_id))
+    if not new_code:
+        audit_log.record(db, username=actor.username, action="circuit.update", target=str(circuit_id))
     return circuit
 
 

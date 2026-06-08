@@ -104,6 +104,37 @@ def test_delete_circuit_refuses_with_attached_lightpoints(client):
     assert client.delete(f"/api/v1/circuits/{circ['id']}", headers=owner).status_code == 200
 
 
+def test_reassign_circuit_moves_lightpoints_to_new_cabinet(client):
+    owner = _owner(client)
+    # Dos CMs.
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-A", "name": "A", "number": 1}, headers=owner)
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-B", "name": "B", "number": 2}, headers=owner)
+    # Circuito con 2 luminarias en CAB-A.
+    circ = client.post("/api/v1/circuits", json={"cabinet_code": "CAB-A", "number": 1}, headers=owner).json()
+    for n in (1, 2):
+        client.post("/api/v1/lightpoints",
+                    json={"cabinet_code": "CAB-A", "circuit_id": circ["id"], "number": n, "phase": "L1"},
+                    headers=owner)
+    # Reasignar el circuito a CAB-B.
+    r = client.patch(f"/api/v1/circuits/{circ['id']}", json={"cabinet_code": "CAB-B"}, headers=owner)
+    assert r.status_code == 200, r.text
+    assert r.json()["cabinet_code"] == "CAB-B"
+    # Las luminarias se han movido con él: CAB-A queda vacío, CAB-B con 2.
+    tp = client.get("/api/v1/topology", headers=owner).json()
+    a = next(c for c in tp["cabinets"] if c["code"] == "CAB-A")
+    b = next(c for c in tp["cabinets"] if c["code"] == "CAB-B")
+    assert len(a["points"]) == 0 and len(a["circuits"]) == 0
+    assert len(b["points"]) == 2 and len(b["circuits"]) == 1
+
+
+def test_reassign_circuit_to_unknown_cabinet_fails(client):
+    owner = _owner(client)
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-A", "name": "A", "number": 1}, headers=owner)
+    circ = client.post("/api/v1/circuits", json={"cabinet_code": "CAB-A", "number": 1}, headers=owner).json()
+    r = client.patch(f"/api/v1/circuits/{circ['id']}", json={"cabinet_code": "CAB-NOPE"}, headers=owner)
+    assert r.status_code == 404
+
+
 def test_delete_cabinet_cascades_circuits_and_points(client):
     owner = _owner(client)
     client.post("/api/v1/cabinets/registry",

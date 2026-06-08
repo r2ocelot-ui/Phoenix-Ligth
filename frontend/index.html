@@ -1757,9 +1757,11 @@
       const td = el("td");
       if (canEdit) {
         const e = el("button", "btn ghost sm", "✏"); e.onclick = () => openCircuitForm(cab, ci);
+        const mv = el("button", "btn ghost sm", "⇄"); mv.title = "Mover a otro CM"; mv.style.marginLeft = "4px";
+        mv.onclick = () => moveCircuitToCabinet(cab, ci, list.length);
         const d = el("button", "btn ghost sm", "🗑"); d.style.color = "#ef4444"; d.style.marginLeft = "4px";
         d.onclick = () => deleteCircuit(cab, ci, list.length);
-        td.append(e, d);
+        td.append(e, mv, d);
       }
       tr.append(td); tb.append(tr);
     });
@@ -1962,6 +1964,33 @@
     try { await api(`/circuits/${ci.id}`, { method: "DELETE" }); toast("Circuito borrado"); reopenTopoAfterChange(cab.code, "circuitos"); }
     catch (e) { toast(e.message, true); }
   }
+  // Reasignar un circuito (con sus luminarias) a otro CM. Caso típico: tras
+  // un retrofit LED se fusionan dos cuadros en uno.
+  function moveCircuitToCabinet(cab, ci, lightCount) {
+    const tp = window._topoCache;
+    const targets = (tp?.cabinets || []).filter(x => x.code !== cab.code);
+    if (!targets.length) { toast("No hay otro CM al que mover. Crea otro cuadro primero.", true); return; }
+    const modal = el("div", "modal"); const card = el("div", "modal-card");
+    card.innerHTML = `<h3 style="margin:0 0 6px">Mover circuito ${ci.number} a otro CM</h3>`
+      + `<div class="muted" style="font-size:12px; margin-bottom:12px">Se moverán también sus ${lightCount} luminaria(s). El CM origen (${cab.code}) las pierde.</div>`;
+    const sel = el("select"); sel.style.width = "100%";
+    targets.forEach(t => { const o = el("option", null, `CM${t.number} · ${t.name || t.code} (${t.code})`); o.value = t.code; sel.append(o); });
+    card.append(sel);
+    const actions = el("div", "perm-actions");
+    const ok = el("button", "btn sm", "Mover");
+    ok.onclick = async () => {
+      const dest = sel.value;
+      try {
+        await api(`/circuits/${ci.id}`, { method: "PATCH", body: JSON.stringify({ cabinet_code: dest }) });
+        toast(`Circuito movido a ${dest}`);
+        modal.remove();
+        reopenTopoAfterChange(dest, "circuitos");
+      } catch (e) { toast(e.message, true); }
+    };
+    const cancel = el("button", "btn ghost sm", "Cancelar"); cancel.onclick = () => modal.remove();
+    actions.append(ok, cancel); card.append(actions);
+    modal.append(card); document.body.append(modal);
+  }
   async function deleteLight(cab, pt) {
     if (!confirm(`¿Borrar la luminaria ${pt.number}${pt.label ? " (" + pt.label + ")" : ""}?`)) return;
     try { await api(`/lightpoints/${pt.id}`, { method: "DELETE" }); toast("Luminaria borrada"); reopenTopoAfterChange(cab.code, "luminarias"); }
@@ -1981,6 +2010,9 @@
       const tp = await api("/topology");
       window._topoCache = tp;
       const cab = tp.cabinets.find(x => x.code === code);
+      // Cierro cualquier modal abierto (editor previo + formularios) para no
+      // apilarlos al reabrir el editor con los datos frescos.
+      document.querySelectorAll(".modal").forEach(m => m.remove());
       // Refresco la rejilla de fondo.
       if (state.view === "topologia") loadTopologia();
       if (cab) { state.topoTab = tab; openTopoDetail(cab, tp, has("cabinet:manage")); }

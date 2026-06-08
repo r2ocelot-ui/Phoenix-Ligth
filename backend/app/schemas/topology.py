@@ -16,6 +16,9 @@ class CircuitUpdate(BaseModel):
     color: str | None = None
     phase: str | None = None
     expected_power_w: float | None = Field(default=None, ge=0)
+    # Reasignar el circuito a otro CM (fusión de cuadros tras retrofit LED).
+    # Al cambiarlo, las luminarias del circuito se mueven con él.
+    cabinet_code: str | None = None
 
 
 class CircuitRead(BaseModel):

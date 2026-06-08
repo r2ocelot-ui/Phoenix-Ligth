@@ -1517,9 +1517,17 @@
           m.bindTooltip(String(pt.number), { permanent: true, direction: "top", className: "pt-label", offset: [0, -4] });
           window._ptMarkers[pt.id] = m;
           attachMarkerDrag(m, "pt", () => pt.id);
+          // Click en la luminaria → su ficha de información (salvo en modo
+          // "mover", donde el click es para arrastrar).
+          m.on("click", () => {
+            if (state.editPositions) return;
+            const tp = window._topoCache || window._topology;
+            const freshCab = tp?.cabinets.find(x => x.code === cab.code) || cab;
+            const freshPt = freshCab.points.find(p => p.id === pt.id) || pt;
+            openLightDetail(freshCab, freshPt);
+          });
         }
         m.setStyle({ color: "#0b1120", fillColor: col, fillOpacity: 0.95 });
-        m.bindPopup(`<strong>Farola ${cab.number}.${pt.number}</strong><br><span class="muted">${pt.label || ""}</span><br>CM${cab.number} · Circuito ${circ ? circ.number : "?"} · Fase ${pt.phase}<br>${pt.power_w} W`);
         pts.push([pt.latitude, pt.longitude]);
       });
     });
@@ -1906,6 +1914,45 @@
     modal.append(card); document.body.append(modal);
   }
 
+  // Ficha de información de una luminaria (el "recuadro" que pidió el capitán,
+  // equivalente al editor del CM pero para un punto de luz). Se abre al clicar
+  // la luminaria en el mapa o desde la tabla de luminarias.
+  function openLightDetail(cab, pt) {
+    const canEdit = has("cabinet:manage");
+    const circ = (cab.circuits || []).find(c => c.id === pt.circuit_id);
+    const modal = el("div", "modal"); const card = el("div", "modal-card"); card.style.maxWidth = "460px";
+    const phaseColor = (window._topoCache?.phase_colors || {})[pt.phase] || "#64748b";
+    const head = el("div", "row between");
+    head.innerHTML = `<h3 style="margin:0">💡 Farola ${cab.number}.${pt.number}</h3>`;
+    const closeX = el("button", "btn ghost sm", "✕"); closeX.onclick = () => modal.remove();
+    head.append(closeX); card.append(head);
+    if (pt.label) card.append(el("div", "muted", pt.label));
+
+    const grid = el("div"); grid.style.display = "grid"; grid.style.gridTemplateColumns = "1fr 1fr"; grid.style.gap = "10px"; grid.style.marginTop = "12px";
+    const cell = (k, v) => { const d = el("div"); d.innerHTML = `<div class="muted" style="font-size:11px">${k}</div><div style="font-size:14px">${v}</div>`; return d; };
+    grid.append(
+      cell("Centro de mando", `CM${cab.number} · ${cab.code}`),
+      cell("Circuito", circ ? `Circuito ${circ.number}${circ.name ? " · " + circ.name : ""}` : "—"),
+      cell("Fase", `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${phaseColor};margin-right:6px"></span>${pt.phase}`),
+      cell("Potencia", `${(pt.power_w || 0).toFixed(0)} W`),
+      cell("Posición", pt.latitude != null ? `<span class="mono" style="font-size:12px">${pt.latitude.toFixed(5)}, ${pt.longitude.toFixed(5)}</span>` : "sin ubicar"),
+      cell("Estado CM", cab._online === false ? "🔴 offline" : "🟢 en línea"),
+    );
+    card.append(grid);
+
+    const actions = el("div", "perm-actions");
+    if (canEdit) {
+      const edit = el("button", "btn sm", "✏ Editar");
+      edit.onclick = () => { modal.remove(); openLightForm(cab, pt); };
+      const del = el("button", "btn ghost sm", "🗑 Borrar"); del.style.color = "#ef4444";
+      del.onclick = () => { modal.remove(); deleteLight(cab, pt); };
+      actions.append(edit, del);
+    }
+    const close = el("button", "btn ghost sm", "Cerrar"); close.onclick = () => modal.remove();
+    actions.append(close); card.append(actions);
+    modal.append(card); document.body.append(modal);
+  }
+
   function openLightForm(cab, pt) {
     const editing = !!pt;
     const modal = el("div", "modal"); const card = el("div", "modal-card");
@@ -2009,13 +2056,22 @@
     try {
       const tp = await api("/topology");
       window._topoCache = tp;
+      window._topology = tp;
       const cab = tp.cabinets.find(x => x.code === code);
       // Cierro cualquier modal abierto (editor previo + formularios) para no
-      // apilarlos al reabrir el editor con los datos frescos.
+      // apilarlos al reabrir con los datos frescos.
       document.querySelectorAll(".modal").forEach(m => m.remove());
-      // Refresco la rejilla de fondo.
-      if (state.view === "topologia") loadTopologia();
-      if (cab) { state.topoTab = tab; openTopoDetail(cab, tp, has("cabinet:manage")); }
+      if (state.view === "inicio") {
+        // En Inicio el contexto es el mapa: refresco marcadores en vez de
+        // abrir el editor del CM. Recreo marcadores para reflejar altas/bajas.
+        window._cmMarkers = {}; window._ptMarkers = {};
+        if (window._map) { window._map.eachLayer(l => { if (l instanceof L.CircleMarker) window._map.removeLayer(l); }); }
+        drawTopology();
+        await refreshLive();
+      } else {
+        if (state.view === "topologia") loadTopologia();
+        if (cab) { state.topoTab = tab; openTopoDetail(cab, tp, has("cabinet:manage")); }
+      }
     } catch (e) { toast(e.message, true); }
   }
 

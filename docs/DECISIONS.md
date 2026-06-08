@@ -177,6 +177,21 @@ Notas:
 
 ## 4. UX adoptado de Hydra
 
+### 4.0 PRINCIPIO RECTOR: Phoenix se maneja IGUAL que Hydra — 2026-06
+Decisión de producto del capitán: Phoenix (alumbrado) y Hydra Traffic
+(semáforos) deben **operarse de la misma forma**. Misma disposición,
+mismos gestos, mismos controles. Así quien usa uno sabe usar el otro sin
+reaprender; sólo cambia el dominio (luminarias vs semáforos).
+- Mapa operativo como pantalla principal (Inicio).
+- **Controles, herramientas y KPIs DEBAJO del mapa**, no encima: fila
+  "colorear por" + barra de herramientas de edición + los 4 KPIs
+  (Cuadros / Online / Alarmas / Potencia) + leyenda, todo bajo el mapa.
+- Barra de herramientas de edición tipo Hydra (debajo del minimapa):
+  "➕ Centro de mando", "➕ Luminaria", "✥ Mover".
+- Al añadir clicando el mapa se captura la geolocalización (como RF
+  Light GEO): la ficha llega con lat/lon + dirección ya rellenas.
+- Regla práctica: ante una duda de UX, "¿cómo lo hace Hydra?" gana.
+
 ### 4.1 Modal de inactividad con cuenta atrás
 - Aviso a -1 min, cuenta atrás visible los últimos 30 s con botón
   "Seguir trabajando".

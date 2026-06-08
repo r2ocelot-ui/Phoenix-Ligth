@@ -394,7 +394,10 @@
     .project-picker .opt:hover { background: rgba(255,255,255,0.06); }
     .project-picker .opt.active { background: rgba(34, 197, 94, 0.12); }
     .project-picker .opt small { color: var(--dim); font-size: 11px; }
-    .inicio-map { height: calc(100vh - 380px); min-height: 380px; }
+    .inicio-map { height: calc(100vh - 300px); min-height: 360px; }
+    /* Barra de herramientas del mapa (estilo Hydra, debajo del minimapa) */
+    .map-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .map-toolbar > .muted { font-size: 12px; }
     /* Banner guía del modo "añadir CM en el mapa" (estilo Hydra). */
     .map-add-banner {
       position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
@@ -1193,40 +1196,98 @@
   // Modo "añadir CM en el mapa" (estilo Hydra "activar modo añadir"). Al
   // activarlo, el siguiente click en el mapa captura lat/lon y abre el
   // formulario de nuevo cuadro con esas coordenadas ya rellenas.
-  function toggleAddCmMode(btn) {
+  // Barra de herramientas del mapa (estilo Hydra, debajo del minimapa). Sólo
+  // para cabinet:manage. Tres modos exclusivos: añadir CM, añadir luminaria,
+  // mover. Cada uno arma un click en el mapa que captura la posición.
+  function buildMapToolbar() {
+    const wrap = el("div", "map-toolbar");
+    if (!has("cabinet:manage")) return wrap;  // operadores no ven herramientas
+    const addCm = el("button", "btn sm ghost", "➕ Centro de mando");
+    addCm.onclick = () => toggleAddCmMode();
+    const addLight = el("button", "btn sm ghost", "➕ Luminaria");
+    addLight.onclick = () => toggleAddLightMode();
+    const move = el("button", "btn sm ghost", "✥ Mover");
+    move.onclick = () => toggleEditPositions();
+    state.addCmBtn = addCm; state.addLightBtn = addLight; state.editPosBtn = move;
+    state.addCmMode = false; state.addLightMode = false; state.editPositions = false;
+    const hint = el("span", "muted"); hint.id = "map-tool-hint"; hint.style.fontSize = "12px";
+    hint.textContent = "Edición del mapa";
+    wrap.append(el("span", "muted", "Herramientas:"), addCm, addLight, move, hint);
+    return wrap;
+  }
+  function setToolHint(txt) { const h = document.getElementById("map-tool-hint"); if (h) h.textContent = txt; }
+
+  function toggleAddCmMode() {
     const map = window._map;
     if (!map) { toast("El mapa aún no está listo.", true); return; }
-    // Excluyente con el modo "mover en el mapa".
-    if (state.editPositions && state.editPosBtn) toggleEditPositions(state.editPosBtn);
+    if (state.editPositions) toggleEditPositions();
+    if (state.addLightMode) finishAddLightMode();
     state.addCmMode = !state.addCmMode;
-    btn.classList.toggle("ghost", !state.addCmMode);
-    btn.textContent = state.addCmMode ? "✕ Cancelar (click en el mapa…)" : "➕ Añadir CM en el mapa";
+    const btn = state.addCmBtn;
+    if (btn) { btn.classList.toggle("ghost", !state.addCmMode); btn.textContent = state.addCmMode ? "✕ Cancelar" : "➕ Centro de mando"; }
     const host = document.getElementById("map");
     if (host) host.style.cursor = state.addCmMode ? "crosshair" : "";
     if (state.addCmMode) {
-      // Banner guía sobre el mapa.
-      if (!document.getElementById("add-cm-banner")) {
-        const banner = el("div", null, "📍 Haz click en el punto del mapa donde está el centro de mando");
-        banner.id = "add-cm-banner"; banner.className = "map-add-banner";
-        host?.parentElement?.append(banner);
-      }
+      setToolHint("📍 Haz click donde está el centro de mando");
+      showMapBanner("add-cm-banner", "📍 Haz click en el punto del mapa donde está el centro de mando");
       map.once("click", (ev) => {
-        // Captura una sola vez; resetea el modo y abre el form.
         finishAddCmMode();
         openCabinetForm(null, { latitude: ev.latlng.lat, longitude: ev.latlng.lng });
       });
-    } else {
-      finishAddCmMode();
-    }
+    } else { finishAddCmMode(); }
   }
   function finishAddCmMode() {
     state.addCmMode = false;
     const btn = state.addCmBtn;
-    if (btn) { btn.classList.add("ghost"); btn.textContent = "➕ Añadir CM en el mapa"; }
-    const host = document.getElementById("map");
-    if (host) host.style.cursor = "";
+    if (btn) { btn.classList.add("ghost"); btn.textContent = "➕ Centro de mando"; }
+    const host = document.getElementById("map"); if (host) host.style.cursor = "";
     if (window._map) window._map.off("click");
     document.getElementById("add-cm-banner")?.remove();
+    setToolHint("Edición del mapa");
+  }
+
+  // Añadir luminaria clicando el mapa: captura lat/lon, geocodifica la
+  // dirección y abre la ficha con todo prerelleno; el técnico elige el CM
+  // y completa lo que falte (W, tecnología, modelo…).
+  function toggleAddLightMode() {
+    const map = window._map;
+    if (!map) { toast("El mapa aún no está listo.", true); return; }
+    const tp = window._topoCache || window._topology;
+    if (!tp || !tp.cabinets.length) { toast("Crea antes un centro de mando.", true); return; }
+    if (state.editPositions) toggleEditPositions();
+    if (state.addCmMode) finishAddCmMode();
+    state.addLightMode = !state.addLightMode;
+    const btn = state.addLightBtn;
+    if (btn) { btn.classList.toggle("ghost", !state.addLightMode); btn.textContent = state.addLightMode ? "✕ Cancelar" : "➕ Luminaria"; }
+    const host = document.getElementById("map");
+    if (host) host.style.cursor = state.addLightMode ? "crosshair" : "";
+    if (state.addLightMode) {
+      setToolHint("💡 Haz click donde está la farola");
+      showMapBanner("add-light-banner", "💡 Haz click en el punto del mapa donde está la luminaria", "rgba(250, 204, 21, 0.95)", "#3a2f00");
+      map.once("click", async (ev) => {
+        finishAddLightMode();
+        const ll = { latitude: ev.latlng.lat, longitude: ev.latlng.lng };
+        toast("Detectando dirección…");
+        const addr = await reverseGeocode(ll.latitude, ll.longitude);
+        openLightForm(null, null, { pickCabinet: true, prefill: { ...ll, ...(addr || {}) } });
+      });
+    } else { finishAddLightMode(); }
+  }
+  function finishAddLightMode() {
+    state.addLightMode = false;
+    const btn = state.addLightBtn;
+    if (btn) { btn.classList.add("ghost"); btn.textContent = "➕ Luminaria"; }
+    const host = document.getElementById("map"); if (host) host.style.cursor = "";
+    if (window._map) window._map.off("click");
+    document.getElementById("add-light-banner")?.remove();
+    setToolHint("Edición del mapa");
+  }
+  function showMapBanner(id, text, bg, fg) {
+    const host = document.getElementById("map");
+    if (document.getElementById(id)) return;
+    const banner = el("div", "map-add-banner", text); banner.id = id;
+    if (bg) banner.style.background = bg; if (fg) banner.style.color = fg;
+    host?.parentElement?.append(banner);
   }
 
   // ============================== INICIO ==============================
@@ -1244,10 +1305,12 @@
     // Limpia modos de edición que quedaran activos de una visita anterior
     // (el mapa persiste entre vistas, así que sus listeners también).
     if (state.addCmMode || document.getElementById("add-cm-banner")) finishAddCmMode();
+    if (state.addLightMode || document.getElementById("add-light-banner")) finishAddLightMode();
     if (state.editPositions || document.getElementById("edit-pos-banner")) {
       state.editPositions = false;
       document.getElementById("edit-pos-banner")?.remove();
       const host = document.getElementById("map"); if (host) host.style.cursor = "";
+      if (window._map) window._map.off("click");
     }
     const cabs = state.cabinets;
     const online = cabs.filter(x => x.online).length;
@@ -1263,47 +1326,38 @@
 
     c.innerHTML = "";
 
-    const kpis = el("div", "grid kpis kpis-sm");
-    kpis.append(
-      kpi("Cuadros", cabs.length, false),
-      kpi("Online", online + " / " + cabs.length, online < cabs.length),
-      kpi("Alarmas activas", alarms, alarms > 0),
-      kpi("Potencia total", kw.toFixed(2) + " kW", false),
-    );
-    c.append(kpis);
-
     if (typeof L === "undefined") {
       c.append(el("div", "empty", "El mapa requiere conexión a internet (Leaflet)."));
       return;
     }
 
-    const bar = el("div", "row between"); bar.style.margin = "12px 0 8px"; bar.style.gap = "12px"; bar.style.flexWrap = "wrap";
-    const colorSeg = segGroup(
-      [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]],
-      k => state.mapMode === k,
-      k => { state.mapMode = k; drawTopology(); });
-    bar.append(labeled("colorear por:", colorSeg));
-    // Botón estilo Hydra "Activar modo añadir": click en el mapa → form con
-    // las coordenadas ya rellenas. Solo lo ven quienes pueden gestionar.
-    if (has("cabinet:manage")) {
-      const addBtn = el("button", "btn sm ghost", "➕ Añadir CM en el mapa");
-      addBtn.onclick = () => toggleAddCmMode(addBtn);
-      state.addCmBtn = addBtn;
-      state.addCmMode = false;
-      const moveBtn = el("button", "btn sm ghost", "✥ Mover en el mapa");
-      moveBtn.onclick = () => toggleEditPositions(moveBtn);
-      state.editPosBtn = moveBtn;
-      state.editPositions = false;
-      bar.append(addBtn, moveBtn);
-    }
-    c.append(bar);
+    // Construye la franja de controles + KPIs que va DEBAJO del mapa (Hydra):
+    //   [colorear por] [herramientas]   ·   [KPIs]   ·   [leyenda]
+    const buildBottomPanel = (legendNode) => {
+      const wrap = el("div"); wrap.style.marginTop = "10px";
+      const controls = el("div", "row between"); controls.style.gap = "12px"; controls.style.flexWrap = "wrap";
+      const colorSeg = segGroup(
+        [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]],
+        k => state.mapMode === k,
+        k => { state.mapMode = k; drawTopology(); });
+      controls.append(labeled("colorear por:", colorSeg), buildMapToolbar());
+      wrap.append(controls);
+      const kpis = el("div", "grid kpis kpis-sm"); kpis.style.marginTop = "12px";
+      kpis.append(
+        kpi("Cuadros", cabs.length, false),
+        kpi("Online", online + " / " + cabs.length, online < cabs.length),
+        kpi("Alarmas activas", alarms, alarms > 0),
+        kpi("Potencia total", kw.toFixed(2) + " kW", false),
+      );
+      wrap.append(kpis);
+      wrap.append(legendNode);
+      return wrap;
+    };
 
     if (persistedWrap && window._map) {
-      // Reuse the existing map: re-attach the same nodes, redraw markers with
-      // fresh telemetry, ask Leaflet to recompute its size — no fitBounds, no
-      // animation, no pulse.
+      // Reuse the existing map.
       c.append(persistedWrap);
-      c.append(persistedLegend);
+      c.append(buildBottomPanel(persistedLegend));
       requestAnimationFrame(() => {
         try { window._map.invalidateSize(false); } catch (e) {}
         drawTopology();
@@ -1318,8 +1372,8 @@
     window._inicioMapWrap = mapWrap;
 
     const legend = el("div", "panel legend-thin"); legend.id = "legend"; legend.style.marginTop = "10px";
-    c.append(legend);
     window._inicioLegend = legend;
+    c.append(buildBottomPanel(legend));
 
     (async () => {
       try { window._topology = await api("/topology"); } catch (e) { c.append(el("div", "empty", e.message)); return; }
@@ -1488,13 +1542,14 @@
       toast("📍 Posición actualizada");
     } catch (e) { toast(e.message, true); drawTopology(); }
   }
-  // Activa/desactiva el modo edición de posiciones. Sale del modo "añadir CM"
-  // si estuviera activo (son excluyentes).
-  function toggleEditPositions(btn) {
+  // Activa/desactiva el modo edición de posiciones (arrastre). Excluyente con
+  // los modos de añadir. Usa el botón guardado en state.editPosBtn.
+  function toggleEditPositions() {
     if (state.addCmMode) finishAddCmMode();
+    if (state.addLightMode) finishAddLightMode();
     state.editPositions = !state.editPositions;
-    btn.classList.toggle("ghost", !state.editPositions);
-    btn.textContent = state.editPositions ? "✓ Posiciones (arrastra y suelta)" : "✥ Mover en el mapa";
+    const btn = state.editPosBtn;
+    if (btn) { btn.classList.toggle("ghost", !state.editPositions); btn.textContent = state.editPositions ? "✓ Arrastrando" : "✥ Mover"; }
     const host = document.getElementById("map");
     if (host) host.style.cursor = state.editPositions ? "move" : "";
     const banner = document.getElementById("edit-pos-banner");
@@ -1503,6 +1558,7 @@
       b.id = "edit-pos-banner"; b.style.background = "rgba(56, 189, 248, 0.95)"; b.style.color = "#04212f";
       host?.parentElement?.append(b);
     } else if (!state.editPositions && banner) { banner.remove(); }
+    setToolHint(state.editPositions ? "✥ Arrastra para recolocar · se guarda al soltar" : "Edición del mapa");
     applyMarkerDraggable();
   }
 
@@ -2064,21 +2120,27 @@
   // 6 secciones colapsables. Eléctrico Phoenix arriba destacado porque es la
   // ventaja sobre RF Light (CM/circuito/fase para saber qué desconectar).
   // Fabricante/modelo/tecnología con autocompletado del catálogo en BD.
-  function openLightForm(cab, pt) {
+  function openLightForm(cab, pt, opts = {}) {
     const editing = !!pt;
+    const pickCabinet = !!opts.pickCabinet;
+    const prefill = opts.prefill || {};
+    // En modo "elegir CM" (alta desde el mapa) arranco con el primer CM si no
+    // se pasó uno. La lista de CMs sale del cache de topología.
+    const allCabs = (window._topoCache || window._topology || { cabinets: [] }).cabinets;
+    let curCab = cab || allCabs[0];
     const modal = el("div", "modal"); const card = el("div", "modal-card");
     card.style.maxWidth = "640px"; card.style.maxHeight = "85vh"; card.style.overflowY = "auto";
-    card.innerHTML = `<h3 style="margin:0 0 4px">${editing ? "Editar luminaria" : "Nueva luminaria"} · ${cab.code}</h3>`
+    card.innerHTML = `<h3 style="margin:0 0 4px">${editing ? "Editar luminaria" : "Nueva luminaria"}${curCab ? " · " + curCab.code : ""}</h3>`
       + `<div class="muted" style="font-size:12px; margin-bottom:14px">Ficha completa estilo RF Light GEO. Sólo el bloque eléctrico es imprescindible; el resto rellena lo que tengas (la dirección se detecta sola).</div>`;
 
-    // Cargo el catálogo (asíncrono); creo los inputs primero y los relleno
-    // con datalists cuando llegue. Si falla, los inputs quedan como texto libre.
+    // mk crea un input; valor inicial = pt[k] ?? prefill[k] ?? v.
     const inputs = {};
-    const mk = (k, ph, v, opts = {}) => {
-      const i = el("input"); i.placeholder = ph; i.value = pt?.[k] ?? v ?? "";
-      if (opts.type) i.type = opts.type; if (opts.maxlength) i.maxLength = opts.maxlength;
-      if (opts.inputmode) i.inputMode = opts.inputmode;
-      if (opts.list) i.setAttribute("list", opts.list);
+    const mk = (k, ph, v, o = {}) => {
+      const i = el("input"); i.placeholder = ph;
+      i.value = pt?.[k] ?? prefill[k] ?? v ?? "";
+      if (o.type) i.type = o.type; if (o.maxlength) i.maxLength = o.maxlength;
+      if (o.inputmode) i.inputMode = o.inputmode;
+      if (o.list) i.setAttribute("list", o.list);
       inputs[k] = i; return i;
     };
     const sectionHeader = (txt) => { const h = el("div", "muted"); h.style.cssText = "font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; margin-top:14px; margin-bottom:6px"; h.textContent = txt; return h; };
@@ -2088,20 +2150,34 @@
     // === 🔌 Eléctrico Phoenix (ventaja sobre RF Light) ===
     card.append(sectionHeader("🔌 Eléctrico Phoenix · qué desconectar en el CM"));
     const circuit = el("select");
-    cab.circuits.forEach(ci => { const o = el("option", null, `Circuito ${ci.number}${ci.name ? " · " + ci.name : ""}`); o.value = ci.id; if (pt?.circuit_id === ci.id) o.selected = true; circuit.append(o); });
     const phase = el("select"); ["L1", "L2", "L3"].forEach(p => { const o = el("option", null, p); o.value = p; if ((pt?.phase || "L1") === p) o.selected = true; phase.append(o); });
+    // Rellena el selector de circuitos con los del CM actual.
+    const fillCircuits = () => {
+      circuit.innerHTML = "";
+      (curCab?.circuits || []).forEach(ci => { const o = el("option", null, `Circuito ${ci.number}${ci.name ? " · " + ci.name : ""}`); o.value = ci.id; if (pt?.circuit_id === ci.id) o.selected = true; circuit.append(o); });
+      if (!(curCab?.circuits || []).length) { const o = el("option", null, "(sin circuitos — crea uno antes)"); o.value = ""; circuit.append(o); }
+    };
     const elec = grid2();
-    elec.append(
-      labeled("Centro de mando", (() => { const i = el("input"); i.value = `${cab.code} · ${cab.name || ""}`; i.disabled = true; i.style.opacity = ".7"; return i; })()),
-      labeled("Circuito", circuit), labeled("Fase", phase),
-    );
+    let cmNode;
+    if (pickCabinet) {
+      // Selector de CM: al cambiar, recargo sus circuitos.
+      const cmSel = el("select");
+      allCabs.forEach(x => { const o = el("option", null, `CM${x.number} · ${x.name || x.code}`); o.value = x.code; if (curCab && x.code === curCab.code) o.selected = true; cmSel.append(o); });
+      cmSel.onchange = () => { curCab = allCabs.find(x => x.code === cmSel.value); fillCircuits(); };
+      cmNode = labeled("Centro de mando", cmSel);
+    } else {
+      const i = el("input"); i.value = `${curCab?.code || ""} · ${curCab?.name || ""}`; i.disabled = true; i.style.opacity = ".7";
+      cmNode = labeled("Centro de mando", i);
+    }
+    fillCircuits();
+    elec.append(cmNode, labeled("Circuito", circuit), labeled("Fase", phase));
     card.append(elec);
 
     // === 🏷 Identificación ===
     card.append(sectionHeader("🏷 Identificación"));
     const ident = grid2();
     ident.append(
-      labeled("Nº de poste / punto", mk("number", "Ej. 17", pt?.number ?? (cab.points.length + 1), { type: "number" })),
+      labeled("Nº de poste / punto", mk("number", "Ej. 17", pt?.number ?? ((curCab?.points?.length || 0) + 1), { type: "number" })),
       labeled("Nº de inventario", mk("inventory_code", "Ej. P-099")),
       labeled("Tecnología", mk("technology", "LED…", "LED", { list: "lf-tech" })),
       labeled("Fabricante / marca", mk("manufacturer", "Hispaled, Schréder…", "", { list: "lf-mfr" })),
@@ -2245,6 +2321,7 @@
         latitude: val("latitude") ? parseFloat(val("latitude")) : null,
         longitude: val("longitude") ? parseFloat(val("longitude")) : null,
       };
+      if (!payload.circuit_id) { toast("Ese CM no tiene circuitos. Crea uno antes de añadir luminarias.", true); return; }
       try {
         // Si hay coords y faltan datos administrativos, intento autorrellenar
         // antes de guardar (best-effort, no bloquea si falla).
@@ -2262,11 +2339,11 @@
           await api(`/lightpoints/${pt.id}`, { method: "PATCH", body: JSON.stringify(payload) });
           toast("Luminaria actualizada");
         } else {
-          payload.cabinet_code = cab.code;
+          payload.cabinet_code = curCab.code;
           await api("/lightpoints", { method: "POST", body: JSON.stringify(payload) });
           toast("Luminaria creada");
         }
-        modal.remove(); reopenTopoAfterChange(cab.code, "luminarias");
+        modal.remove(); reopenTopoAfterChange(curCab.code, "luminarias");
       } catch (e) { toast(e.message, true); }
     };
     const cancel = el("button", "btn ghost sm", "Cancelar"); cancel.onclick = () => modal.remove();

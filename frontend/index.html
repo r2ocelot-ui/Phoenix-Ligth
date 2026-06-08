@@ -80,6 +80,25 @@
     aside .spacer { flex: 1; }
     .userbox { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #ffffff05; }
     .userbox .u { font-weight: 600; font-size: 14px; }
+    .userbox-mini { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; text-align: center; padding: 8px 4px; }
+    /* Menú de usuario arriba a la derecha (estilo Hydra) */
+    .user-menu { position: relative; }
+    .user-chip {
+      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+      padding: 5px 10px 5px 12px; border: 1px solid var(--border-2); border-radius: 999px;
+      background: rgba(255,255,255,0.03); color: var(--fg); font: inherit;
+    }
+    .user-chip:hover { background: rgba(255,255,255,0.07); }
+    .user-chip .u { font-weight: 600; font-size: 13px; }
+    .user-chip .caret { color: var(--dim); font-size: 11px; }
+    .user-dropdown {
+      position: absolute; top: 42px; right: 0; z-index: 950;
+      background: rgba(15, 23, 42, 0.97); border: 1px solid var(--border-2);
+      border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px); padding: 8px; min-width: 180px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .user-dropdown .btn { width: 100%; }
 
     /* Flex column so #content fills the space and the footer can be pinned
        to the very bottom regardless of how much the active view occupies. */
@@ -374,11 +393,15 @@
     .project-chip {
       display: inline-flex; align-items: center; gap: 6px;
       padding: 5px 12px; border: 1px solid var(--border-2); border-radius: 999px;
-      background: rgba(255,255,255,0.03); font-size: 13px; cursor: default;
+      background: rgba(15, 23, 42, 0.92); font-size: 13px; cursor: default;
+      backdrop-filter: blur(6px); box-shadow: 0 2px 8px rgba(0,0,0,.35);
     }
     .project-chip.clickable { cursor: pointer; }
-    .project-chip.clickable:hover { background: rgba(255,255,255,0.07); }
+    .project-chip.clickable:hover { background: rgba(30, 41, 59, 0.95); }
     .project-chip .caret { color: var(--dim); font-size: 11px; }
+    /* Overlay del selector de ciudad, flotante arriba-izquierda del mapa */
+    .map-city { position: absolute; top: 12px; left: 12px; z-index: 800; }
+    .map-city .project-picker { position: absolute; top: 42px; left: 0; right: auto; }
     .project-picker {
       position: absolute; top: 80px; right: 28px;
       background: rgba(15, 23, 42, 0.97); border: 1px solid var(--border-2);
@@ -520,15 +543,7 @@
         <a data-view="seguridad" data-perm="user:manage"><span class="ico">⛨</span> Seguridad</a>
       </nav>
       <div class="spacer"></div>
-      <div class="userbox">
-        <div class="u" id="ub-user">—</div>
-        <div style="margin:6px 0"><span class="badge rank" id="ub-rank">—</span></div>
-        <button class="btn sm" id="btn-emergency" style="width:100%;margin-bottom:6px;display:none">⚠ Emergencia</button>
-        <button class="btn ghost sm" id="btn-lock" style="width:100%;margin-bottom:6px;display:none">🔒 Bloquear</button>
-        <button class="btn ghost sm" id="btn-pin" style="width:100%;margin-bottom:6px">Mi PIN</button>
-        <button class="btn ghost sm" id="btn-pattern" style="width:100%;margin-bottom:6px">Mi patrón</button>
-        <button class="btn ghost sm" id="btn-logout" style="width:100%">Cerrar sesión</button>
-      </div>
+      <div class="userbox-mini muted">Kumiho Group · Phoenix</div>
     </aside>
     <main>
       <div class="topbar">
@@ -537,19 +552,27 @@
           <div class="sub" id="view-sub">Resumen de la red de alumbrado</div>
         </div>
         <div class="row" style="gap:14px">
-          <div id="project-chip" class="project-chip hidden">
-            <span class="muted" style="font-size:11px">Ciudad</span>
-            <span id="project-chip-name">—</span>
-            <span id="project-chip-caret" class="caret hidden">▾</span>
-          </div>
           <div class="row">
             <span class="dot ok" id="live-dot"></span>
             <span class="muted" id="live-label" style="font-size:12px">conectando…</span>
           </div>
+          <!-- Menú de usuario arriba a la derecha (estilo Hydra). -->
+          <div id="user-menu" class="user-menu">
+            <button class="user-chip" id="user-chip" type="button">
+              <span class="u" id="ub-user">—</span>
+              <span class="badge rank" id="ub-rank">—</span>
+              <span class="caret">▾</span>
+            </button>
+            <div class="user-dropdown hidden" id="user-dropdown">
+              <button class="btn sm" id="btn-emergency" style="display:none">⚠ Emergencia</button>
+              <button class="btn ghost sm" id="btn-lock" style="display:none">🔒 Bloquear</button>
+              <button class="btn ghost sm" id="btn-pin">Mi PIN</button>
+              <button class="btn ghost sm" id="btn-pattern">Mi patrón</button>
+              <button class="btn ghost sm" id="btn-logout">Cerrar sesión</button>
+            </div>
+          </div>
         </div>
       </div>
-      <!-- Selector de proyecto (solo owner; despliega al pulsar el chip). -->
-      <div id="project-picker" class="project-picker hidden"></div>
       <div id="content"></div>
       <footer class="foot">Kumiho Group · Phoenix Division · Tecnología · Innovación · Seguridad · Futuro</footer>
     </main>
@@ -954,6 +977,7 @@
     setTimeout(() => document.addEventListener("click", closeProjectPicker, { once: true }), 0);
   }
   function closeProjectPicker() { $("#project-picker")?.classList.add("hidden"); }
+  function closeUserMenu() { $("#user-dropdown")?.classList.add("hidden"); }
   function pickProject(id) {
     state.activeProject = id;
     closeProjectPicker();
@@ -1196,6 +1220,21 @@
   // Modo "añadir CM en el mapa" (estilo Hydra "activar modo añadir"). Al
   // activarlo, el siguiente click en el mapa captura lat/lon y abre el
   // formulario de nuevo cuadro con esas coordenadas ya rellenas.
+  // Overlay del selector de ciudad/proyecto, flotante sobre el mapa (estilo
+  // Hydra "Ciudad activa"). Reusa los IDs que ya conocen renderProjectChip /
+  // toggleProjectPicker, así que la lógica existente sigue funcionando.
+  function buildCityOverlay() {
+    const wrap = el("div", "map-city"); wrap.id = "map-city-overlay";
+    wrap.innerHTML = `
+      <div id="project-chip" class="project-chip hidden">
+        <span class="muted" style="font-size:11px">Ciudad</span>
+        <span id="project-chip-name">—</span>
+        <span id="project-chip-caret" class="caret hidden">▾</span>
+      </div>
+      <div id="project-picker" class="project-picker hidden"></div>`;
+    return wrap;
+  }
+
   // Barra de herramientas del mapa (estilo Hydra, debajo del minimapa). Sólo
   // para cabinet:manage. Tres modos exclusivos: añadir CM, añadir luminaria,
   // mover. Cada uno arma un click en el mapa que captura la posición.
@@ -1208,20 +1247,58 @@
     addLight.onclick = () => toggleAddLightMode();
     const move = el("button", "btn sm ghost", "✥ Mover");
     move.onclick = () => toggleEditPositions();
+    const edit = el("button", "btn sm ghost", "✏ Editar");
+    edit.onclick = () => toggleEditMode();
+    const del = el("button", "btn sm ghost", "🗑 Eliminar");
+    del.onclick = () => toggleDeleteMode();
     state.addCmBtn = addCm; state.addLightBtn = addLight; state.editPosBtn = move;
+    state.editBtn = edit; state.deleteBtn = del;
     state.addCmMode = false; state.addLightMode = false; state.editPositions = false;
+    state.editMode = false; state.deleteMode = false;
     const hint = el("span", "muted"); hint.id = "map-tool-hint"; hint.style.fontSize = "12px";
-    hint.textContent = "Edición del mapa";
-    wrap.append(el("span", "muted", "Herramientas:"), addCm, addLight, move, hint);
+    hint.textContent = "Pulsa una herramienta y luego el punto del mapa";
+    const btns = el("div", "row"); btns.style.gap = "6px"; btns.style.flexWrap = "wrap";
+    btns.append(addCm, addLight, move, edit, del);
+    wrap.append(btns, hint);
     return wrap;
   }
   function setToolHint(txt) { const h = document.getElementById("map-tool-hint"); if (h) h.textContent = txt; }
+  // Apaga todos los modos de edición (para que sean exclusivos).
+  function clearMapModes(except) {
+    if (except !== "addcm" && state.addCmMode) finishAddCmMode();
+    if (except !== "addlight" && state.addLightMode) finishAddLightMode();
+    // Move: limpieza inline (no llamo a toggleEditPositions para evitar recursión).
+    if (except !== "move" && state.editPositions) {
+      state.editPositions = false;
+      if (state.editPosBtn) { state.editPosBtn.classList.add("ghost"); state.editPosBtn.textContent = "✥ Mover"; }
+      document.getElementById("edit-pos-banner")?.remove();
+      const h = document.getElementById("map"); if (h) h.style.cursor = "";
+      applyMarkerDraggable();
+    }
+    if (except !== "edit" && state.editMode) { state.editMode = false; state.editBtn?.classList.add("ghost"); if (state.editBtn) state.editBtn.textContent = "✏ Editar"; }
+    if (except !== "delete" && state.deleteMode) { state.deleteMode = false; state.deleteBtn?.classList.add("ghost"); if (state.deleteBtn) state.deleteBtn.textContent = "🗑 Eliminar"; }
+  }
+  function toggleEditMode() {
+    clearMapModes("edit");
+    state.editMode = !state.editMode;
+    const b = state.editBtn;
+    if (b) { b.classList.toggle("ghost", !state.editMode); b.textContent = state.editMode ? "✕ Cancelar" : "✏ Editar"; }
+    const host = document.getElementById("map"); if (host) host.style.cursor = state.editMode ? "pointer" : "";
+    setToolHint(state.editMode ? "✏ Pulsa un cuadro o luminaria para editarlo" : "Pulsa una herramienta y luego el punto del mapa");
+  }
+  function toggleDeleteMode() {
+    clearMapModes("delete");
+    state.deleteMode = !state.deleteMode;
+    const b = state.deleteBtn;
+    if (b) { b.classList.toggle("ghost", !state.deleteMode); b.textContent = state.deleteMode ? "✕ Cancelar" : "🗑 Eliminar"; }
+    const host = document.getElementById("map"); if (host) host.style.cursor = state.deleteMode ? "not-allowed" : "";
+    setToolHint(state.deleteMode ? "🗑 Pulsa un cuadro o luminaria para eliminarlo" : "Pulsa una herramienta y luego el punto del mapa");
+  }
 
   function toggleAddCmMode() {
     const map = window._map;
     if (!map) { toast("El mapa aún no está listo.", true); return; }
-    if (state.editPositions) toggleEditPositions();
-    if (state.addLightMode) finishAddLightMode();
+    if (!state.addCmMode) clearMapModes("addcm");
     state.addCmMode = !state.addCmMode;
     const btn = state.addCmBtn;
     if (btn) { btn.classList.toggle("ghost", !state.addCmMode); btn.textContent = state.addCmMode ? "✕ Cancelar" : "➕ Centro de mando"; }
@@ -1254,8 +1331,7 @@
     if (!map) { toast("El mapa aún no está listo.", true); return; }
     const tp = window._topoCache || window._topology;
     if (!tp || !tp.cabinets.length) { toast("Crea antes un centro de mando.", true); return; }
-    if (state.editPositions) toggleEditPositions();
-    if (state.addCmMode) finishAddCmMode();
+    if (!state.addLightMode) clearMapModes("addlight");
     state.addLightMode = !state.addLightMode;
     const btn = state.addLightBtn;
     if (btn) { btn.classList.toggle("ghost", !state.addLightMode); btn.textContent = state.addLightMode ? "✕ Cancelar" : "➕ Luminaria"; }
@@ -1311,7 +1387,9 @@
       document.getElementById("edit-pos-banner")?.remove();
       const host = document.getElementById("map"); if (host) host.style.cursor = "";
       if (window._map) window._map.off("click");
+      applyMarkerDraggable();
     }
+    state.editMode = false; state.deleteMode = false;
     const cabs = state.cabinets;
     const online = cabs.filter(x => x.online).length;
     const alarms = cabs.reduce((n, x) => n + x.alarms.length, 0);
@@ -1331,26 +1409,37 @@
       return;
     }
 
-    // Construye la franja de controles + KPIs que va DEBAJO del mapa (Hydra):
-    //   [colorear por] [herramientas]   ·   [KPIs]   ·   [leyenda]
+    // Franja DEBAJO del mapa, estilo Hydra:
+    //   Fila 1:  [colorear por: Estado/CM/Circuito/Fase]   ·   [leyenda al lado]
+    //   Fila 2:  [caja de Herramientas]                    ·   [KPIs]
     const buildBottomPanel = (legendNode) => {
-      const wrap = el("div"); wrap.style.marginTop = "10px";
-      const controls = el("div", "row between"); controls.style.gap = "12px"; controls.style.flexWrap = "wrap";
+      const wrap = el("div"); wrap.style.marginTop = "10px"; wrap.style.display = "grid"; wrap.style.gap = "12px";
+
+      // --- Fila 1: colorear por + leyenda al mismo nivel ---
+      const row1 = el("div", "row between"); row1.style.gap = "12px"; row1.style.flexWrap = "wrap"; row1.style.alignItems = "center";
       const colorSeg = segGroup(
         [["estado", "Estado"], ["cm", "Centro de mando"], ["circuito", "Circuito"], ["fase", "Fase"]],
         k => state.mapMode === k,
         k => { state.mapMode = k; drawTopology(); });
-      controls.append(labeled("colorear por:", colorSeg), buildMapToolbar());
-      wrap.append(controls);
-      const kpis = el("div", "grid kpis kpis-sm"); kpis.style.marginTop = "12px";
+      legendNode.style.marginTop = "0"; legendNode.style.flex = "1"; legendNode.style.minWidth = "240px";
+      row1.append(labeled("colorear por:", colorSeg), legendNode);
+      wrap.append(row1);
+
+      // --- Fila 2: caja de herramientas + KPIs al mismo nivel ---
+      const row2 = el("div"); row2.style.display = "grid"; row2.style.gridTemplateColumns = "auto 1fr"; row2.style.gap = "12px"; row2.style.alignItems = "stretch";
+      const toolBox = el("div", "panel"); toolBox.style.padding = "10px 12px";
+      toolBox.append(el("div", "muted", "Herramientas del mapa"));
+      const tb = buildMapToolbar(); tb.style.marginTop = "8px";
+      toolBox.append(tb);
+      const kpis = el("div", "grid kpis kpis-sm");
       kpis.append(
         kpi("Cuadros", cabs.length, false),
         kpi("Online", online + " / " + cabs.length, online < cabs.length),
         kpi("Alarmas activas", alarms, alarms > 0),
         kpi("Potencia total", kw.toFixed(2) + " kW", false),
       );
-      wrap.append(kpis);
-      wrap.append(legendNode);
+      row2.append(toolBox, kpis);
+      wrap.append(row2);
       return wrap;
     };
 
@@ -1358,6 +1447,7 @@
       // Reuse the existing map.
       c.append(persistedWrap);
       c.append(buildBottomPanel(persistedLegend));
+      renderProjectChip();
       requestAnimationFrame(() => {
         try { window._map.invalidateSize(false); } catch (e) {}
         drawTopology();
@@ -1367,9 +1457,10 @@
 
     // First mount: build the map container and initialise Leaflet.
     const mapWrap = el("div", "map-wrap"); mapWrap.classList.add("inicio-map");
-    const div = el("div"); div.id = "map"; mapWrap.append(div, buildMapStylePicker());
+    const div = el("div"); div.id = "map"; mapWrap.append(div, buildMapStylePicker(), buildCityOverlay());
     c.append(mapWrap);
     window._inicioMapWrap = mapWrap;
+    renderProjectChip();
 
     const legend = el("div", "panel legend-thin"); legend.id = "legend"; legend.style.marginTop = "10px";
     window._inicioLegend = legend;
@@ -1545,8 +1636,7 @@
   // Activa/desactiva el modo edición de posiciones (arrastre). Excluyente con
   // los modos de añadir. Usa el botón guardado en state.editPosBtn.
   function toggleEditPositions() {
-    if (state.addCmMode) finishAddCmMode();
-    if (state.addLightMode) finishAddLightMode();
+    if (!state.editPositions) clearMapModes("move");
     state.editPositions = !state.editPositions;
     const btn = state.editPosBtn;
     if (btn) { btn.classList.toggle("ghost", !state.editPositions); btn.textContent = state.editPositions ? "✓ Arrastrando" : "✥ Mover"; }
@@ -1589,6 +1679,16 @@
           }).addTo(map);
           window._cmMarkers[cab.code] = m;
           m.on("dragend", (e) => { const ll = e.target.getLatLng(); persistMarkerPosition("cm", cab.code, ll.lat, ll.lng); });
+          // En modo editar/eliminar, el click sobre el CM ejecuta la acción
+          // (y cierra el popup que Leaflet abre por defecto).
+          m.on("click", () => {
+            if (!state.editMode && !state.deleteMode) return;
+            m.closePopup();
+            const t = window._topoCache || window._topology;
+            const freshCab = t?.cabinets.find(x => x.code === cab.code) || cab;
+            if (state.deleteMode) deleteCabinet(freshCab);
+            else if (state.editMode) openCabinetForm(freshCab);
+          });
         } else {
           m.setLatLng([cab.latitude, cab.longitude]);
           recolorPin(m, "cm", col);
@@ -1610,12 +1710,14 @@
           }).addTo(map);
           window._ptMarkers[pt.id] = m;
           m.on("dragend", (e) => { const ll = e.target.getLatLng(); persistMarkerPosition("pt", pt.id, ll.lat, ll.lng); });
-          // Click en la luminaria → su ficha (salvo en modo "mover").
+          // Click en la luminaria: según el modo activo de la barra.
           m.on("click", () => {
-            if (state.editPositions) return;
+            if (state.editPositions) return;  // en modo mover, el click arrastra
             const t = window._topoCache || window._topology;
             const freshCab = t?.cabinets.find(x => x.code === cab.code) || cab;
             const freshPt = freshCab.points.find(p => p.id === pt.id) || pt;
+            if (state.deleteMode) { deleteLight(freshCab, freshPt); return; }
+            if (state.editMode) { openLightForm(freshCab, freshPt); return; }
             openLightDetail(freshCab, freshPt);
           });
         } else {
@@ -3310,6 +3412,14 @@
   $("#btn-emergency").onclick = emergencyAllOn;
   $("#btn-pin").onclick = showSetPin;
   $("#btn-pattern").onclick = showSetPattern;
+  // Menú de usuario (arriba derecha): abre/cierra el desplegable.
+  $("#user-chip").onclick = (e) => {
+    e.stopPropagation();
+    const dd = $("#user-dropdown");
+    const opening = dd.classList.contains("hidden");
+    dd.classList.toggle("hidden");
+    if (opening) setTimeout(() => document.addEventListener("click", closeUserMenu, { once: true }), 0);
+  };
   document.querySelectorAll("#nav a").forEach(a => a.onclick = () => go(a.dataset.view));
   ["li-pass", "li-pin"].forEach(id => {
     $("#" + id).addEventListener("keydown", e => { if (e.key === "Enter") $("#btn-login").click(); });

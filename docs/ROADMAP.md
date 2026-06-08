@@ -44,44 +44,36 @@ Pendientes ordenados por prioridad. Cada entrada apunta a la decisión en
 - ✅ **Vinculación hardware SICE-style** (serial + IMEI por cuadro, backend)
 - ✅ **Borrar CM / circuito / wipe-all** (backend con cascada + auditoría)
 - ✅ **Auto-migración del schema** (no hay que borrar `phoenix.db`)
+- ✅ **Editor de topología (UI)** — crear/editar/borrar CM, circuitos y
+  luminarias desde el panel, con nominal `expected_power_w` editable
+- ✅ **Añadir CM clicando el mapa** (estilo Hydra, captura lat/lon)
+- ✅ **Eliminar usuarios** (con anti-autoborrado y anti-escalado)
+- ✅ Footer anclado abajo del todo, centrado
 
 ---
 
 ## 🟡 Prioridad alta — siguiente sesión
 
-### 1. ⭐ Editor de topología (UI) — LO MÁS PEDIDO
-Los endpoints de crear/borrar **ya están** (CM, circuito, luminaria,
-wipe-all). Falta la pantalla en el panel. A montar:
-- Pestaña Topología con modo edición (solo `cabinet:manage`).
-- **Crear CM**: botón "➕ Añadir CM" → click en mapa o formulario
-  (código, nombre, color, número, zona, coordenadas).
-- **Crear luminaria**: asignándole circuito + fase (L1/L2/L3) + potencia.
-- **Editor de circuitos** por CM: crear/editar nombre, color, fase y el
-  **nominal `expected_power_w`** (input visual — el endpoint ya funciona).
-- **Borrar** CM / circuito / luminaria con confirmación (cascada).
-- **"💣 Vaciar topología"** (owner-only) → `POST /cabinets/registry/wipe-all`.
-*Endpoints listos:* `cabinets.py` (delete/{code}, wipe-all),
-`topology.py` (circuits, lightpoints CRUD + delete circuit).
-
-### 2. 2FA TOTP estilo Google Authenticator
+### 1. 2FA TOTP estilo Google Authenticator
 Cuarta credencial encima de contraseña + PIN + patrón. Activable por
 usuario. Endpoint `/auth/totp/setup` con QR + `/auth/totp/verify` en el
 flujo de login. Librería: `pyotp`.
 *Diseño:* DECISIONS §1.8.
 
-### 3. Pestaña "Proyectos" en el panel
+### 2. Pestaña "Proyectos" en el panel
 Los endpoints `/projects` ya existen (CRUD + assign-user + assign-cabinet),
 pero falta la UI dedicada para el owner. Lista de proyectos, botón crear,
 panel detalle con usuarios y cuadros asignados, botón para mover.
 
-### 4. Pestaña "Dispositivos" (vinculación SICE)
+### 3. Pestaña "Dispositivos" (vinculación SICE)
 Igual: endpoints `/devices` listos. Falta UI para registrar serial + IMEI
 contra un cuadro y ver `last_seen_at`. Marcaría también
 `security.device_mismatch` si se detecta.
 
-### 5. Visualizar telemetría infra en el panel del cuadro
+### 4. Visualizar telemetría infra en el panel del cuadro
 Temperatura, puerta, intrusión ya llegan al backend (`Measurement`).
 Falta pintarlas en el popup/detalle del CM (ahora solo se ven V/I).
+También las luminarias clicables en el mapa (hoy solo el CM).
 
 ---
 

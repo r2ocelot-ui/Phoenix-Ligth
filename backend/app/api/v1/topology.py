@@ -11,10 +11,23 @@ from app.schemas.topology import (
     CircuitCreate,
     CircuitRead,
     CircuitUpdate,
+    LightCatalog,
     LightPointCreate,
     LightPointRead,
     LightPointUpdate,
 )
+
+
+# Valores por defecto que la UI puede sugerir aunque la BD esté vacía.
+# La unión con lo ya usado en BD se hace en el endpoint /lightpoints/catalog.
+_DEFAULT_TECHNOLOGIES = ["LED", "Vapor sodio alta presión", "Halogenuros metálicos",
+                          "Fluorescente", "Mercurio (legado)", "Otro"]
+_DEFAULT_REGULATIONS = ["Ninguna", "1-10 V", "DALI", "Autónoma (driver)", "PLC", "Otro"]
+_DEFAULT_COLOR_TEMPS = ["2200K", "2700K", "3000K", "4000K", "5700K", "6500K"]
+_DEFAULT_SUPPORT_TYPES = ["Columna", "Brazo mural", "Báculo", "Catenaria", "Pescante", "Otro"]
+_DEFAULT_LAYOUT_TYPES = ["Unilateral", "Bilateral pareada", "Bilateral tresbolillo",
+                          "Central (mediana)", "Suspensión cable", "Otro"]
+_DEFAULT_LIGHT_SOURCE_TYPES = ["LED", "VSAP", "VSBP", "HM", "Mercurio", "Halógena", "Otro"]
 from app.services import audit_log, ranks
 from app.services.auth import require_permission
 
@@ -67,9 +80,31 @@ def get_topology(
                         "latitude": p.latitude,
                         "longitude": p.longitude,
                         "power_w": p.power_w,
+                        # Ficha extendida estilo RF Light GEO (todos opcionales).
+                        "inventory_code": p.inventory_code or "",
+                        "technology": p.technology or "",
                         "manufacturer": p.manufacturer or "",
                         "model": p.model or "",
+                        "photometric": p.photometric or "",
+                        "regulation": p.regulation or "",
+                        "serial_number": p.serial_number or "",
+                        "color_temp_k": p.color_temp_k or "",
+                        "network_id": p.network_id or "",
+                        "province": p.province or "",
+                        "locality": p.locality or "",
+                        "postal_code": p.postal_code or "",
                         "street": p.street or "",
+                        "street_number": p.street_number or "",
+                        "notes": p.notes or "",
+                        "support_type": p.support_type or "",
+                        "layout_type": p.layout_type or "",
+                        "construction_type": p.construction_type or "",
+                        "light_source_type": p.light_source_type or "",
+                        "old_manufacturer": p.old_manufacturer or "",
+                        "old_model": p.old_model or "",
+                        "old_power_w": p.old_power_w or 0.0,
+                        "old_light_source_type": p.old_light_source_type or "",
+                        "old_notes": p.old_notes or "",
                     }
                     for p in points
                     if p.cabinet_code == cab.code
@@ -175,6 +210,44 @@ def delete_circuit(
 
 
 # --------------------------- Light points ---------------------------
+@router.get("/lightpoints/catalog", response_model=LightCatalog)
+def light_catalog(
+    db: Session = Depends(get_db),
+    _: User = Depends(require_permission(ranks.P_CABINET_READ)),
+) -> LightCatalog:
+    """Datos para los selectores con autocompletado del formulario de
+    luminaria. Cada lista es la unión de los valores ya usados en BD +
+    los defaults razonables, ordenada y sin duplicados (case-insensitive).
+
+    Así, en cuanto el técnico registra un fabricante una vez, sale en el
+    autocompletado para las siguientes luminarias — justo lo que el capitán
+    pedía: ya registrados, solo buscarlos.
+    """
+    def merge(field, defaults):
+        used = {(v or "").strip() for v in db.query(field).distinct().all() for v in v}
+        return sorted({*defaults, *(v for v in used if v)}, key=str.casefold)
+
+    # SQLAlchemy distinct() devuelve tuplas: simplifico.
+    def uniq(col):
+        rows = db.query(col).distinct().all()
+        out = set()
+        for (v,) in rows:
+            if v:
+                out.add(str(v).strip())
+        return out
+
+    return LightCatalog(
+        technologies=sorted({*_DEFAULT_TECHNOLOGIES, *uniq(LightPoint.technology)}, key=str.casefold),
+        manufacturers=sorted(uniq(LightPoint.manufacturer), key=str.casefold),
+        models=sorted(uniq(LightPoint.model), key=str.casefold),
+        regulations=sorted({*_DEFAULT_REGULATIONS, *uniq(LightPoint.regulation)}, key=str.casefold),
+        color_temps=sorted({*_DEFAULT_COLOR_TEMPS, *uniq(LightPoint.color_temp_k)}, key=str.casefold),
+        support_types=sorted({*_DEFAULT_SUPPORT_TYPES, *uniq(LightPoint.support_type)}, key=str.casefold),
+        layout_types=sorted({*_DEFAULT_LAYOUT_TYPES, *uniq(LightPoint.layout_type)}, key=str.casefold),
+        light_source_types=sorted({*_DEFAULT_LIGHT_SOURCE_TYPES, *uniq(LightPoint.light_source_type)}, key=str.casefold),
+    )
+
+
 @router.get("/lightpoints", response_model=list[LightPointRead])
 def list_lightpoints(
     cabinet_code: str | None = None,

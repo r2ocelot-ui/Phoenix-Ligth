@@ -1966,29 +1966,86 @@
     head.append(closeX); card.append(head);
     if (pt.label) card.append(el("div", "muted", pt.label));
 
-    const grid = el("div"); grid.style.display = "grid"; grid.style.gridTemplateColumns = "1fr 1fr"; grid.style.gap = "10px"; grid.style.marginTop = "12px";
-    const cell = (k, v) => { const d = el("div"); d.innerHTML = `<div class="muted" style="font-size:11px">${k}</div><div style="font-size:14px">${v}</div>`; return d; };
+    card.style.maxWidth = "560px"; card.style.maxHeight = "85vh"; card.style.overflowY = "auto";
     const cmColor = cab.color || "#f97316";
     const circColor = circ ? circ.color : "#64748b";
-    // Datos propios (se introducen) + heredados (CM/circuito/fase con su color).
-    grid.append(
-      cell("Modelo", pt.model || "—"),
-      cell("Fabricante", pt.manufacturer || "—"),
-      cell("Nº de punto", pt.number),
-      cell("Consumo", `${(pt.power_w || 0).toFixed(0)} W`),
+    const sec = (txt) => { const h = el("div", "muted"); h.style.cssText = "font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; margin-top:14px; margin-bottom:6px; border-top:1px solid var(--border); padding-top:10px"; h.textContent = txt; card.append(h); };
+    const grid = () => { const g = el("div"); g.style.display = "grid"; g.style.gridTemplateColumns = "1fr 1fr"; g.style.gap = "10px"; return g; };
+    const cell = (k, v) => { const d = el("div"); d.innerHTML = `<div class="muted" style="font-size:11px">${k}</div><div style="font-size:14px">${v || "<span class='muted'>—</span>"}</div>`; return d; };
+    const has = (k) => pt[k] != null && pt[k] !== "" && pt[k] !== 0;
+
+    // === 🔌 Eléctrico Phoenix (lo primero — qué desconectar) ===
+    sec("🔌 Eléctrico Phoenix");
+    const elec = grid(); elec.append(
       cell("Centro de mando", `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${cmColor};margin-right:6px"></span>CM${cab.number} · ${cab.code}`),
       cell("Circuito", circ ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${circColor};margin-right:6px"></span>Circuito ${circ.number}${circ.name ? " · " + circ.name : ""}` : "—"),
       cell("Fase", `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${phaseColor};margin-right:6px"></span>${pt.phase}`),
       cell("Estado CM", cab._online === false ? "🔴 offline" : "🟢 en línea"),
     );
-    card.append(grid);
-    // Calle (ancho completo) + posición.
-    const streetRow = el("div"); streetRow.style.marginTop = "10px";
-    streetRow.innerHTML = `<div class="muted" style="font-size:11px">Calle</div><div style="font-size:14px">${pt.street || "<span class='muted'>sin determinar</span>"}</div>`;
-    card.append(streetRow);
-    const posRow = el("div"); posRow.style.marginTop = "8px";
-    posRow.innerHTML = `<div class="muted" style="font-size:11px">Posición</div><div class="mono" style="font-size:12px">${pt.latitude != null ? pt.latitude.toFixed(5) + ", " + pt.longitude.toFixed(5) : "sin ubicar"}</div>`;
-    card.append(posRow);
+    card.append(elec);
+
+    // === 🏷 Identificación ===
+    sec("🏷 Identificación");
+    const ident = grid(); ident.append(
+      cell("Nº de poste", pt.number),
+      cell("Nº inventario", pt.inventory_code),
+      cell("Tecnología", pt.technology),
+      cell("Fabricante", pt.manufacturer),
+      cell("Modelo", pt.model),
+      cell("Consumo", pt.power_w ? `${pt.power_w.toFixed(0)} W` : ""),
+    );
+    card.append(ident);
+
+    // === 🔬 Óptica (solo si algún campo) ===
+    if (["photometric","regulation","serial_number","color_temp_k","network_id"].some(k => has(k))) {
+      sec("🔬 Óptica");
+      const opt = grid(); opt.append(
+        cell("Distribución fotométrica", pt.photometric),
+        cell("Regulación", pt.regulation),
+        cell("Nº de serie", pt.serial_number),
+        cell("Temperatura de color", pt.color_temp_k),
+        cell("ID de red", pt.network_id),
+      );
+      card.append(opt);
+    }
+
+    // === 📍 Ubicación ===
+    sec("📍 Ubicación");
+    const addr = grid(); addr.append(
+      cell("Provincia", pt.province),
+      cell("Localidad", pt.locality),
+      cell("CP", pt.postal_code),
+      cell("Vía", pt.street),
+      cell("Número", pt.street_number),
+      cell("Posición", pt.latitude != null ? `<span class="mono" style="font-size:12px">${pt.latitude.toFixed(5)}, ${pt.longitude.toFixed(5)}</span>` : ""),
+    );
+    card.append(addr);
+    if (has("notes")) card.append(cell("Observaciones", pt.notes));
+
+    // === 🛠 Montaje (solo si algún campo) ===
+    if (["support_type","layout_type","construction_type","light_source_type"].some(k => has(k))) {
+      sec("🛠 Montaje");
+      const mnt = grid(); mnt.append(
+        cell("Soporte", pt.support_type),
+        cell("Disposición", pt.layout_type),
+        cell("Construcción", pt.construction_type),
+        cell("Fuente de luz", pt.light_source_type),
+      );
+      card.append(mnt);
+    }
+
+    // === 🔁 Desmontaje (solo si existe la antigua) ===
+    if (["old_manufacturer","old_model","old_power_w","old_light_source_type","old_notes"].some(k => has(k))) {
+      sec("🔁 Desmontaje (luminaria antigua)");
+      const old = grid(); old.append(
+        cell("Fabricante", pt.old_manufacturer),
+        cell("Modelo", pt.old_model),
+        cell("Potencia", pt.old_power_w ? `${pt.old_power_w.toFixed(0)} W` : ""),
+        cell("Fuente", pt.old_light_source_type),
+      );
+      card.append(old);
+      if (has("old_notes")) card.append(cell("Observaciones", pt.old_notes));
+    }
 
     const actions = el("div", "perm-actions");
     if (canEdit) {
@@ -2003,59 +2060,203 @@
     modal.append(card); document.body.append(modal);
   }
 
+  // Formulario completo de luminaria estilo RF Light GEO de Hispaled, con
+  // 6 secciones colapsables. Eléctrico Phoenix arriba destacado porque es la
+  // ventaja sobre RF Light (CM/circuito/fase para saber qué desconectar).
+  // Fabricante/modelo/tecnología con autocompletado del catálogo en BD.
   function openLightForm(cab, pt) {
     const editing = !!pt;
     const modal = el("div", "modal"); const card = el("div", "modal-card");
+    card.style.maxWidth = "640px"; card.style.maxHeight = "85vh"; card.style.overflowY = "auto";
     card.innerHTML = `<h3 style="margin:0 0 4px">${editing ? "Editar luminaria" : "Nueva luminaria"} · ${cab.code}</h3>`
-      + `<div class="muted" style="font-size:12px; margin-bottom:12px">Datos propios: modelo, fabricante, nº y consumo. El color lo hereda del CM/circuito/fase. La calle se detecta sola desde la posición.</div>`;
-    const form = el("div"); form.style.display = "grid"; form.style.gap = "10px";
-    // --- Datos propios (RF Light) ---
-    const model = el("input"); model.placeholder = "Modelo (p.ej. RF Light)"; model.value = pt?.model || "";
-    const manuf = el("input"); manuf.placeholder = "Fabricante / nombre (p.ej. Hispaled)"; manuf.value = pt?.manufacturer || "";
-    const number = el("input"); number.type = "number"; number.placeholder = "Nº de punto en la calle"; number.value = pt?.number ?? (cab.points.length + 1);
-    const power = el("input"); power.type = "number"; power.placeholder = "Consumo (W)"; power.value = pt?.power_w ?? 100;
-    const label = el("input"); label.placeholder = "Etiqueta interna (opcional)"; label.value = pt?.label || "";
-    // --- Vinculación ---
+      + `<div class="muted" style="font-size:12px; margin-bottom:14px">Ficha completa estilo RF Light GEO. Sólo el bloque eléctrico es imprescindible; el resto rellena lo que tengas (la dirección se detecta sola).</div>`;
+
+    // Cargo el catálogo (asíncrono); creo los inputs primero y los relleno
+    // con datalists cuando llegue. Si falla, los inputs quedan como texto libre.
+    const inputs = {};
+    const mk = (k, ph, v, opts = {}) => {
+      const i = el("input"); i.placeholder = ph; i.value = pt?.[k] ?? v ?? "";
+      if (opts.type) i.type = opts.type; if (opts.maxlength) i.maxLength = opts.maxlength;
+      if (opts.inputmode) i.inputMode = opts.inputmode;
+      if (opts.list) i.setAttribute("list", opts.list);
+      inputs[k] = i; return i;
+    };
+    const sectionHeader = (txt) => { const h = el("div", "muted"); h.style.cssText = "font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; margin-top:14px; margin-bottom:6px"; h.textContent = txt; return h; };
+    const grid2 = () => { const g = el("div"); g.style.display = "grid"; g.style.gridTemplateColumns = "1fr 1fr"; g.style.gap = "8px"; return g; };
+    const labeled = (lbl, node) => { const w = el("div"); w.innerHTML = `<div class="muted" style="font-size:11px; margin-bottom:2px">${lbl}</div>`; w.append(node); return w; };
+
+    // === 🔌 Eléctrico Phoenix (ventaja sobre RF Light) ===
+    card.append(sectionHeader("🔌 Eléctrico Phoenix · qué desconectar en el CM"));
     const circuit = el("select");
     cab.circuits.forEach(ci => { const o = el("option", null, `Circuito ${ci.number}${ci.name ? " · " + ci.name : ""}`); o.value = ci.id; if (pt?.circuit_id === ci.id) o.selected = true; circuit.append(o); });
-    const circWrap = el("div", "row"); circWrap.style.gap = "8px"; circWrap.style.alignItems = "center"; circWrap.append(el("span", "muted", "Circuito"), circuit);
     const phase = el("select"); ["L1", "L2", "L3"].forEach(p => { const o = el("option", null, p); o.value = p; if ((pt?.phase || "L1") === p) o.selected = true; phase.append(o); });
-    const phaseWrap = el("div", "row"); phaseWrap.style.gap = "8px"; phaseWrap.style.alignItems = "center"; phaseWrap.append(el("span", "muted", "Fase"), phase);
-    // --- Posición + calle (auto) ---
-    const lat = el("input"); lat.placeholder = "Latitud (opcional)"; lat.value = pt?.latitude ?? "";
-    const lon = el("input"); lon.placeholder = "Longitud (opcional)"; lon.value = pt?.longitude ?? "";
-    const coords = el("div", "row"); coords.style.gap = "8px"; coords.append(lat, lon);
-    const street = el("input"); street.placeholder = "Calle (se detecta sola)"; street.value = pt?.street || "";
-    const geoBtn = el("button", "btn ghost sm", "📍 Detectar calle");
+    const elec = grid2();
+    elec.append(
+      labeled("Centro de mando", (() => { const i = el("input"); i.value = `${cab.code} · ${cab.name || ""}`; i.disabled = true; i.style.opacity = ".7"; return i; })()),
+      labeled("Circuito", circuit), labeled("Fase", phase),
+    );
+    card.append(elec);
+
+    // === 🏷 Identificación ===
+    card.append(sectionHeader("🏷 Identificación"));
+    const ident = grid2();
+    ident.append(
+      labeled("Nº de poste / punto", mk("number", "Ej. 17", pt?.number ?? (cab.points.length + 1), { type: "number" })),
+      labeled("Nº de inventario", mk("inventory_code", "Ej. P-099")),
+      labeled("Tecnología", mk("technology", "LED…", "LED", { list: "lf-tech" })),
+      labeled("Fabricante / marca", mk("manufacturer", "Hispaled, Schréder…", "", { list: "lf-mfr" })),
+      labeled("Modelo", mk("model", "RF Light…", "", { list: "lf-mdl" })),
+      labeled("Consumo (W)", mk("power_w", "30", pt?.power_w ?? 100, { type: "number" })),
+    );
+    card.append(ident);
+    const labelInp = mk("label", "Etiqueta interna (opcional)", pt?.label || "");
+    card.append(labeled("Etiqueta", labelInp));
+
+    // === 🔬 Óptica ===
+    card.append(sectionHeader("🔬 Óptica · driver y regulación"));
+    const opt = grid2();
+    opt.append(
+      labeled("Distribución fotométrica", mk("photometric", "Asimétrica vial…")),
+      labeled("Tipo de regulación", mk("regulation", "1-10 V, DALI…", "", { list: "lf-reg" })),
+      labeled("Nº de serie luminaria", mk("serial_number", "SN-12345")),
+      labeled("Temperatura de color", mk("color_temp_k", "3000K", "", { list: "lf-tc" })),
+      labeled("ID de red (RF/LoRa/DALI)", mk("network_id", "Nodo 0x1A2B")),
+    );
+    card.append(opt);
+
+    // === 📍 Ubicación (auto desde GPS) ===
+    card.append(sectionHeader("📍 Ubicación · detectar desde GPS"));
+    const lat = mk("latitude", "Latitud", pt?.latitude ?? "", { type: "number" });
+    const lon = mk("longitude", "Longitud", pt?.longitude ?? "", { type: "number" });
+    const coords = grid2(); coords.append(labeled("Latitud", lat), labeled("Longitud", lon));
+    card.append(coords);
+    const geoBtn = el("button", "btn ghost sm", "📍 Detectar calle, CP, ciudad y provincia desde GPS");
+    geoBtn.style.marginTop = "6px";
     geoBtn.onclick = async () => {
       if (!lat.value || !lon.value) { toast("Pon antes la latitud y longitud.", true); return; }
       geoBtn.textContent = "Buscando…"; geoBtn.disabled = true;
-      const name = await reverseGeocode(parseFloat(lat.value), parseFloat(lon.value));
-      geoBtn.textContent = "📍 Detectar calle"; geoBtn.disabled = false;
-      if (name) { street.value = name; toast("Calle detectada"); } else { toast("No se pudo detectar la calle (sin red o sin datos).", true); }
+      const a = await reverseGeocode(parseFloat(lat.value), parseFloat(lon.value));
+      geoBtn.textContent = "📍 Detectar calle, CP, ciudad y provincia desde GPS"; geoBtn.disabled = false;
+      if (a) {
+        if (a.street) inputs.street.value = a.street;
+        if (a.street_number) inputs.street_number.value = a.street_number;
+        if (a.postal_code) inputs.postal_code.value = a.postal_code;
+        if (a.locality) inputs.locality.value = a.locality;
+        if (a.province) inputs.province.value = a.province;
+        toast("Dirección detectada");
+      } else { toast("No se pudo detectar (sin red o sin datos).", true); }
     };
-    const streetRow = el("div", "row"); streetRow.style.gap = "8px"; streetRow.append(street, geoBtn);
-    form.append(model, manuf, number, power, label, circWrap, phaseWrap, coords, streetRow);
-    card.append(form);
+    card.append(geoBtn);
+    const addr = grid2();
+    addr.append(
+      labeled("Provincia", mk("province", "Alicante")),
+      labeled("Localidad / Ciudad", mk("locality", "Benidorm")),
+      labeled("Código postal", mk("postal_code", "03501", "", { maxlength: 10 })),
+      labeled("Vía / Calle", mk("street", "Av. Mediterráneo")),
+    );
+    card.append(addr);
+    const num2 = mk("street_number", "12", "", { maxlength: 16 });
+    card.append(labeled("Número de portal", num2));
+    const notes = mk("notes", "Observaciones", "");
+    card.append(labeled("Observaciones", notes));
+
+    // === 🛠 Montaje ===
+    card.append(sectionHeader("🛠 Montaje"));
+    const mnt = grid2();
+    mnt.append(
+      labeled("Tipo de soporte", mk("support_type", "Columna, brazo mural…", "", { list: "lf-sup" })),
+      labeled("Disposición en la vía", mk("layout_type", "Unilateral, tresbolillo…", "", { list: "lf-lay" })),
+      labeled("Tipo de construcción", mk("construction_type", "Acero galvanizado…")),
+      labeled("Tipo de fuente de luz", mk("light_source_type", "LED, VSAP…", "", { list: "lf-src" })),
+    );
+    card.append(mnt);
+
+    // === 🔁 Desmontaje (colapsable, sólo si interesa) ===
+    const oldDetails = el("details"); oldDetails.style.marginTop = "12px";
+    const sum = el("summary", "muted", "🔁 Desmontaje · datos de la luminaria antigua (opcional)");
+    sum.style.cssText = "cursor:pointer; font-size:12px; font-weight:600; padding:6px 0";
+    oldDetails.append(sum);
+    const oldGrid = grid2();
+    oldGrid.append(
+      labeled("Fabricante antiguo", mk("old_manufacturer", "")),
+      labeled("Modelo antiguo", mk("old_model", "")),
+      labeled("Potencia antigua (W)", mk("old_power_w", "150", pt?.old_power_w ?? 0, { type: "number" })),
+      labeled("Fuente de luz antigua", mk("old_light_source_type", "VSAP")),
+    );
+    oldDetails.append(oldGrid);
+    oldDetails.append(labeled("Observaciones del desmontaje", mk("old_notes", "")));
+    card.append(oldDetails);
+
+    // Datalists para autocompletado (se rellenan al cargar el catálogo).
+    const dlBox = el("div"); dlBox.style.display = "none";
+    [
+      ["lf-tech", "technologies"], ["lf-mfr", "manufacturers"], ["lf-mdl", "models"],
+      ["lf-reg", "regulations"], ["lf-tc", "color_temps"],
+      ["lf-sup", "support_types"], ["lf-lay", "layout_types"], ["lf-src", "light_source_types"],
+    ].forEach(([id]) => { const dl = el("datalist"); dl.id = id; dlBox.append(dl); });
+    card.append(dlBox);
+
+    (async () => {
+      try {
+        const cat = await api("/lightpoints/catalog");
+        const fill = (id, arr) => { const dl = document.getElementById(id); if (!dl) return; dl.innerHTML = ""; (arr || []).forEach(v => { const o = el("option"); o.value = v; dl.append(o); }); };
+        fill("lf-tech", cat.technologies); fill("lf-mfr", cat.manufacturers); fill("lf-mdl", cat.models);
+        fill("lf-reg", cat.regulations); fill("lf-tc", cat.color_temps);
+        fill("lf-sup", cat.support_types); fill("lf-lay", cat.layout_types); fill("lf-src", cat.light_source_types);
+      } catch (e) { /* sin catálogo → sigue funcionando como texto libre */ }
+    })();
 
     const actions = el("div", "perm-actions");
     const save = el("button", "btn sm", editing ? "Guardar" : "Crear");
     save.onclick = async () => {
+      // Construyo el payload con todos los campos de texto (trim) y los numéricos.
+      const val = (k) => (inputs[k]?.value ?? "").toString().trim();
+      const num = (k, def = 0) => { const v = parseFloat(inputs[k]?.value); return isNaN(v) ? def : v; };
       const payload = {
-        number: parseInt(number.value, 10) || 1, label: label.value.trim(),
-        circuit_id: parseInt(circuit.value, 10), phase: phase.value,
-        power_w: parseFloat(power.value) || 0,
-        manufacturer: manuf.value.trim(), model: model.value.trim(),
-        street: street.value.trim(),
-        latitude: lat.value ? parseFloat(lat.value) : null,
-        longitude: lon.value ? parseFloat(lon.value) : null,
+        circuit_id: parseInt(circuit.value, 10),
+        phase: phase.value,
+        number: parseInt(val("number"), 10) || 1,
+        label: val("label"),
+        power_w: num("power_w", 0),
+        inventory_code: val("inventory_code"),
+        technology: val("technology"),
+        manufacturer: val("manufacturer"),
+        model: val("model"),
+        photometric: val("photometric"),
+        regulation: val("regulation"),
+        serial_number: val("serial_number"),
+        color_temp_k: val("color_temp_k"),
+        network_id: val("network_id"),
+        province: val("province"),
+        locality: val("locality"),
+        postal_code: val("postal_code"),
+        street: val("street"),
+        street_number: val("street_number"),
+        notes: val("notes"),
+        support_type: val("support_type"),
+        layout_type: val("layout_type"),
+        construction_type: val("construction_type"),
+        light_source_type: val("light_source_type"),
+        old_manufacturer: val("old_manufacturer"),
+        old_model: val("old_model"),
+        old_power_w: num("old_power_w", 0),
+        old_light_source_type: val("old_light_source_type"),
+        old_notes: val("old_notes"),
+        latitude: val("latitude") ? parseFloat(val("latitude")) : null,
+        longitude: val("longitude") ? parseFloat(val("longitude")) : null,
       };
       try {
-        // Si hay coords pero no calle, intento detectarla automáticamente
+        // Si hay coords y faltan datos administrativos, intento autorrellenar
         // antes de guardar (best-effort, no bloquea si falla).
         if (payload.latitude != null && !payload.street) {
-          const auto = await reverseGeocode(payload.latitude, payload.longitude);
-          if (auto) payload.street = auto;
+          const a = await reverseGeocode(payload.latitude, payload.longitude);
+          if (a) {
+            payload.street = payload.street || a.street;
+            payload.street_number = payload.street_number || a.street_number;
+            payload.postal_code = payload.postal_code || a.postal_code;
+            payload.locality = payload.locality || a.locality;
+            payload.province = payload.province || a.province;
+          }
         }
         if (editing) {
           await api(`/lightpoints/${pt.id}`, { method: "PATCH", body: JSON.stringify(payload) });
@@ -2073,19 +2274,27 @@
     modal.append(card); document.body.append(modal);
   }
 
-  // Geocoding inverso (lat/lon → nombre de calle) vía Nominatim de
-  // OpenStreetMap. Best-effort: si no hay red o falla, devuelve null y la
-  // calle se deja en blanco. Mismo origen de datos que las tiles del mapa.
+  // Geocoding inverso (lat/lon → ficha de dirección completa) vía Nominatim
+  // de OpenStreetMap. Best-effort: si no hay red devuelve null. Devuelve
+  // {street, street_number, postal_code, locality, province} para rellenar
+  // la ficha de RF Light GEO de un tirón.
   async function reverseGeocode(lat, lon) {
     try {
-      const url = `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&lat=${lat}&lon=${lon}`;
+      const url = `https://nominatim.openstreetmap.org/reverse?format=json&zoom=18&addressdetails=1&lat=${lat}&lon=${lon}`;
       const r = await fetch(url, { headers: { "Accept-Language": "es" } });
       if (!r.ok) return null;
       const d = await r.json();
       const a = d.address || {};
-      const road = a.road || a.pedestrian || a.footway || a.residential || d.name;
-      if (!road) return null;
-      return a.house_number ? `${road}, ${a.house_number}` : road;
+      const road = a.road || a.pedestrian || a.footway || a.residential || a.cycleway || d.name || "";
+      return {
+        street: road,
+        street_number: a.house_number || "",
+        postal_code: a.postcode || "",
+        // Nominatim usa city/town/village según tamaño. Cogemos el primero que haya.
+        locality: a.city || a.town || a.village || a.hamlet || a.municipality || "",
+        // Provincia: en España viene normalmente en "province" o "state".
+        province: a.province || a.state || a.county || "",
+      };
     } catch (e) { return null; }
   }
 

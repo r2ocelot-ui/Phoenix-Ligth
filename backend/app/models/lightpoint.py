@@ -24,12 +24,41 @@ class LightPoint(Base):
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     power_w: Mapped[float] = mapped_column(Float, default=100.0)
-    # Ficha estilo RF Light (Hispaled): datos que introduce el técnico.
-    manufacturer: Mapped[str] = mapped_column(String(80), default="")   # nombre/fabricante
-    model: Mapped[str] = mapped_column(String(80), default="")          # modelo de luminaria
-    # Calle: se autorrellena por geocoding inverso desde lat/lon cuando hay
-    # red; el técnico puede sobrescribirla a mano.
+
+    # --- Identificación (RF Light GEO §1) ---
+    inventory_code: Mapped[str] = mapped_column(String(64), default="")
+    technology: Mapped[str] = mapped_column(String(40), default="")   # LED, VSAP, HM, Halog, Otro
+    manufacturer: Mapped[str] = mapped_column(String(80), default="")
+    model: Mapped[str] = mapped_column(String(80), default="")
+
+    # --- Óptica (RF Light GEO §2) ---
+    photometric: Mapped[str] = mapped_column(String(80), default="")
+    regulation: Mapped[str] = mapped_column(String(40), default="")   # 1-10V, DALI, autónoma, ninguna
+    serial_number: Mapped[str] = mapped_column(String(80), default="")
+    color_temp_k: Mapped[str] = mapped_column(String(16), default="")  # "3000K", "4000K"
+    network_id: Mapped[str] = mapped_column(String(64), default="")    # nodo RF/LoRa/DALI
+
+    # --- Ubicación administrativa (§3, autorrellenable por geocoding) ---
+    province: Mapped[str] = mapped_column(String(80), default="")
+    locality: Mapped[str] = mapped_column(String(80), default="")
+    postal_code: Mapped[str] = mapped_column(String(10), default="")
     street: Mapped[str] = mapped_column(String(160), default="")
+    street_number: Mapped[str] = mapped_column(String(16), default="")
+    notes: Mapped[str] = mapped_column(String(512), default="")
+
+    # --- Montaje (§4) ---
+    support_type: Mapped[str] = mapped_column(String(40), default="")  # poste, columna, brazo, etc.
+    layout_type: Mapped[str] = mapped_column(String(40), default="")   # unilateral, bilateral, tresbolillo
+    construction_type: Mapped[str] = mapped_column(String(60), default="")
+    light_source_type: Mapped[str] = mapped_column(String(40), default="")
+
+    # --- Desmontaje (§5): datos de la antigua luminaria sustituida ---
+    old_manufacturer: Mapped[str] = mapped_column(String(80), default="")
+    old_model: Mapped[str] = mapped_column(String(80), default="")
+    old_power_w: Mapped[float] = mapped_column(Float, default=0.0)
+    old_light_source_type: Mapped[str] = mapped_column(String(40), default="")
+    old_notes: Mapped[str] = mapped_column(String(255), default="")
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

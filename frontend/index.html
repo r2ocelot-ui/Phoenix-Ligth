@@ -1178,6 +1178,8 @@
   function toggleAddCmMode(btn) {
     const map = window._map;
     if (!map) { toast("El mapa aún no está listo.", true); return; }
+    // Excluyente con el modo "mover en el mapa".
+    if (state.editPositions && state.editPosBtn) toggleEditPositions(state.editPosBtn);
     state.addCmMode = !state.addCmMode;
     btn.classList.toggle("ghost", !state.addCmMode);
     btn.textContent = state.addCmMode ? "✕ Cancelar (click en el mapa…)" : "➕ Añadir CM en el mapa";
@@ -1221,9 +1223,14 @@
   // detach the DOM node and re-attach it when the user comes back, which
   // keeps the same map, same zoom, same markers.
   function renderInicio(c) {
-    // Limpia un posible modo "añadir CM" que quedara activo de una visita
-    // anterior (el mapa persiste entre vistas, así que el listener también).
+    // Limpia modos de edición que quedaran activos de una visita anterior
+    // (el mapa persiste entre vistas, así que sus listeners también).
     if (state.addCmMode || document.getElementById("add-cm-banner")) finishAddCmMode();
+    if (state.editPositions || document.getElementById("edit-pos-banner")) {
+      state.editPositions = false;
+      document.getElementById("edit-pos-banner")?.remove();
+      const host = document.getElementById("map"); if (host) host.style.cursor = "";
+    }
     const cabs = state.cabinets;
     const online = cabs.filter(x => x.online).length;
     const alarms = cabs.reduce((n, x) => n + x.alarms.length, 0);
@@ -1265,7 +1272,11 @@
       addBtn.onclick = () => toggleAddCmMode(addBtn);
       state.addCmBtn = addBtn;
       state.addCmMode = false;
-      bar.append(addBtn);
+      const moveBtn = el("button", "btn sm ghost", "✥ Mover en el mapa");
+      moveBtn.onclick = () => toggleEditPositions(moveBtn);
+      state.editPosBtn = moveBtn;
+      state.editPositions = false;
+      bar.append(addBtn, moveBtn);
     }
     c.append(bar);
 
@@ -1409,6 +1420,61 @@
     drawTopology();
   }
 
+  // Arrastre manual de circleMarkers (Leaflet sólo arrastra L.marker con
+  // icono; nuestros CM y luminarias son circleMarker). En "modo editar
+  // posiciones" un mousedown sobre el círculo desactiva el paneo del mapa y
+  // sigue el ratón hasta soltar, momento en que persiste la nueva lat/lon.
+  function attachMarkerDrag(marker, kind, getId) {
+    marker.on("mousedown", (e) => {
+      if (!state.editPositions) return;
+      const map = window._map; if (!map) return;
+      if (e.originalEvent) L.DomEvent.stop(e.originalEvent);
+      map.dragging.disable();
+      const onMove = (ev) => marker.setLatLng(ev.latlng);
+      const onUp = async (ev) => {
+        map.off("mousemove", onMove); map.off("mouseup", onUp);
+        map.dragging.enable();
+        await persistMarkerPosition(kind, getId(), ev.latlng.lat, ev.latlng.lng);
+      };
+      map.on("mousemove", onMove); map.on("mouseup", onUp);
+    });
+  }
+  async function persistMarkerPosition(kind, id, lat, lng) {
+    try {
+      if (kind === "cm") {
+        await api(`/cabinets/registry/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ latitude: lat, longitude: lng }) });
+      } else {
+        await api(`/lightpoints/${id}`, { method: "PATCH", body: JSON.stringify({ latitude: lat, longitude: lng }) });
+      }
+      // Actualizo el cache local para que un redibujo no devuelva el marcador
+      // a su posición anterior.
+      const tp = window._topology;
+      if (tp) {
+        tp.cabinets.forEach(cab => {
+          if (kind === "cm" && cab.code === id) { cab.latitude = lat; cab.longitude = lng; }
+          if (kind === "pt") cab.points.forEach(p => { if (p.id === id) { p.latitude = lat; p.longitude = lng; } });
+        });
+      }
+      toast("📍 Posición actualizada");
+    } catch (e) { toast(e.message, true); drawTopology(); }
+  }
+  // Activa/desactiva el modo edición de posiciones. Sale del modo "añadir CM"
+  // si estuviera activo (son excluyentes).
+  function toggleEditPositions(btn) {
+    if (state.addCmMode) finishAddCmMode();
+    state.editPositions = !state.editPositions;
+    btn.classList.toggle("ghost", !state.editPositions);
+    btn.textContent = state.editPositions ? "✓ Posiciones (arrastra y suelta)" : "✥ Mover en el mapa";
+    const host = document.getElementById("map");
+    if (host) host.style.cursor = state.editPositions ? "move" : "";
+    const banner = document.getElementById("edit-pos-banner");
+    if (state.editPositions && !banner) {
+      const b = el("div", "map-add-banner", "✥ Arrastra los cuadros y luminarias a su sitio · se guardan al soltar");
+      b.id = "edit-pos-banner"; b.style.background = "rgba(56, 189, 248, 0.95)"; b.style.color = "#04212f";
+      host?.parentElement?.append(b);
+    } else if (!state.editPositions && banner) { banner.remove(); }
+  }
+
   function pointColor(cab, circ, pt) {
     const tp = window._topology;
     if (state.mapMode === "cm") return cab.color || "#f97316";
@@ -1429,7 +1495,12 @@
       if (cab.latitude != null && cab.longitude != null) {
         const col = state.mapMode === "estado" ? (!cab._online ? "#64748b" : (STATUS_COLOR[cab._status] || "#22c55e")) : (cab.color || "#f97316");
         let m = window._cmMarkers[cab.code];
-        if (!m) { m = L.circleMarker([cab.latitude, cab.longitude], { radius: 13 }).addTo(map); m.bindTooltip("CM" + cab.number, { permanent: true, direction: "center", className: "cm-label" }); window._cmMarkers[cab.code] = m; }
+        if (!m) {
+          m = L.circleMarker([cab.latitude, cab.longitude], { radius: 13 }).addTo(map);
+          m.bindTooltip("CM" + cab.number, { permanent: true, direction: "center", className: "cm-label" });
+          window._cmMarkers[cab.code] = m;
+          attachMarkerDrag(m, "cm", () => cab.code);
+        }
         m.setStyle({ color: "#fff", weight: 3, fillColor: col, fillOpacity: 0.9 });
         const ctrl = has("cabinet:control") ? `<button class="btn sm" id="pop-${cab.code}" style="margin-top:8px;width:100%">Operar</button>` : "";
         m.bindPopup(`<strong>CM${cab.number} · ${cab.name || cab.code}</strong><br><span class="muted">${cab.code} · ${cab._online ? cab._status : "offline"}</span><br>V ${fmt(tele, "voltage_v", " V")} · I ${fmt(tele, "current_a", " A", 2)}<br>${cab.circuits.length} circuitos · ${cab.points.length} farolas${ctrl}`);
@@ -1441,7 +1512,12 @@
         const circ = circById[pt.circuit_id];
         const col = pointColor(cab, circ, pt);
         let m = window._ptMarkers[pt.id];
-        if (!m) { m = L.circleMarker([pt.latitude, pt.longitude], { radius: 6, weight: 1 }).addTo(map); m.bindTooltip(String(pt.number), { permanent: true, direction: "top", className: "pt-label", offset: [0, -4] }); window._ptMarkers[pt.id] = m; }
+        if (!m) {
+          m = L.circleMarker([pt.latitude, pt.longitude], { radius: 6, weight: 1 }).addTo(map);
+          m.bindTooltip(String(pt.number), { permanent: true, direction: "top", className: "pt-label", offset: [0, -4] });
+          window._ptMarkers[pt.id] = m;
+          attachMarkerDrag(m, "pt", () => pt.id);
+        }
         m.setStyle({ color: "#0b1120", fillColor: col, fillOpacity: 0.95 });
         m.bindPopup(`<strong>Farola ${cab.number}.${pt.number}</strong><br><span class="muted">${pt.label || ""}</span><br>CM${cab.number} · Circuito ${circ ? circ.number : "?"} · Fase ${pt.phase}<br>${pt.power_w} W`);
         pts.push([pt.latitude, pt.longitude]);

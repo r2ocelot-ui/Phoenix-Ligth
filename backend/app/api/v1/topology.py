@@ -67,6 +67,9 @@ def get_topology(
                         "latitude": p.latitude,
                         "longitude": p.longitude,
                         "power_w": p.power_w,
+                        "manufacturer": p.manufacturer or "",
+                        "model": p.model or "",
+                        "street": p.street or "",
                     }
                     for p in points
                     if p.cabinet_code == cab.code

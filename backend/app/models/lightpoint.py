@@ -24,6 +24,12 @@ class LightPoint(Base):
     latitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     power_w: Mapped[float] = mapped_column(Float, default=100.0)
+    # Ficha estilo RF Light (Hispaled): datos que introduce el técnico.
+    manufacturer: Mapped[str] = mapped_column(String(80), default="")   # nombre/fabricante
+    model: Mapped[str] = mapped_column(String(80), default="")          # modelo de luminaria
+    # Calle: se autorrellena por geocoding inverso desde lat/lon cuando hay
+    # red; el técnico puede sobrescribirla a mano.
+    street: Mapped[str] = mapped_column(String(160), default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

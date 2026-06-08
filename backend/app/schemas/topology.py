@@ -42,6 +42,9 @@ class LightPointCreate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     power_w: float = Field(100.0, ge=0)
+    manufacturer: str = ""
+    model: str = ""
+    street: str = ""
 
 
 class LightPointUpdate(BaseModel):
@@ -52,6 +55,9 @@ class LightPointUpdate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     power_w: float | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    street: str | None = None
 
 
 class LightPointRead(BaseModel):
@@ -66,3 +72,6 @@ class LightPointRead(BaseModel):
     latitude: float | None
     longitude: float | None
     power_w: float
+    manufacturer: str = ""
+    model: str = ""
+    street: str = ""

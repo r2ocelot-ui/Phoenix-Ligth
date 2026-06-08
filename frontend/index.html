@@ -164,6 +164,24 @@
     .leaflet-tooltip.cm-label { color: #fff; font-weight: 800; font-size: 11px; }
     .leaflet-tooltip.pt-label { color: #e2e8f0; font-weight: 600; font-size: 10px; }
     .leaflet-tooltip.cm-label:before, .leaflet-tooltip.pt-label:before { display: none; }
+    /* Pines como iconos HTML (divIcon): arrastre nativo + coloreado por CSS */
+    .pin-wrap { background: transparent; border: 0; }
+    .cm-pin {
+      width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font: 800 9px/1 var(--mono, monospace); letter-spacing: -.3px;
+      box-shadow: 0 1px 5px rgba(0,0,0,.55); cursor: pointer;
+    }
+    .pt-pin {
+      width: 14px; height: 14px; border-radius: 50%; border: 1px solid #0b1120;
+      box-shadow: 0 1px 3px rgba(0,0,0,.5); cursor: pointer;
+    }
+    .pt-num {
+      position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+      color: #e2e8f0; font: 600 10px/1 var(--mono, monospace);
+      text-shadow: 0 1px 3px #000, 0 0 2px #000; white-space: nowrap;
+    }
+    .leaflet-marker-draggable { cursor: move; }
 
     .toast { position: fixed; right: 22px; bottom: 22px; background: var(--panel); border: 1px solid var(--border-2);
       border-left: 4px solid var(--accent); border-radius: 10px; padding: 13px 18px; font-size: 14px;
@@ -1420,24 +1438,36 @@
     drawTopology();
   }
 
-  // Arrastre manual de circleMarkers (Leaflet sólo arrastra L.marker con
-  // icono; nuestros CM y luminarias son circleMarker). En "modo editar
-  // posiciones" un mousedown sobre el círculo desactiva el paneo del mapa y
-  // sigue el ratón hasta soltar, momento en que persiste la nueva lat/lon.
-  function attachMarkerDrag(marker, kind, getId) {
-    marker.on("mousedown", (e) => {
-      if (!state.editPositions) return;
-      const map = window._map; if (!map) return;
-      if (e.originalEvent) L.DomEvent.stop(e.originalEvent);
-      map.dragging.disable();
-      const onMove = (ev) => marker.setLatLng(ev.latlng);
-      const onUp = async (ev) => {
-        map.off("mousemove", onMove); map.off("mouseup", onUp);
-        map.dragging.enable();
-        await persistMarkerPosition(kind, getId(), ev.latlng.lat, ev.latlng.lng);
-      };
-      map.on("mousemove", onMove); map.on("mouseup", onUp);
+  // Marcadores como iconos HTML (divIcon): arrastre NATIVO de Leaflet (como
+  // Hydra) + coloreado por CSS (estado/CM/circuito/fase) actualizando el
+  // fondo del pin. Base además para iconos de farola en el futuro.
+  function cmDivIcon(num, col) {
+    return L.divIcon({
+      className: "pin-wrap",
+      html: `<div class="cm-pin" style="background:${col}">CM${num}</div>`,
+      iconSize: [30, 30], iconAnchor: [15, 15],
     });
+  }
+  function ptDivIcon(num, col) {
+    return L.divIcon({
+      className: "pin-wrap",
+      html: `<div class="pt-pin" style="background:${col}"></div><div class="pt-num">${num}</div>`,
+      iconSize: [14, 14], iconAnchor: [7, 7],
+    });
+  }
+  // Recolorea un pin existente sin recrear el icono (evita parpadeo en cada
+  // frame del WebSocket). getElement() existe una vez el marcador está pintado.
+  function recolorPin(marker, kind, col) {
+    const root = marker.getElement && marker.getElement();
+    if (!root) return;
+    const dot = root.querySelector(kind === "cm" ? ".cm-pin" : ".pt-pin");
+    if (dot) dot.style.background = col;
+  }
+  // Activa/desactiva el arrastre nativo en todos los marcadores actuales.
+  function applyMarkerDraggable() {
+    const on = !!state.editPositions;
+    const all = [...Object.values(window._cmMarkers || {}), ...Object.values(window._ptMarkers || {})];
+    all.forEach(m => { try { if (m.dragging) { on ? m.dragging.enable() : m.dragging.disable(); } } catch (e) {} });
   }
   async function persistMarkerPosition(kind, id, lat, lng) {
     try {
@@ -1473,6 +1503,7 @@
       b.id = "edit-pos-banner"; b.style.background = "rgba(56, 189, 248, 0.95)"; b.style.color = "#04212f";
       host?.parentElement?.append(b);
     } else if (!state.editPositions && banner) { banner.remove(); }
+    applyMarkerDraggable();
   }
 
   function pointColor(cab, circ, pt) {
@@ -1496,12 +1527,16 @@
         const col = state.mapMode === "estado" ? (!cab._online ? "#64748b" : (STATUS_COLOR[cab._status] || "#22c55e")) : (cab.color || "#f97316");
         let m = window._cmMarkers[cab.code];
         if (!m) {
-          m = L.circleMarker([cab.latitude, cab.longitude], { radius: 13 }).addTo(map);
-          m.bindTooltip("CM" + cab.number, { permanent: true, direction: "center", className: "cm-label" });
+          m = L.marker([cab.latitude, cab.longitude], {
+            icon: cmDivIcon(cab.number, col),
+            draggable: !!state.editPositions, autoPan: true,
+          }).addTo(map);
           window._cmMarkers[cab.code] = m;
-          attachMarkerDrag(m, "cm", () => cab.code);
+          m.on("dragend", (e) => { const ll = e.target.getLatLng(); persistMarkerPosition("cm", cab.code, ll.lat, ll.lng); });
+        } else {
+          m.setLatLng([cab.latitude, cab.longitude]);
+          recolorPin(m, "cm", col);
         }
-        m.setStyle({ color: "#fff", weight: 3, fillColor: col, fillOpacity: 0.9 });
         const ctrl = has("cabinet:control") ? `<button class="btn sm" id="pop-${cab.code}" style="margin-top:8px;width:100%">Operar</button>` : "";
         m.bindPopup(`<strong>CM${cab.number} · ${cab.name || cab.code}</strong><br><span class="muted">${cab.code} · ${cab._online ? cab._status : "offline"}</span><br>V ${fmt(tele, "voltage_v", " V")} · I ${fmt(tele, "current_a", " A", 2)}<br>${cab.circuits.length} circuitos · ${cab.points.length} farolas${ctrl}`);
         m.off("popupopen").on("popupopen", () => { const b = document.getElementById("pop-" + cab.code); if (b) b.onclick = () => { window._ctrlSel = cab.code; go("control"); }; });
@@ -1513,21 +1548,24 @@
         const col = pointColor(cab, circ, pt);
         let m = window._ptMarkers[pt.id];
         if (!m) {
-          m = L.circleMarker([pt.latitude, pt.longitude], { radius: 6, weight: 1 }).addTo(map);
-          m.bindTooltip(String(pt.number), { permanent: true, direction: "top", className: "pt-label", offset: [0, -4] });
+          m = L.marker([pt.latitude, pt.longitude], {
+            icon: ptDivIcon(pt.number, col),
+            draggable: !!state.editPositions, autoPan: true,
+          }).addTo(map);
           window._ptMarkers[pt.id] = m;
-          attachMarkerDrag(m, "pt", () => pt.id);
-          // Click en la luminaria → su ficha de información (salvo en modo
-          // "mover", donde el click es para arrastrar).
+          m.on("dragend", (e) => { const ll = e.target.getLatLng(); persistMarkerPosition("pt", pt.id, ll.lat, ll.lng); });
+          // Click en la luminaria → su ficha (salvo en modo "mover").
           m.on("click", () => {
             if (state.editPositions) return;
-            const tp = window._topoCache || window._topology;
-            const freshCab = tp?.cabinets.find(x => x.code === cab.code) || cab;
+            const t = window._topoCache || window._topology;
+            const freshCab = t?.cabinets.find(x => x.code === cab.code) || cab;
             const freshPt = freshCab.points.find(p => p.id === pt.id) || pt;
             openLightDetail(freshCab, freshPt);
           });
+        } else {
+          m.setLatLng([pt.latitude, pt.longitude]);
+          recolorPin(m, "pt", col);
         }
-        m.setStyle({ color: "#0b1120", fillColor: col, fillOpacity: 0.95 });
         pts.push([pt.latitude, pt.longitude]);
       });
     });
@@ -2115,9 +2153,13 @@
       document.querySelectorAll(".modal").forEach(m => m.remove());
       if (state.view === "inicio") {
         // En Inicio el contexto es el mapa: refresco marcadores en vez de
-        // abrir el editor del CM. Recreo marcadores para reflejar altas/bajas.
+        // abrir el editor del CM. Quito los marcadores actuales (ahora son
+        // L.marker, no CircleMarker) y los recreo para reflejar altas/bajas.
+        if (window._map) {
+          [...Object.values(window._cmMarkers || {}), ...Object.values(window._ptMarkers || {})]
+            .forEach(m => { try { window._map.removeLayer(m); } catch (e) {} });
+        }
         window._cmMarkers = {}; window._ptMarkers = {};
-        if (window._map) { window._map.eachLayer(l => { if (l instanceof L.CircleMarker) window._map.removeLayer(l); }); }
         drawTopology();
         await refreshLive();
       } else {

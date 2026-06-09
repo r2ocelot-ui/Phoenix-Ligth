@@ -517,18 +517,23 @@
           <label>Contraseña</label><input id="li-pass" type="password" autocomplete="current-password" />
           <label>PIN <span class="muted" style="font-weight:400">(si lo tienes)</span></label>
           <input id="li-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" />
-          <label>Código 2FA <span class="muted" style="font-weight:400">(si lo tienes)</span></label>
-          <input id="li-totp" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6 dígitos de la app" />
           <button class="btn" id="btn-login">Continuar</button>
           <div class="switch">¿No tienes acceso? Pídeselo a un administrador.</div>
         </div>
         <div id="login-step2" class="hidden" style="text-align:center">
-          <p class="tag" style="margin-bottom:8px">Paso 2 · Dibuja tu <strong>patrón</strong> de seguridad para terminar.</p>
+          <p class="tag" style="margin-bottom:8px">Paso 2 · Dibuja tu <strong>patrón</strong> de seguridad.</p>
           <div id="login-pattern-host"></div>
-          <input id="li-totp2" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Código 2FA (si lo tienes)" style="text-align:center; margin-top:10px" />
           <div class="row" style="justify-content:center; gap:8px; margin-top:10px">
             <button class="btn ghost sm" id="btn-pat-back">← Volver</button>
             <button class="btn ghost sm" id="btn-pat-reset">Repetir</button>
+          </div>
+        </div>
+        <div id="login-step3" class="hidden" style="text-align:center">
+          <p class="tag" style="margin-bottom:8px">Paso 3 · Introduce el <strong>código 2FA</strong> de tu app (Google Authenticator).</p>
+          <input id="li-totp3" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6 dígitos" style="text-align:center; font-size:20px; letter-spacing:6px" />
+          <div class="row" style="justify-content:center; gap:8px; margin-top:10px">
+            <button class="btn" id="btn-totp-confirm">Entrar</button>
+            <button class="btn ghost sm" id="btn-totp-back">← Volver</button>
           </div>
         </div>
       </div>
@@ -645,29 +650,40 @@
   }
 
   // ============================ Autenticación ============================
-  // Login en 2 pasos:
-  //   paso 1 → usuario + contraseña + PIN  → puede devolver el JWT (si la cuenta
-  //            no tiene patrón) o un challenge_token corto (90 s) si lo tiene.
-  //   paso 2 → challenge_token + patrón    → JWT real.
-  async function loginStep1(user, pass, pin, totpCode) {
+  // Login escalonado, una credencial por ventana:
+  //   1 → usuario + contraseña + PIN
+  //   2 → patrón (si la cuenta lo tiene)
+  //   3 → código 2FA (si la cuenta lo tiene)
+  // Cada respuesta trae next_step ("pattern"|"totp") o un access_token final.
+  async function loginStep1(user, pass, pin) {
     const body = new URLSearchParams({ username: user, password: pass });
     if (pin) body.append("pin", pin);
-    if (totpCode) body.append("totp_code", totpCode);
     const r = await fetch(API + "/auth/login", { method: "POST", credentials: "include", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
     const data = await r.json().catch(() => ({}));
     if (r.status === 429) throw new Error(data.detail || "Cuenta bloqueada temporalmente.");
     if (!r.ok) throw new Error(data.detail || "Credenciales inválidas");
     if (data.access_token) { await acceptToken(data.access_token); return { done: true }; }
-    return { done: false, challenge: data.challenge_token, expiresIn: data.expires_in };
+    return { done: false, challenge: data.challenge_token, next: data.next_step };
   }
-  async function loginStep2(challenge, pattern, totpCode) {
+  async function loginStep2(challenge, pattern) {
     const r = await fetch(API + "/auth/login/pattern", {
       method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge_token: challenge, pattern, totp: totpCode || null }),
+      body: JSON.stringify({ challenge_token: challenge, pattern }),
     });
     const data = await r.json().catch(() => ({}));
     if (r.status === 429) throw new Error(data.detail || "Cuenta bloqueada temporalmente.");
     if (!r.ok) throw new Error(data.detail || "Patrón incorrecto");
+    if (data.access_token) { await acceptToken(data.access_token); return { done: true }; }
+    return { done: false, challenge: data.challenge_token, next: data.next_step };
+  }
+  async function loginStep3(challenge, code) {
+    const r = await fetch(API + "/auth/login/totp", {
+      method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenge_token: challenge, totp: code }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (r.status === 429) throw new Error(data.detail || "Cuenta bloqueada temporalmente.");
+    if (!r.ok) throw new Error(data.detail || "Código 2FA incorrecto");
     await acceptToken(data.access_token);
   }
   async function acceptToken(tok) {
@@ -676,11 +692,13 @@
   function showLoginStep(step) {
     $("#login-step1").classList.toggle("hidden", step !== 1);
     $("#login-step2").classList.toggle("hidden", step !== 2);
+    $("#login-step3").classList.toggle("hidden", step !== 3);
     $("#login-err").textContent = "";
     if (step === 1) {
       ["li-pass", "li-pin"].forEach(id => { const e = document.getElementById(id); if (e) e.value = ""; });
       setTimeout(() => $("#li-user").focus(), 50);
     }
+    if (step === 3) { const t = $("#li-totp3"); if (t) { t.value = ""; setTimeout(() => t.focus(), 50); } }
   }
   async function refreshMe() {
     try {
@@ -3685,26 +3703,45 @@
   } else {
     loadInfo();
   }
+  // Monta la ventana 2 (patrón) con el challenge dado.
+  function goLoginPattern(challenge) {
+    state.loginChallenge = challenge;
+    const host = $("#login-pattern-host"); host.innerHTML = "";
+    const pad = makePatternPad(async seq => {
+      if (seq.length < 4) return;
+      try {
+        const r = await loginStep2(state.loginChallenge, seq);
+        if (!r.done && r.next === "totp") { goLoginTotp(r.challenge); }
+      } catch (e) { $("#login-err").textContent = e.message; setTimeout(() => pad.reset(), 600); }
+    });
+    host.append(pad);
+    state.loginPad = pad;
+    showLoginStep(2);
+  }
+  // Monta la ventana 3 (código 2FA) con el challenge dado.
+  function goLoginTotp(challenge) {
+    state.loginChallenge = challenge;
+    showLoginStep(3);
+  }
   $("#btn-login").onclick = async () => {
     $("#login-err").textContent = "";
     const btn = $("#btn-login"); btn.disabled = true;
     try {
-      const r = await loginStep1($("#li-user").value.trim(), $("#li-pass").value, $("#li-pin").value.trim(), $("#li-totp").value.trim());
+      const r = await loginStep1($("#li-user").value.trim(), $("#li-pass").value, $("#li-pin").value.trim());
       if (r.done) return;
-      // Paso 2 — montar widget patrón. El challenge dura 90 s.
-      state.loginChallenge = r.challenge;
-      const host = $("#login-pattern-host"); host.innerHTML = "";
-      const pad = makePatternPad(async seq => {
-        if (seq.length < 4) return;
-        try { await loginStep2(state.loginChallenge, seq, $("#li-totp2").value.trim()); }
-        catch (e) { $("#login-err").textContent = e.message; setTimeout(() => pad.reset(), 600); }
-      });
-      host.append(pad);
-      state.loginPad = pad;
-      showLoginStep(2);
+      if (r.next === "pattern") goLoginPattern(r.challenge);
+      else if (r.next === "totp") goLoginTotp(r.challenge);
     } catch (e) { $("#login-err").textContent = netMsg(e); }
     finally { btn.disabled = false; }
   };
+  $("#btn-totp-confirm").onclick = async () => {
+    const code = $("#li-totp3").value.trim();
+    if (!/^\d{6}$/.test(code)) { $("#login-err").textContent = "Introduce los 6 dígitos."; return; }
+    try { await loginStep3(state.loginChallenge, code); }
+    catch (e) { $("#login-err").textContent = e.message; }
+  };
+  $("#li-totp3") && ($("#li-totp3").onkeydown = (e) => { if (e.key === "Enter") $("#btn-totp-confirm").click(); });
+  $("#btn-totp-back").onclick = () => { state.loginChallenge = null; showLoginStep(1); };
   $("#btn-pat-back").onclick = () => { state.loginChallenge = null; showLoginStep(1); };
   $("#btn-pat-reset").onclick = () => { if (state.loginPad) state.loginPad.reset(); $("#login-err").textContent = ""; };
   $("#btn-logout").onclick = logout;

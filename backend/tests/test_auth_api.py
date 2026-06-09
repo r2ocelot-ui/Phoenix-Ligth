@@ -327,13 +327,18 @@ def test_totp_setup_verify_and_login_enforcement(client):
     ok = client.post("/api/v1/auth/totp/verify", json={"code": code}, headers=_auth(boss))
     assert ok.status_code == 200
     assert client.get("/api/v1/auth/me", headers=_auth(boss)).json()["has_totp"] is True
-    # Login now requires the code (boss has no pattern → step 1 is final).
-    no_code = client.post("/api/v1/auth/login", data={"username": "boss", "password": "secret123"})
-    assert no_code.status_code == 401
+    # Login now routes to a 3rd window: boss has no pattern → step 1 returns a
+    # totp challenge (next_step="totp"), and /login/totp finishes it.
+    step1 = client.post("/api/v1/auth/login", data={"username": "boss", "password": "secret123"})
+    assert step1.status_code == 200
+    assert step1.json()["next_step"] == "totp"
+    ch = step1.json()["challenge_token"]
+    # Wrong code rejected.
+    bad_login = client.post("/api/v1/auth/login/totp", json={"challenge_token": ch, "totp": "000000"})
+    assert bad_login.status_code == 401
     code2 = totp_svc._hotp(totp_svc._key(secret), int(time.time() // 30))
-    with_code = client.post("/api/v1/auth/login",
-                            data={"username": "boss", "password": "secret123", "totp_code": code2})
-    assert with_code.status_code == 200
+    ok_login = client.post("/api/v1/auth/login/totp", json={"challenge_token": ch, "totp": code2})
+    assert ok_login.status_code == 200 and ok_login.json()["access_token"]
     # Disable clears it.
     assert client.delete("/api/v1/auth/totp", headers=_auth(boss)).status_code == 200
     assert client.get("/api/v1/auth/me", headers=_auth(boss)).json()["has_totp"] is False

@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.user import (
     LoginStep1Result,
     LoginStep2,
+    LoginStep3,
     PasswordSet,
     PatternSet,
     PinSet,
@@ -60,6 +61,28 @@ def register(body: UserCreate, db: Session = Depends(get_db)) -> User:
 _STEP1_TTL_SECONDS = 90
 
 
+def _issue_login_token(db, user, response, phoenix_device, ua, ip, step):
+    """Paso final del login (compartido por las 3 ventanas): registra el
+    dispositivo, pone la cookie, audita el éxito y devuelve el JWT."""
+    device_id, is_new = device_guard.touch_device(
+        db, user_id=user.id, username=user.username,
+        device_id=phoenix_device, user_agent=ua, ip=ip,
+    )
+    response.set_cookie(
+        settings.device_cookie_name, device_id,
+        max_age=settings.device_cookie_max_age_days * 86400,
+        httponly=True, samesite="lax",
+    )
+    detail = {"step": step, "ip": ip}
+    if is_new:
+        detail["new_device"] = True
+    auth_guard.register_success(db, user, action="auth.login", detail=detail)
+    return LoginStep1Result(
+        step=int(step) if str(step).isdigit() else 9,
+        rank=user.rank, access_token=create_access_token(user.username),
+    )
+
+
 @router.post("/login", response_model=LoginStep1Result)
 def login(
     request: Request,
@@ -67,7 +90,6 @@ def login(
     username: str = Form(...),
     password: str = Form(...),
     pin: str | None = Form(default=None),
-    totp_code: str | None = Form(default=None),
     phoenix_device: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ) -> LoginStep1Result:
@@ -114,55 +136,39 @@ def login(
     user.last_login_at = datetime.now(timezone.utc)
     ip_guard.register_success(ip)
 
-    def _finish_login() -> LoginStep1Result:
-        """Issue the JWT, record the device fingerprint and set the cookie."""
-        device_id, is_new = device_guard.touch_device(
-            db, user_id=user.id, username=user.username,
-            device_id=phoenix_device, user_agent=ua, ip=ip,
-        )
-        response.set_cookie(
-            settings.device_cookie_name, device_id,
-            max_age=settings.device_cookie_max_age_days * 86400,
-            httponly=True, samesite="lax",
-        )
-        detail = {"step": 1, "pattern_required": False, "ip": ip}
-        if is_new:
-            detail["new_device"] = True
-        auth_guard.register_success(db, user, action="auth.login", detail=detail)
+    # Patrón configurado → ventana 2 (patrón). Si no, pero hay 2FA → ventana 3
+    # (totp). Si no hay ninguno → login terminado aquí.
+    if user.pattern_hash:
+        audit_log.record(db, username=user.username, action="auth.login_step1",
+                         detail={"next": "pattern", "ip": ip})
+        db.commit()
         return LoginStep1Result(
-            step=1, rank=user.rank,
-            access_token=create_access_token(user.username),
+            step=1, rank=user.rank, next_step="pattern",
+            challenge_token=create_step_token(user.username, step=1,
+                                              expires_seconds=_STEP1_TTL_SECONDS),
+            expires_in=_STEP1_TTL_SECONDS,
         )
-
-    # No pattern set yet → step 1 is the final step. Enforce 2FA here if on.
-    if not user.pattern_hash:
-        if user.totp_enabled and not totp.verify(user.totp_secret, totp_code):
-            auth_guard.register_failure(db, user, action="auth.login_failed", target="totp")
-            ip_guard.register_failure(db, ip)
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código 2FA incorrecto")
-        return _finish_login()
-
-    # Pattern required → hand out the step-1 challenge.
-    audit_log.record(db, username=user.username, action="auth.login_step1",
-                     detail={"pattern_required": True, "ip": ip})
-    db.commit()
-    return LoginStep1Result(
-        step=1, rank=user.rank,
-        challenge_token=create_step_token(user.username, step=1,
-                                          expires_seconds=_STEP1_TTL_SECONDS),
-        expires_in=_STEP1_TTL_SECONDS,
-    )
+    if user.totp_enabled:
+        db.commit()
+        return LoginStep1Result(
+            step=1, rank=user.rank, next_step="totp",
+            challenge_token=create_step_token(user.username, step=2,
+                                              expires_seconds=_STEP1_TTL_SECONDS),
+            expires_in=_STEP1_TTL_SECONDS,
+        )
+    return _issue_login_token(db, user, response, phoenix_device, ua, ip, step="1")
 
 
-@router.post("/login/pattern", response_model=Token)
+@router.post("/login/pattern", response_model=LoginStep1Result)
 def login_step2(
     body: LoginStep2,
     request: Request,
     response: Response,
     phoenix_device: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
-) -> Token:
-    """Step 2: trade the step-1 challenge + the unlock pattern for a JWT."""
+) -> LoginStep1Result:
+    """Ventana 2: reto del paso 1 + patrón. Si la cuenta tiene 2FA, devuelve
+    un nuevo reto para la ventana 3 (código TOTP); si no, emite el JWT."""
     ip = ip_guard.client_ip(request)
     ua = request.headers.get("user-agent")
     try:
@@ -185,28 +191,51 @@ def login_step2(
                                     target="pattern")
         ip_guard.register_failure(db, ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Patrón incorrecto")
-    # 2FA: si el usuario tiene TOTP activado, el código es obligatorio aquí
-    # (paso final que emite el token para cuentas con patrón).
+    # Patrón correcto. Si hay 2FA → ventana 3; si no, emitir token.
     if user.totp_enabled:
-        if not totp.verify(user.totp_secret, body.totp):
-            auth_guard.register_failure(db, user, action="auth.login_failed", target="totp")
-            ip_guard.register_failure(db, ip)
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código 2FA incorrecto")
+        return LoginStep1Result(
+            step=2, rank=user.rank, next_step="totp",
+            challenge_token=create_step_token(user.username, step=2,
+                                              expires_seconds=_STEP1_TTL_SECONDS),
+            expires_in=_STEP1_TTL_SECONDS,
+        )
     ip_guard.register_success(ip)
-    device_id, is_new = device_guard.touch_device(
-        db, user_id=user.id, username=user.username,
-        device_id=phoenix_device, user_agent=ua, ip=ip,
-    )
-    response.set_cookie(
-        settings.device_cookie_name, device_id,
-        max_age=settings.device_cookie_max_age_days * 86400,
-        httponly=True, samesite="lax",
-    )
-    detail = {"step": 2, "ip": ip}
-    if is_new:
-        detail["new_device"] = True
-    auth_guard.register_success(db, user, action="auth.login", detail=detail)
-    return Token(access_token=create_access_token(user.username), rank=user.rank)
+    return _issue_login_token(db, user, response, phoenix_device, ua, ip, step="2")
+
+
+@router.post("/login/totp", response_model=Token)
+def login_step3(
+    body: LoginStep3,
+    request: Request,
+    response: Response,
+    phoenix_device: str | None = Cookie(default=None),
+    db: Session = Depends(get_db),
+) -> Token:
+    """Ventana 3: reto (step=2) + código 2FA → JWT."""
+    ip = ip_guard.client_ip(request)
+    ua = request.headers.get("user-agent")
+    try:
+        payload = decode_access_token(body.challenge_token)
+    except TokenError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Reto caducado, vuelve a empezar")
+    if payload.get("step") != 2:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Token de reto inválido")
+    user = db.query(User).filter(User.username == payload.get("sub")).first()
+    if user is None or not user.is_active:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario no válido")
+    if auth_guard.is_locked(user):
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Cuenta bloqueada. Vuelve a empezar en "
+            f"{auth_guard.lock_remaining_minutes(user)} min.",
+        )
+    if not user.totp_enabled or not totp.verify(user.totp_secret, body.totp):
+        auth_guard.register_failure(db, user, action="auth.login_failed", target="totp")
+        ip_guard.register_failure(db, ip)
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código 2FA incorrecto")
+    ip_guard.register_success(ip)
+    res = _issue_login_token(db, user, response, phoenix_device, ua, ip, step="3")
+    return Token(access_token=res.access_token, rank=user.rank)
 
 
 @router.get("/me", response_model=UserDetail)

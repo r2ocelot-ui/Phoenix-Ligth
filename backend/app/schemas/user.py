@@ -91,12 +91,18 @@ class LoginStep1Result(BaseModel):
     token_type: str = "bearer"
     rank: str
     expires_in: int | None = None
+    # Qué ventana toca a continuación: "pattern", "totp" o None (login hecho).
+    next_step: str | None = None
 
 
 class LoginStep2(BaseModel):
     challenge_token: str
     pattern: str = Field(..., pattern=r"^[0-8]{4,9}$")
-    totp: str | None = Field(default=None, max_length=8)
+
+
+class LoginStep3(BaseModel):
+    challenge_token: str
+    totp: str = Field(..., min_length=6, max_length=8)
 
 
 class TotpVerify(BaseModel):

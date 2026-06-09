@@ -103,6 +103,11 @@
     .clock { text-align: right; line-height: 1.1; }
     .clock-time { font: 700 16px/1 var(--mono, monospace); letter-spacing: .5px; }
     .clock-date { font-size: 11px; color: var(--dim); text-transform: capitalize; }
+    /* Chips de telemetría de infraestructura del cuadro */
+    .infra-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .infra-chip { font-size: 11px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-2); }
+    .infra-chip.ok { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.4); }
+    .infra-chip.bad { background: rgba(239,68,68,.14); border-color: rgba(239,68,68,.5); }
 
     /* Flex column so #content fills the space and the footer can be pinned
        to the very bottom regardless of how much the active view occupies. */
@@ -1529,11 +1534,33 @@
       card.append(m);
       const dim = cab.state?.dim ?? 0;
       card.append(el("div", null, `<div class="muted" style="font-size:11px;margin-bottom:4px">Dimming · ${dim}%</div><div class="bar"><span style="width:${dim}%"></span></div>`));
+      // Chips de infraestructura del cuadro (temperatura, puerta, intrusión).
+      const infra = infraChips(t);
+      if (infra) card.append(infra);
       grid.append(card);
     });
     c.append(grid);
   }
   function metric(label, val) { const m = el("div", "m"); m.append(el("div", "ml", label), el("div", "mv", val)); return m; }
+  // Chips de telemetría de infraestructura del cuadro: temperatura interior,
+  // puerta y sensor de intrusión. Devuelve null si la telemetría no los trae.
+  function infraChips(t) {
+    if (!t) return null;
+    const chips = [];
+    if (t.cabinet_temp_c != null) {
+      const hot = t.cabinet_temp_c > 55;
+      chips.push(`<span class="infra-chip ${hot ? "bad" : "ok"}">🌡️ ${t.cabinet_temp_c.toFixed(1)} °C</span>`);
+    }
+    if (t.door_open != null) {
+      chips.push(t.door_open
+        ? `<span class="infra-chip bad">🚪 Puerta abierta</span>`
+        : `<span class="infra-chip ok">🚪 Cerrada</span>`);
+    }
+    if (t.intrusion) chips.push(`<span class="infra-chip bad">🚨 Intrusión</span>`);
+    if (!chips.length) return null;
+    const wrap = el("div", "infra-chips"); wrap.innerHTML = chips.join("");
+    return wrap;
+  }
 
   // ============================ Mapa ============================
   const TILE_STYLES = {
@@ -1723,7 +1750,12 @@
           recolorPin(m, "cm", col);
         }
         const ctrl = has("cabinet:control") ? `<button class="btn sm" id="pop-${cab.code}" style="margin-top:8px;width:100%">Operar</button>` : "";
-        m.bindPopup(`<strong>CM${cab.number} · ${cab.name || cab.code}</strong><br><span class="muted">${cab.code} · ${cab._online ? cab._status : "offline"}</span><br>V ${fmt(tele, "voltage_v", " V")} · I ${fmt(tele, "current_a", " A", 2)}<br>${cab.circuits.length} circuitos · ${cab.points.length} farolas${ctrl}`);
+        const infra = [];
+        if (tele.cabinet_temp_c != null) infra.push(`🌡️ ${tele.cabinet_temp_c.toFixed(1)}°C`);
+        if (tele.door_open != null) infra.push(tele.door_open ? "🚪 abierta" : "🚪 cerrada");
+        if (tele.intrusion) infra.push("🚨 intrusión");
+        const infraLine = infra.length ? `<br><span class="muted">${infra.join(" · ")}</span>` : "";
+        m.bindPopup(`<strong>CM${cab.number} · ${cab.name || cab.code}</strong><br><span class="muted">${cab.code} · ${cab._online ? cab._status : "offline"}</span><br>V ${fmt(tele, "voltage_v", " V")} · I ${fmt(tele, "current_a", " A", 2)}${infraLine}<br>${cab.circuits.length} circuitos · ${cab.points.length} farolas${ctrl}`);
         m.off("popupopen").on("popupopen", () => { const b = document.getElementById("pop-" + cab.code); if (b) b.onclick = () => { window._ctrlSel = cab.code; go("control"); }; });
         pts.push([cab.latitude, cab.longitude]);
       }

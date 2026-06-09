@@ -41,3 +41,17 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Ficha del trabajador. Campos opcionales (la mayoría empleados los rellenan).
+    # Pack laboral (empleados Phoenix):
+    full_name: Mapped[str] = mapped_column(String(120), default="")
+    phone: Mapped[str] = mapped_column(String(40), default="")
+    job_title: Mapped[str] = mapped_column(String(80), default="")
+    department: Mapped[str] = mapped_column(String(80), default="")
+    shift: Mapped[str] = mapped_column(String(32), default="")  # mañana/tarde/noche/24h/oficina
+    # Pack contractual (contratos externos):
+    employee_id: Mapped[str] = mapped_column(String(40), default="")
+    national_id: Mapped[str] = mapped_column(String(20), default="")  # DNI/NIF
+    vehicle: Mapped[str] = mapped_column(String(40), default="")
+    # Auditoría visible en la ficha:
+    last_login_ip: Mapped[str] = mapped_column(String(64), default="")
+    notes: Mapped[str] = mapped_column(String(512), default="")  # solo la ve admin

@@ -3290,14 +3290,18 @@
     // Línea de seguridad: credenciales (sin revelar nunca) + estado 2FA.
     const sec = el("div", "user-detail-row"); sec.style.marginTop = "10px";
     const credCell = el("div");
-    credCell.innerHTML = `<div class="muted" style="font-size:11px">Credenciales</div>`
-      + `<div style="font-size:13px">Contraseña <span class="mono">••••••••</span>`
-      + ` · PIN ${u.has_pin ? "✅" : "—"} · Patrón ${u.has_pattern ? "✅" : "—"}</div>`;
+    credCell.innerHTML = `<div class="muted" style="font-size:11px">Credenciales configuradas</div>`
+      + `<div style="font-size:13px">Contraseña ✅`
+      + ` · PIN ${u.has_pin ? "✅" : "—"} · Patrón ${u.has_pattern ? "✅" : "—"}</div>`
+      + `<div class="muted" style="font-size:11px;margin-top:2px">Las credenciales se guardan cifradas y nunca son legibles, ni para el admin.</div>`;
     const totpCell = el("div");
     totpCell.innerHTML = `<div class="muted" style="font-size:11px">2FA (Google Authenticator)</div>`
       + `<div style="font-size:13px">${u.has_totp ? `✅ activo · 🔑 ${u.totp_recovery_remaining ?? 0} claves de recuperación` : "— sin activar"}</div>`;
     sec.append(credCell, totpCell);
     wrap.append(sec);
+
+    // Ficha del trabajador (4 packs: laboral, contractual, auditoría, notas).
+    wrap.append(fichaSection(u));
 
     // Permisos efectivos en chips.
     const eff = el("div"); eff.style.marginTop = "12px";
@@ -3351,6 +3355,116 @@
     }
     wrap.append(acts);
     return wrap;
+  }
+
+  // Ficha del trabajador. Solo lectura por defecto; con permiso user:manage
+  // aparece "Editar ficha" y los campos se vuelven editables (PATCH /profile).
+  const FICHA_SHIFTS = ["", "mañana", "tarde", "noche", "24h", "oficina"];
+  const FICHA_LABORAL = [
+    ["full_name", "Nombre completo"], ["phone", "Teléfono"],
+    ["job_title", "Cargo"], ["department", "Departamento / sede"],
+    ["shift", "Turno"],
+  ];
+  const FICHA_CONTRACTUAL = [
+    ["employee_id", "Nº de empleado"], ["national_id", "DNI / NIF"],
+    ["vehicle", "Vehículo"],
+  ];
+
+  function fichaSection(u) {
+    const box = el("div"); box.style.marginTop = "12px";
+    const canEdit = has("user:manage");
+
+    const render = (editing) => {
+      box.innerHTML = "";
+      box.append(el("div", "muted", "Ficha del trabajador"));
+      const inputs = {};
+
+      // Helper: una fila etiqueta + valor (o input en modo edición).
+      const fieldRow = (key, label) => {
+        const r = el("div"); r.style.margin = "6px 0";
+        const lab = el("div", "muted"); lab.style.fontSize = "11px"; lab.textContent = label;
+        r.append(lab);
+        if (editing) {
+          let inp;
+          if (key === "shift") {
+            inp = el("select");
+            FICHA_SHIFTS.forEach(s => { const o = el("option", null, s || "—"); o.value = s; if ((u[key] || "") === s) o.selected = true; inp.append(o); });
+          } else {
+            inp = el("input"); inp.value = u[key] || ""; inp.style.width = "100%";
+          }
+          inputs[key] = inp; r.append(inp);
+        } else {
+          const v = el("div"); v.style.fontSize = "13px";
+          v.textContent = (u[key] && String(u[key]).trim()) ? u[key] : "—";
+          r.append(v);
+        }
+        return r;
+      };
+
+      const pack = (title, fields) => {
+        const col = el("div");
+        const h = el("div", "muted"); h.style.fontSize = "11px"; h.style.textTransform = "uppercase"; h.style.letterSpacing = ".4px"; h.style.opacity = ".75"; h.textContent = title;
+        col.append(h);
+        fields.forEach(([k, l]) => col.append(fieldRow(k, l)));
+        return col;
+      };
+
+      const grid = el("div"); grid.style.display = "grid"; grid.style.gridTemplateColumns = "1fr 1fr"; grid.style.gap = "14px"; grid.style.marginTop = "8px";
+      grid.append(pack("Datos laborales", FICHA_LABORAL), pack("Datos contractuales", FICHA_CONTRACTUAL));
+      box.append(grid);
+
+      // Auditoría: último acceso + IP (siempre solo lectura, lo fija el login).
+      const audit = el("div"); audit.style.marginTop = "8px";
+      const aLab = el("div", "muted"); aLab.style.fontSize = "11px"; aLab.textContent = "Último acceso"; audit.append(aLab);
+      const aVal = el("div"); aVal.style.fontSize = "13px";
+      aVal.textContent = u.last_login_at
+        ? `${new Date(u.last_login_at).toLocaleString()} · IP ${u.last_login_ip || "—"}`
+        : "nunca";
+      audit.append(aVal); box.append(audit);
+
+      // Notas internas — solo admin (u.notes llega null si no autorizado).
+      if (u.notes !== null && u.notes !== undefined) {
+        const n = el("div"); n.style.marginTop = "8px";
+        const nLab = el("div", "muted"); nLab.style.fontSize = "11px"; nLab.textContent = "Notas internas (solo admin)"; n.append(nLab);
+        if (editing) {
+          const ta = el("textarea"); ta.value = u.notes || ""; ta.rows = 2; ta.maxLength = 512; ta.style.width = "100%";
+          inputs.notes = ta; n.append(ta);
+        } else {
+          const nVal = el("div"); nVal.style.fontSize = "13px"; nVal.style.whiteSpace = "pre-wrap";
+          nVal.textContent = (u.notes && u.notes.trim()) ? u.notes : "—";
+          n.append(nVal);
+        }
+        box.append(n);
+      }
+
+      if (canEdit) {
+        const bar = el("div"); bar.style.marginTop = "10px"; bar.style.display = "flex"; bar.style.gap = "8px";
+        if (!editing) {
+          const edit = el("button", "btn ghost sm", "✎ Editar ficha");
+          edit.onclick = () => render(true);
+          bar.append(edit);
+        } else {
+          const save = el("button", "btn sm", "Guardar ficha");
+          save.onclick = async () => {
+            const body = {};
+            Object.entries(inputs).forEach(([k, inp]) => { body[k] = inp.value; });
+            try {
+              const updated = await api(`/users/${u.id}/profile`, { method: "PATCH", body: JSON.stringify(body) });
+              Object.assign(u, updated);  // refresca el objeto local con lo guardado
+              toast("Ficha actualizada");
+              render(false);
+            } catch (e) { toast(e.message, true); }
+          };
+          const cancel = el("button", "btn ghost sm", "Cancelar");
+          cancel.onclick = () => render(false);
+          bar.append(save, cancel);
+        }
+        box.append(bar);
+      }
+    };
+
+    render(false);
+    return box;
   }
 
   function renderNewUserForm(panel) {

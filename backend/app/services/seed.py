@@ -21,7 +21,9 @@ DEMO_PATTERN = "01258"  # diagonal Z — easy to remember in the demo
 
 def seed_demo_admin(db: Session, username: str, password: str) -> None:
     """Create a known owner account with PIN + pattern so the demo can log in
-    through the full 4-credential flow out of the box (idempotent)."""
+    through the full 4-credential flow out of the box (idempotent). The account
+    ships with a fully filled-in worker profile so the ficha has something to
+    show in the demo."""
     if db.query(User).filter(User.username == username).first():
         return
     db.add(User(
@@ -30,6 +32,17 @@ def seed_demo_admin(db: Session, username: str, password: str) -> None:
         pin_hash=hash_password(DEMO_PIN),
         pattern_hash=hash_password(DEMO_PATTERN),
         rank="owner",
+        # Ficha demo — pack laboral
+        full_name="Phoenix Owner (demo)",
+        phone="+34 600 000 000",
+        job_title="Responsable de plataforma",
+        department="Madrid Centro",
+        shift="oficina",
+        # Pack contractual
+        employee_id="PHX-0001",
+        national_id="00000000T",
+        vehicle="Furgoneta 1234-ABC",
+        notes="Cuenta de demostración sembrada al arrancar.",
     ))
     db.commit()
 

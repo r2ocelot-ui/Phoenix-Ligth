@@ -68,6 +68,9 @@ def _issue_login_token(db, user, response, phoenix_device, ua, ip, step):
         db, user_id=user.id, username=user.username,
         device_id=phoenix_device, user_agent=ua, ip=ip,
     )
+    # Sello del último acceso REAL (no el paso 1): se refleja en la ficha.
+    user.last_login_at = datetime.now(timezone.utc)
+    user.last_login_ip = ip or ""
     response.set_cookie(
         settings.device_cookie_name, device_id,
         max_age=settings.device_cookie_max_age_days * 86400,

@@ -27,7 +27,7 @@ Lo entregado hasta hoy: el esqueleto funcional de Phoenix Light.
   alarmas, gestión de usuarios y auditoría. WebSocket en vivo + fallback.
 - Mapa Leaflet con CM y farolas numeradas, coloreables por estado, CM,
   circuito o fase, con leyenda.
-- Lanzadores `start.bat` / `start.sh` con usuario demo (`admin`/`phoenix123`).
+- Lanzadores `start.bat` / `start.sh` con usuario demo (`phoenix`/`phoenix123`).
 
 **Snapshot:** `v0-fundacion` (al cerrar). Etapas internas: `v0-mvp`,
 `v0.2-identity`, `v0.3-panel`, `v0.4-map-realtime`, `v0.5-topology`.

@@ -30,7 +30,7 @@ Pendiente de que el capitán confirme en pantalla cada bloque:
 
 | Bloque | Estado | Qué probar |
 |---|---|---|
-| Login 2 pasos (usuario+contraseña+PIN → patrón) | 🧪 | Entrar con admin/phoenix123/1234 + patrón 01258 |
+| Login 2 pasos (usuario+contraseña+PIN → patrón) | 🧪 | Entrar con phoenix/phoenix123/1234 + patrón 01258 |
 | 2FA TOTP (Google Authenticator) | 🧪 | Menú usuario → "Mi 2FA" → escanear/clave → código |
 | Anti-keylogger (cambiar credencial pide la actual) | 🧪 | Cambiar PIN/patrón |
 | Anti-sabotaje (IP ban, siege, dispositivos) | 🧪 | Sección Seguridad |

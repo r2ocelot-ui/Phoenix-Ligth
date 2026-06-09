@@ -126,7 +126,7 @@ Para certificación (MID) en alumbrado público se recomienda **CVM-C10** o **SD
 1. Instala **Python 3.11+** (en Windows, marca *"Add Python to PATH"* en el instalador).
 2. Descarga el proyecto: en GitHub, botón **Code → Download ZIP**, y descomprímelo.
 3. Doble clic en **`start.bat`** (Windows) o ejecuta **`start.sh`** (Mac/Linux).
-4. Se abre solo `http://localhost:8000/ui/`. Entra con **admin / phoenix123**.
+4. Se abre solo `http://localhost:8000/ui/`. Entra con **phoenix / phoenix123**.
 
 ### Opción A — solo el panel web, con datos de demo (sin broker)
 ```bash
@@ -148,7 +148,7 @@ python simulator/cabinet_simulator.py --cabinet-id CAB-001
 > **Acceso:** no hay auto-registro. En una instalación nueva la **primera**
 > cuenta es `owner` (bootstrap); a partir de ahí **el administrador da de alta**
 > a los usuarios desde la sección *Usuarios*. En modo demo viene sembrado
-> `admin` / `phoenix123` (owner) y el login aparece relleno.
+> `phoenix` / `phoenix123` (owner) y el login aparece relleno.
 
 Endpoints útiles:
 - `http://localhost:8000/ui/` — **Panel web Phoenix Light**
@@ -219,9 +219,9 @@ que se derivan del **rango** del usuario más sus overrides individuales.
 # 1) Registrar (el primero es owner) y obtener token
 curl -X POST localhost:8000/api/v1/auth/register \
      -H 'Content-Type: application/json' \
-     -d '{"username":"admin","password":"secret123"}'
+     -d '{"username":"phoenix","password":"secret123"}'
 TOKEN=$(curl -s -X POST localhost:8000/api/v1/auth/login \
-     -d 'username=admin&password=secret123' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
+     -d 'username=phoenix&password=secret123' | python -c 'import sys,json;print(json.load(sys.stdin)["access_token"])')
 
 # 2) Llamar a un endpoint protegido
 curl -X POST localhost:8000/api/v1/cabinets/CAB-001/dim \

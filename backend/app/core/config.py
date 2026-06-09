@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     demo_interval_s: int = 3
     # Demo-only owner account, seeded on startup so you can log in immediately.
     # Disable by setting PHOENIX_DEMO_MODE=false in production.
-    demo_admin_username: str = "admin"
+    demo_admin_username: str = "phoenix"
     demo_admin_password: str = "phoenix123"
 
 

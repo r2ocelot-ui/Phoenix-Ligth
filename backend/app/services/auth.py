@@ -51,7 +51,10 @@ def require_permission(permission: str) -> Callable[..., User]:
     return checker
 
 
-def user_detail(user: User) -> UserDetail:
+def user_detail(user: User, *, include_notes: bool = False) -> UserDetail:
+    """Build the rich user view. ``include_notes`` gates the internal admin
+    notes: only callers acting with ``user:manage`` should pass ``True`` —
+    ``/auth/me`` leaves it ``False`` so a user never reads notes about himself."""
     return UserDetail(
         id=user.id,
         username=user.username,
@@ -67,4 +70,16 @@ def user_detail(user: User) -> UserDetail:
         has_pattern=bool(getattr(user, "pattern_hash", None)),
         has_totp=bool(getattr(user, "totp_enabled", False)),
         totp_recovery_remaining=len(getattr(user, "totp_recovery", None) or []),
+        # Ficha del trabajador
+        full_name=user.full_name or "",
+        phone=user.phone or "",
+        job_title=user.job_title or "",
+        department=user.department or "",
+        shift=user.shift or "",
+        employee_id=user.employee_id or "",
+        national_id=user.national_id or "",
+        vehicle=user.vehicle or "",
+        last_login_at=user.last_login_at,
+        last_login_ip=user.last_login_ip or "",
+        notes=(user.notes or "") if include_notes else None,
     )

@@ -242,7 +242,7 @@ a React/TypeScript dejando el backend en Python (combo estándar en la
 industria).
 
 ### 5.3 Seed demo con credenciales conocidas
-- En modo demo, `admin` se siembra con:
+- En modo demo, `phoenix` se siembra con:
   - contraseña: `phoenix123`
   - PIN: `1234`
   - patrón: `01258` (Z diagonal)

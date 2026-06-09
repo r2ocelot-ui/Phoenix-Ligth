@@ -29,7 +29,7 @@ echo "===================================================="
 echo "  PHOENIX LIGHT - arrancando..."
 echo
 echo "  Abre el navegador en:  http://localhost:8000/ui/"
-echo "  Usuario:  admin"
+echo "  Usuario:  phoenix"
 echo "  Clave:    phoenix123"
 echo
 echo "  Para parar: pulsa Ctrl+C"

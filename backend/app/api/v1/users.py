@@ -7,6 +7,7 @@ from app.models.user import User
 from app.schemas.user import (
     PasswordReset,
     PermissionOverride,
+    ProfileUpdate,
     RankChange,
     UserCreateAdmin,
     UserDetail,
@@ -111,7 +112,30 @@ def get_user(
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> UserDetail:
-    return user_detail(_get(db, user_id, actor))
+    return user_detail(_get(db, user_id, actor), include_notes=True)
+
+
+@router.patch("/{user_id}/profile", response_model=UserDetail)
+def update_profile(
+    user_id: int,
+    body: ProfileUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+) -> UserDetail:
+    """Edita la ficha del trabajador (datos laborales, contractuales y notas
+    internas). PATCH parcial: solo toca los campos enviados. Las notas y el DNI
+    son datos sensibles, por eso vive bajo ``user:manage`` y queda auditado."""
+    user = _get(db, user_id, actor)
+    data = body.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(user, field, (value or "").strip())
+    db.commit()
+    db.refresh(user)
+    audit_log.record(
+        db, username=actor.username, action="user.profile",
+        target=user.username, detail={"fields": sorted(data.keys())},
+    )
+    return user_detail(user, include_notes=True)
 
 
 @router.delete("/{user_id}")
@@ -225,4 +249,4 @@ def set_permissions(
         target=user.username,
         detail={"extra": body.extra_permissions, "denied": body.denied_permissions},
     )
-    return user_detail(user)
+    return user_detail(user, include_notes=True)

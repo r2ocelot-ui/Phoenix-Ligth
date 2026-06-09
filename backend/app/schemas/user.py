@@ -29,6 +29,37 @@ class UserDetail(UserRead):
     has_pattern: bool = False
     has_totp: bool = False
     totp_recovery_remaining: int = 0
+    # --- Ficha del trabajador --------------------------------------------
+    # Pack laboral (empleados Phoenix):
+    full_name: str = ""
+    phone: str = ""
+    job_title: str = ""
+    department: str = ""
+    shift: str = ""
+    # Pack contractual (contratos externos):
+    employee_id: str = ""
+    national_id: str = ""
+    vehicle: str = ""
+    # Auditoría visible en la ficha (read-only, la fija el login):
+    last_login_at: datetime | None = None
+    last_login_ip: str = ""
+    # Notas internas: SOLO se rellena para quien gestiona usuarios (admin);
+    # ``None`` significa "no autorizado a verlas" (p.ej. el propio /auth/me).
+    notes: str | None = None
+
+
+class ProfileUpdate(BaseModel):
+    """Edición de la ficha del trabajador (admin). Todos los campos son
+    opcionales: solo se aplican los presentes en la petición (PATCH parcial)."""
+    full_name: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    job_title: str | None = Field(default=None, max_length=80)
+    department: str | None = Field(default=None, max_length=80)
+    shift: str | None = Field(default=None, max_length=32)
+    employee_id: str | None = Field(default=None, max_length=40)
+    national_id: str | None = Field(default=None, max_length=20)
+    vehicle: str | None = Field(default=None, max_length=40)
+    notes: str | None = Field(default=None, max_length=512)
 
 
 class Token(BaseModel):

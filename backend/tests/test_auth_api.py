@@ -101,7 +101,7 @@ def test_unauthenticated_requests_are_rejected(client):
 def test_auth_info_reveals_demo_credentials(client):
     data = client.get("/api/v1/auth/info").json()
     assert data["demo_mode"] is True
-    assert data["demo_username"] == "admin"
+    assert data["demo_username"] == "phoenix"
     assert data["demo_password"] == "phoenix123"
 
 
@@ -109,12 +109,12 @@ def test_seeded_demo_admin_can_login(client):
     from app.services.seed import DEMO_PATTERN, DEMO_PIN, seed_demo_admin
 
     db = next(app.dependency_overrides[get_db]())
-    seed_demo_admin(db, "admin", "phoenix123")
+    seed_demo_admin(db, "phoenix", "phoenix123")
 
     # Step 1: username + password + PIN → challenge token (no access token yet,
     # because the seeded admin has a pattern configured).
     r1 = client.post("/api/v1/auth/login",
-                     data={"username": "admin", "password": "phoenix123", "pin": DEMO_PIN})
+                     data={"username": "phoenix", "password": "phoenix123", "pin": DEMO_PIN})
     assert r1.status_code == 200, r1.text
     payload = r1.json()
     assert payload["access_token"] is None
@@ -710,3 +710,98 @@ def test_activity_points_accumulate(client):
     me = client.get("/api/v1/auth/me", headers=_auth(boss)).json()
     assert me["activity_points"] >= 1
     assert me["rank"] == "owner"
+
+
+# --- Ficha del trabajador --------------------------------------------------
+def test_admin_edits_worker_profile_and_notes(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    _create_user(client, boss, "curro", rank="tecnico")
+    uid = _id_of(client, boss, "curro")
+
+    r = client.patch(
+        f"/api/v1/users/{uid}/profile",
+        json={
+            "full_name": "Curro Jiménez",
+            "phone": "+34 600 123 456",
+            "job_title": "Técnico de campo",
+            "department": "Madrid Sur",
+            "shift": "noche",
+            "employee_id": "PHX-0042",
+            "national_id": "12345678Z",
+            "vehicle": "Furgoneta 4321-XYZ",
+            "notes": "Disponible para guardias.",
+        },
+        headers=_auth(boss),
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["full_name"] == "Curro Jiménez"
+    assert body["national_id"] == "12345678Z"
+    assert body["shift"] == "noche"
+    # Las notas internas SÍ se devuelven a quien gestiona usuarios.
+    assert body["notes"] == "Disponible para guardias."
+
+    # Reabrir la ficha como admin conserva todo.
+    detail = client.get(f"/api/v1/users/{uid}", headers=_auth(boss)).json()
+    assert detail["employee_id"] == "PHX-0042"
+    assert detail["notes"] == "Disponible para guardias."
+
+
+def test_profile_notes_hidden_from_self(client):
+    """Un usuario NO ve en /auth/me las notas internas que el admin escribió
+    sobre él (notes == None), aunque sí ve el resto de su ficha."""
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    _create_user(client, boss, "curro")
+    uid = _id_of(client, boss, "curro")
+    client.patch(
+        f"/api/v1/users/{uid}/profile",
+        json={"full_name": "Curro J.", "notes": "Nota confidencial del jefe."},
+        headers=_auth(boss),
+    )
+    curro = _token(client, "curro")
+    me = client.get("/api/v1/auth/me", headers=_auth(curro)).json()
+    assert me["full_name"] == "Curro J."   # su ficha sí
+    assert me["notes"] is None             # las notas internas no
+
+
+def test_profile_partial_update_keeps_other_fields(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    _create_user(client, boss, "curro")
+    uid = _id_of(client, boss, "curro")
+    client.patch(f"/api/v1/users/{uid}/profile",
+                 json={"full_name": "Curro", "vehicle": "Coche 1"}, headers=_auth(boss))
+    # Un PATCH posterior que solo toca el teléfono no borra lo anterior.
+    client.patch(f"/api/v1/users/{uid}/profile",
+                 json={"phone": "+34 911 000 000"}, headers=_auth(boss))
+    d = client.get(f"/api/v1/users/{uid}", headers=_auth(boss)).json()
+    assert d["full_name"] == "Curro"
+    assert d["vehicle"] == "Coche 1"
+    assert d["phone"] == "+34 911 000 000"
+
+
+def test_profile_edit_requires_user_manage(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    _create_user(client, boss, "curro", rank="visualizador")
+    _create_user(client, boss, "mirona", rank="visualizador")
+    uid = _id_of(client, boss, "curro")
+    mirona = _token(client, "mirona")  # visualizador: sin user:manage
+    r = client.patch(f"/api/v1/users/{uid}/profile",
+                     json={"full_name": "Hack"}, headers=_auth(mirona))
+    assert r.status_code == 403
+
+
+def test_last_login_ip_recorded(client):
+    _register(client, "boss")
+    # Login completo (sin PIN/patrón → un paso) detrás de un proxy simulado.
+    r = client.post("/api/v1/auth/login",
+                    data={"username": "boss", "password": "secret123"},
+                    headers={"X-Forwarded-For": "203.0.113.7"})
+    assert r.status_code == 200, r.text
+    token = r.json()["access_token"]
+    me = client.get("/api/v1/auth/me", headers=_auth(token)).json()
+    assert me["last_login_ip"] == "203.0.113.7"
+    assert me["last_login_at"] is not None

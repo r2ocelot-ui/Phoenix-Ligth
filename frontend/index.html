@@ -2034,7 +2034,7 @@
     card.append(el("div", "muted", `${cab.code} · ${cab.zone || "sin zona"} · ${cab.points.length} luminarias · ${cab.circuits.length} circuitos`));
 
     const tabs = el("div", "tabs"); tabs.style.marginTop = "12px";
-    [["cuadro", "Cuadro"], ["circuitos", "Circuitos"], ["luminarias", "Luminarias"]].forEach(([k, lbl]) => {
+    [["cuadro", "Cuadro"], ["circuitos", "Circuitos"], ["luminarias", "Luminarias"], ["dispositivo", "Dispositivo"]].forEach(([k, lbl]) => {
       const b = el("button", "tab" + (state.topoTab === k ? " active" : ""), lbl);
       b.onclick = () => { state.topoTab = k; modal.remove(); openTopoDetail(cab, tp, canEdit); };
       tabs.append(b);
@@ -2044,6 +2044,7 @@
     const body = el("div"); body.style.marginTop = "14px"; card.append(body);
     if (state.topoTab === "cuadro") renderCabinetTab(body, cab, canEdit, modal);
     else if (state.topoTab === "circuitos") renderCircuitsTab(body, cab, canEdit);
+    else if (state.topoTab === "dispositivo") renderDeviceTab(body, cab, canEdit);
     else renderLightsTab(body, cab, canEdit);
 
     modal.append(card); document.body.append(modal);
@@ -2135,6 +2136,54 @@
       add.onclick = () => openLightForm(cab, null);
       body.append(add);
     }
+  }
+
+  // Pestaña Dispositivo del editor del CM: vinculación tipo SICE (serial +
+  // IMEI del controlador físico que publica la telemetría de este cuadro).
+  async function renderDeviceTab(body, cab, canEdit) {
+    body.innerHTML = `<div class="muted" style="font-size:12px; margin-bottom:12px">Controlador físico vinculado a este cuadro (estilo SICE). El bus sólo acepta telemetría cuyo serial coincida con el registrado.</div>`;
+    try {
+      const devices = await api(`/devices?cabinet_code=${encodeURIComponent(cab.code)}`);
+      if (devices.length) {
+        const t = el("table");
+        t.innerHTML = `<thead><tr><th>Serial</th><th>IMEI</th><th>Modelo</th><th>Firmware</th><th>Último visto</th><th></th></tr></thead>`;
+        const tb = el("tbody");
+        devices.forEach(d => {
+          const tr = el("tr");
+          const last = d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "nunca";
+          tr.innerHTML = `<td class="mono">${d.serial}</td><td class="mono">${d.imei || "—"}</td><td>${d.model || "—"}</td><td>${d.firmware || "—"}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
+          const td = el("td");
+          if (canEdit) {
+            const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444";
+            del.onclick = async () => { if (confirm(`¿Desvincular el dispositivo ${d.serial}?`)) { try { await api(`/devices/${d.id}`, { method: "DELETE" }); toast("Dispositivo desvinculado"); reopenTopoAfterChange(cab.code, "dispositivo"); } catch (e) { toast(e.message, true); } } };
+            td.append(del);
+          }
+          tr.append(td); tb.append(tr);
+        });
+        t.append(tb); body.append(t);
+      } else {
+        body.append(el("div", "empty", "Sin controlador vinculado."));
+      }
+      if (canEdit) {
+        const form = el("div"); form.style.display = "grid"; form.style.gap = "8px"; form.style.marginTop = "12px";
+        form.append(el("div", "muted", "<strong>Vincular controlador</strong>"));
+        const serial = el("input"); serial.placeholder = "Serial del controlador (obligatorio)";
+        const imei = el("input"); imei.placeholder = "IMEI del módem 4G (opcional)";
+        const model = el("input"); model.placeholder = "Modelo (p.ej. PLCnext AXC F 2152)";
+        const fw = el("input"); fw.placeholder = "Firmware (opcional)";
+        const add = el("button", "btn sm", "Vincular");
+        add.onclick = async () => {
+          if (serial.value.trim().length < 4) { toast("El serial debe tener al menos 4 caracteres.", true); return; }
+          try {
+            await api("/devices", { method: "POST", body: JSON.stringify({ cabinet_code: cab.code, serial: serial.value.trim(), imei: imei.value.trim() || null, model: model.value.trim() || null, firmware: fw.value.trim() || null }) });
+            toast("Controlador vinculado");
+            reopenTopoAfterChange(cab.code, "dispositivo");
+          } catch (e) { toast(e.message, true); }
+        };
+        form.append(serial, imei, model, fw, add);
+        body.append(form);
+      }
+    } catch (e) { body.append(el("div", "empty", e.message)); }
   }
 
   // --- Formularios de alta/edición ---------------------------------------

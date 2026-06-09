@@ -289,7 +289,9 @@ def totp_setup(
     No activa el 2FA todavía: hace falta confirmar un código en /totp/verify."""
     if user.totp_enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "El 2FA ya está activado. Desactívalo primero para regenerarlo.")
-    secret = totp.generate_secret()
+    # Reutiliza el secreto pendiente si ya se generó uno (p.ej. el usuario
+    # reabrió el modal): así el QR/clave que ya escaneó sigue siendo válido.
+    secret = user.totp_secret or totp.generate_secret()
     codes = totp.generate_recovery_codes()
     user.totp_secret = secret
     user.totp_recovery = [totp.hash_code(c) for c in codes]  # guardamos hashes

@@ -37,8 +37,9 @@ def _key(secret: str) -> bytes | None:
         return None
 
 
-def verify(secret: str | None, code: str | None, window: int = 1) -> bool:
-    """Check a 6-digit code, accepting ±``window`` time steps for clock drift."""
+def verify(secret: str | None, code: str | None, window: int = 2) -> bool:
+    """Check a 6-digit code, accepting ±``window`` time steps for clock drift.
+    ±2 (60 s) tolera relojes algo desincronizados sin abrir demasiado."""
     if not secret or not code:
         return False
     code = code.strip().replace(" ", "")

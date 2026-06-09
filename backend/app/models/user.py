@@ -20,6 +20,10 @@ class User(Base):
     # Quick-unlock credentials (hashed like the password). Optional, per user.
     pin_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     pattern_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # 2FA TOTP (Google Authenticator). Secret stored base32; only enforced
+    # once totp_enabled is True (set after the user confirms a first code).
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     # Brute-force guard: consecutive failures and an auto-expiring lockout.
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

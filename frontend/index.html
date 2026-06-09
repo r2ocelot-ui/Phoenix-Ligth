@@ -517,12 +517,15 @@
           <label>Contraseña</label><input id="li-pass" type="password" autocomplete="current-password" />
           <label>PIN <span class="muted" style="font-weight:400">(si lo tienes)</span></label>
           <input id="li-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" />
+          <label>Código 2FA <span class="muted" style="font-weight:400">(si lo tienes)</span></label>
+          <input id="li-totp" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6 dígitos de la app" />
           <button class="btn" id="btn-login">Continuar</button>
           <div class="switch">¿No tienes acceso? Pídeselo a un administrador.</div>
         </div>
         <div id="login-step2" class="hidden" style="text-align:center">
           <p class="tag" style="margin-bottom:8px">Paso 2 · Dibuja tu <strong>patrón</strong> de seguridad para terminar.</p>
           <div id="login-pattern-host"></div>
+          <input id="li-totp2" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Código 2FA (si lo tienes)" style="text-align:center; margin-top:10px" />
           <div class="row" style="justify-content:center; gap:8px; margin-top:10px">
             <button class="btn ghost sm" id="btn-pat-back">← Volver</button>
             <button class="btn ghost sm" id="btn-pat-reset">Repetir</button>
@@ -583,6 +586,7 @@
               <button class="btn ghost sm" id="btn-lock" style="display:none">🔒 Bloquear</button>
               <button class="btn ghost sm" id="btn-pin">Mi PIN</button>
               <button class="btn ghost sm" id="btn-pattern">Mi patrón</button>
+              <button class="btn ghost sm" id="btn-totp">Mi 2FA</button>
               <button class="btn ghost sm" id="btn-logout">Cerrar sesión</button>
             </div>
           </div>
@@ -644,9 +648,10 @@
   //   paso 1 → usuario + contraseña + PIN  → puede devolver el JWT (si la cuenta
   //            no tiene patrón) o un challenge_token corto (90 s) si lo tiene.
   //   paso 2 → challenge_token + patrón    → JWT real.
-  async function loginStep1(user, pass, pin) {
+  async function loginStep1(user, pass, pin, totpCode) {
     const body = new URLSearchParams({ username: user, password: pass });
     if (pin) body.append("pin", pin);
+    if (totpCode) body.append("totp_code", totpCode);
     const r = await fetch(API + "/auth/login", { method: "POST", credentials: "include", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
     const data = await r.json().catch(() => ({}));
     if (r.status === 429) throw new Error(data.detail || "Cuenta bloqueada temporalmente.");
@@ -654,10 +659,10 @@
     if (data.access_token) { await acceptToken(data.access_token); return { done: true }; }
     return { done: false, challenge: data.challenge_token, expiresIn: data.expires_in };
   }
-  async function loginStep2(challenge, pattern) {
+  async function loginStep2(challenge, pattern, totpCode) {
     const r = await fetch(API + "/auth/login/pattern", {
       method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ challenge_token: challenge, pattern }),
+      body: JSON.stringify({ challenge_token: challenge, pattern, totp: totpCode || null }),
     });
     const data = await r.json().catch(() => ({}));
     if (r.status === 429) throw new Error(data.detail || "Cuenta bloqueada temporalmente.");
@@ -835,6 +840,61 @@
     const cancel = el("button", "btn ghost", "Cancelar"); cancel.onclick = () => modal.remove();
     actions.append(main, rep, ...(del ? [del] : []), cancel);
     card.append(actions); modal.append(card); document.body.append(modal);
+  }
+
+  // 2FA TOTP (Google Authenticator). Cuarta credencial, activable por el
+  // usuario. Si ya está activo, ofrece desactivarlo; si no, genera el
+  // secreto, lo muestra para introducir en la app y pide un código para
+  // confirmar y activar.
+  async function showSetTotp() {
+    const modal = el("div", "modal"); const card = el("div", "modal-card"); card.style.maxWidth = "460px";
+    const err = el("div", "err"); err.style.textAlign = "center"; err.style.minHeight = "16px";
+
+    if (state.me?.has_totp) {
+      card.innerHTML = `<h3>2FA activado ✅</h3><p class="desc">Tu cuenta pide un código de la app (Google Authenticator, Authy…) al iniciar sesión.</p>`;
+      const del = el("button", "btn ghost", "Desactivar 2FA"); del.style.color = "#ef4444";
+      del.onclick = async () => {
+        if (!confirm("¿Desactivar el 2FA? Tu cuenta dejará de pedir el código.")) return;
+        try { await api("/auth/totp", { method: "DELETE" }); toast("2FA desactivado"); modal.remove(); await refreshMe(); }
+        catch (e) { err.textContent = e.message; }
+      };
+      const cancel = el("button", "btn ghost", "Cerrar"); cancel.onclick = () => modal.remove();
+      const actions = el("div", "actions"); actions.append(del, cancel);
+      card.append(err, actions); modal.append(card); document.body.append(modal);
+      return;
+    }
+
+    card.innerHTML = `<h3>Activar 2FA</h3><p class="desc">Protege tu cuenta con un código que cambia cada 30 s, como en el banco.</p>`;
+    const steps = el("div"); steps.innerHTML = `<div class="muted" style="font-size:13px">Generando clave…</div>`;
+    card.append(steps, err);
+    const actions = el("div", "actions");
+    const cancel = el("button", "btn ghost", "Cancelar"); cancel.onclick = () => modal.remove();
+    actions.append(cancel); card.append(actions);
+    modal.append(card); document.body.append(modal);
+
+    try {
+      const setup = await api("/auth/totp/setup", { method: "POST" });
+      // Clave en grupos de 4 para teclear fácil + URI para apps que la admitan.
+      const grouped = setup.secret.replace(/(.{4})/g, "$1 ").trim();
+      steps.innerHTML = `
+        <ol style="font-size:13px; line-height:1.6; padding-left:18px; margin:0 0 12px">
+          <li>Abre <strong>Google Authenticator</strong> (o Authy).</li>
+          <li>Elige <em>"Introducir clave de configuración"</em>.</li>
+          <li>Cuenta: <span class="mono">Phoenix · ${state.me?.username || ""}</span></li>
+          <li>Clave: <div class="mono" style="font-size:16px; letter-spacing:2px; background:rgba(255,255,255,.05); padding:8px; border-radius:8px; margin:6px 0; text-align:center; user-select:all">${grouped}</div></li>
+          <li>Escribe abajo el código de 6 dígitos que aparece.</li>
+        </ol>`;
+      const codeIn = el("input"); codeIn.placeholder = "Código de 6 dígitos"; codeIn.inputMode = "numeric"; codeIn.maxLength = 6; codeIn.style.cssText = "width:100%; text-align:center; font-size:18px; letter-spacing:4px";
+      steps.append(codeIn);
+      const confirm = el("button", "btn", "Confirmar y activar");
+      confirm.onclick = async () => {
+        if (!/^\d{6}$/.test(codeIn.value.trim())) { err.textContent = "Introduce los 6 dígitos."; return; }
+        try { await api("/auth/totp/verify", { method: "POST", body: JSON.stringify({ code: codeIn.value.trim() }) }); toast("2FA activado ✅"); modal.remove(); await refreshMe(); }
+        catch (e) { err.textContent = e.message; }
+      };
+      actions.insertBefore(confirm, cancel);
+      setTimeout(() => codeIn.focus(), 50);
+    } catch (e) { steps.innerHTML = ""; err.textContent = e.message; }
   }
 
   // ====== Bloqueo manual + desbloqueo con PIN o patrón ============
@@ -3628,14 +3688,14 @@
     $("#login-err").textContent = "";
     const btn = $("#btn-login"); btn.disabled = true;
     try {
-      const r = await loginStep1($("#li-user").value.trim(), $("#li-pass").value, $("#li-pin").value.trim());
+      const r = await loginStep1($("#li-user").value.trim(), $("#li-pass").value, $("#li-pin").value.trim(), $("#li-totp").value.trim());
       if (r.done) return;
       // Paso 2 — montar widget patrón. El challenge dura 90 s.
       state.loginChallenge = r.challenge;
       const host = $("#login-pattern-host"); host.innerHTML = "";
       const pad = makePatternPad(async seq => {
         if (seq.length < 4) return;
-        try { await loginStep2(state.loginChallenge, seq); }
+        try { await loginStep2(state.loginChallenge, seq, $("#li-totp2").value.trim()); }
         catch (e) { $("#login-err").textContent = e.message; setTimeout(() => pad.reset(), 600); }
       });
       host.append(pad);
@@ -3651,6 +3711,7 @@
   $("#btn-emergency").onclick = emergencyAllOn;
   $("#btn-pin").onclick = showSetPin;
   $("#btn-pattern").onclick = showSetPattern;
+  $("#btn-totp").onclick = showSetTotp;
   // Menú de usuario (arriba derecha): abre/cierra el desplegable.
   $("#user-chip").onclick = (e) => {
     e.stopPropagation();

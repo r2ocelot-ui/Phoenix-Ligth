@@ -21,12 +21,14 @@ from app.schemas.user import (
     PatternSet,
     PinSet,
     Token,
+    TotpSetupResult,
+    TotpVerify,
     Unlock,
     UserCreate,
     UserDetail,
     UserRead,
 )
-from app.services import audit_log, auth_guard, device_guard, ip_guard, ranks
+from app.services import audit_log, auth_guard, device_guard, ip_guard, ranks, totp
 from app.services.auth import get_current_user, user_detail
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -65,6 +67,7 @@ def login(
     username: str = Form(...),
     password: str = Form(...),
     pin: str | None = Form(default=None),
+    totp_code: str | None = Form(default=None),
     phoenix_device: str | None = Cookie(default=None),
     db: Session = Depends(get_db),
 ) -> LoginStep1Result:
@@ -131,8 +134,12 @@ def login(
             access_token=create_access_token(user.username),
         )
 
-    # No pattern set yet → finish the login here.
+    # No pattern set yet → step 1 is the final step. Enforce 2FA here if on.
     if not user.pattern_hash:
+        if user.totp_enabled and not totp.verify(user.totp_secret, totp_code):
+            auth_guard.register_failure(db, user, action="auth.login_failed", target="totp")
+            ip_guard.register_failure(db, ip)
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código 2FA incorrecto")
         return _finish_login()
 
     # Pattern required → hand out the step-1 challenge.
@@ -178,6 +185,13 @@ def login_step2(
                                     target="pattern")
         ip_guard.register_failure(db, ip)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Patrón incorrecto")
+    # 2FA: si el usuario tiene TOTP activado, el código es obligatorio aquí
+    # (paso final que emite el token para cuentas con patrón).
+    if user.totp_enabled:
+        if not totp.verify(user.totp_secret, body.totp):
+            auth_guard.register_failure(db, user, action="auth.login_failed", target="totp")
+            ip_guard.register_failure(db, ip)
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código 2FA incorrecto")
     ip_guard.register_success(ip)
     device_id, is_new = device_guard.touch_device(
         db, user_id=user.id, username=user.username,
@@ -220,6 +234,53 @@ def set_password(
     user.password_hash = hash_password(body.password)
     db.commit()
     audit_log.record(db, username=user.username, action="auth.password_set")
+    return {"ok": True}
+
+
+@router.post("/totp/setup", response_model=TotpSetupResult)
+def totp_setup(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> TotpSetupResult:
+    """Genera (o regenera, si aún no está confirmado) el secreto TOTP y
+    devuelve el secreto + la URI otpauth para escanear/introducir en la app.
+    No activa el 2FA todavía: hace falta confirmar un código en /totp/verify."""
+    if user.totp_enabled:
+        raise HTTPException(status.HTTP_409_CONFLICT, "El 2FA ya está activado. Desactívalo primero para regenerarlo.")
+    secret = totp.generate_secret()
+    user.totp_secret = secret
+    db.commit()
+    audit_log.record(db, username=user.username, action="auth.totp_setup")
+    return TotpSetupResult(secret=secret, otpauth_uri=totp.provisioning_uri(secret, user.username))
+
+
+@router.post("/totp/verify")
+def totp_verify(
+    body: TotpVerify,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Confirma el primer código y activa el 2FA."""
+    if not user.totp_secret:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Primero genera el 2FA en /totp/setup")
+    if not totp.verify(user.totp_secret, body.code):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código incorrecto. Revisa la hora del dispositivo.")
+    user.totp_enabled = True
+    db.commit()
+    audit_log.record(db, username=user.username, action="auth.totp_enabled")
+    return {"ok": True}
+
+
+@router.delete("/totp")
+def totp_disable(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Desactiva el 2FA y borra el secreto."""
+    user.totp_enabled = False
+    user.totp_secret = None
+    db.commit()
+    audit_log.record(db, username=user.username, action="auth.totp_disabled")
     return {"ok": True}
 
 

@@ -309,6 +309,36 @@ def test_credential_change_requires_current(client):
     assert ok.status_code == 200
 
 
+def test_totp_setup_verify_and_login_enforcement(client):
+    from app.services import totp as totp_svc
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Setup → returns a secret + otpauth URI.
+    s = client.post("/api/v1/auth/totp/setup", headers=_auth(boss))
+    assert s.status_code == 200
+    secret = s.json()["secret"]
+    assert s.json()["otpauth_uri"].startswith("otpauth://")
+    # A wrong code is rejected.
+    bad = client.post("/api/v1/auth/totp/verify", json={"code": "000000"}, headers=_auth(boss))
+    assert bad.status_code == 401
+    # The right code enables it.
+    import time
+    code = totp_svc._hotp(totp_svc._key(secret), int(time.time() // 30))
+    ok = client.post("/api/v1/auth/totp/verify", json={"code": code}, headers=_auth(boss))
+    assert ok.status_code == 200
+    assert client.get("/api/v1/auth/me", headers=_auth(boss)).json()["has_totp"] is True
+    # Login now requires the code (boss has no pattern → step 1 is final).
+    no_code = client.post("/api/v1/auth/login", data={"username": "boss", "password": "secret123"})
+    assert no_code.status_code == 401
+    code2 = totp_svc._hotp(totp_svc._key(secret), int(time.time() // 30))
+    with_code = client.post("/api/v1/auth/login",
+                            data={"username": "boss", "password": "secret123", "totp_code": code2})
+    assert with_code.status_code == 200
+    # Disable clears it.
+    assert client.delete("/api/v1/auth/totp", headers=_auth(boss)).status_code == 200
+    assert client.get("/api/v1/auth/me", headers=_auth(boss)).json()["has_totp"] is False
+
+
 def test_admin_can_create_user_with_full_credentials(client):
     _register(client, "boss")
     boss = _token(client, "boss")

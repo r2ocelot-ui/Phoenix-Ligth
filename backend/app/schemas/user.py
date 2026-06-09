@@ -27,6 +27,7 @@ class UserDetail(UserRead):
     progression: dict
     has_pin: bool = False
     has_pattern: bool = False
+    has_totp: bool = False
 
 
 class Token(BaseModel):
@@ -95,6 +96,16 @@ class LoginStep1Result(BaseModel):
 class LoginStep2(BaseModel):
     challenge_token: str
     pattern: str = Field(..., pattern=r"^[0-8]{4,9}$")
+    totp: str | None = Field(default=None, max_length=8)
+
+
+class TotpVerify(BaseModel):
+    code: str = Field(..., min_length=6, max_length=8)
+
+
+class TotpSetupResult(BaseModel):
+    secret: str
+    otpauth_uri: str
 
 
 class RankChange(BaseModel):

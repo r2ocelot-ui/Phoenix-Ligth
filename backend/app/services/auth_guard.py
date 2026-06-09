@@ -36,6 +36,8 @@ def lock_remaining_minutes(user: User) -> int:
 
 
 def is_locked(user: User) -> bool:
+    if not settings.lockout_enabled:
+        return False
     return lock_remaining_seconds(user) > 0
 
 
@@ -44,7 +46,9 @@ def register_failure(
 ) -> None:
     """Record a failed attempt and lock the account if the threshold is hit."""
     user.failed_attempts = (user.failed_attempts or 0) + 1
-    locked = user.failed_attempts >= settings.auth_max_failed_attempts
+    # Cuando el guard está desactivado (pruebas) se registra el fallo en la
+    # auditoría pero nunca se bloquea la cuenta.
+    locked = settings.lockout_enabled and user.failed_attempts >= settings.auth_max_failed_attempts
     if locked:
         user.locked_until = _now() + timedelta(minutes=settings.auth_lockout_minutes)
     db.add(user)

@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     # Auto-logout the web panel after this many minutes with no user activity.
     session_idle_minutes: int = 10
 
+    # Interruptor maestro del anti-fuerza-bruta (bloqueo de cuenta + auto-ban
+    # por IP). Se puede apagar para pruebas con PHOENIX_LOCKOUT_ENABLED=false.
+    # ⚠️ TEMPORALMENTE EN False PARA PRUEBAS — reactivar (True) antes de producción.
+    lockout_enabled: bool = False
+
     # Brute-force guard: lock an account after this many consecutive failed
     # login/unlock attempts, for this many minutes (the lockout auto-clears).
     auth_max_failed_attempts: int = 5

@@ -229,10 +229,23 @@ def login_step3(
             f"Cuenta bloqueada. Vuelve a empezar en "
             f"{auth_guard.lock_remaining_minutes(user)} min.",
         )
-    if not user.totp_enabled or not totp.verify(user.totp_secret, body.totp):
+    # Acepta el código de 6 dígitos de la app, o una clave de recuperación
+    # (que se consume al usarse, para quien perdió el móvil).
+    ok = user.totp_enabled and totp.verify(user.totp_secret, body.totp)
+    used_recovery = False
+    if not ok and user.totp_enabled:
+        match = totp.verify_recovery(list(user.totp_recovery or []), body.totp)
+        if match:
+            user.totp_recovery = [h for h in user.totp_recovery if h != match]  # consumir
+            db.add(user)
+            ok = used_recovery = True
+    if not ok:
         auth_guard.register_failure(db, user, action="auth.login_failed", target="totp")
         ip_guard.register_failure(db, ip)
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código 2FA incorrecto")
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Código 2FA o clave de recuperación incorrectos")
+    if used_recovery:
+        audit_log.record(db, username=user.username, action="auth.totp_recovery_used",
+                         detail={"remaining": len(user.totp_recovery or [])})
     ip_guard.register_success(ip)
     res = _issue_login_token(db, user, response, phoenix_device, ua, ip, step="3")
     return Token(access_token=res.access_token, rank=user.rank)
@@ -277,10 +290,16 @@ def totp_setup(
     if user.totp_enabled:
         raise HTTPException(status.HTTP_409_CONFLICT, "El 2FA ya está activado. Desactívalo primero para regenerarlo.")
     secret = totp.generate_secret()
+    codes = totp.generate_recovery_codes()
     user.totp_secret = secret
+    user.totp_recovery = [totp.hash_code(c) for c in codes]  # guardamos hashes
     db.commit()
     audit_log.record(db, username=user.username, action="auth.totp_setup")
-    return TotpSetupResult(secret=secret, otpauth_uri=totp.provisioning_uri(secret, user.username))
+    return TotpSetupResult(
+        secret=secret,
+        otpauth_uri=totp.provisioning_uri(secret, user.username),
+        recovery_codes=codes,  # claro solo aquí; el usuario debe guardarlas
+    )
 
 
 @router.post("/totp/verify")
@@ -305,12 +324,29 @@ def totp_disable(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> dict:
-    """Desactiva el 2FA y borra el secreto."""
+    """Desactiva el 2FA y borra el secreto + las claves de recuperación."""
     user.totp_enabled = False
     user.totp_secret = None
+    user.totp_recovery = []
     db.commit()
     audit_log.record(db, username=user.username, action="auth.totp_disabled")
     return {"ok": True}
+
+
+@router.post("/totp/recovery")
+def totp_regenerate_recovery(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> dict:
+    """Regenera las claves de recuperación (invalida las anteriores) y las
+    devuelve en claro una sola vez. Requiere tener el 2FA activado."""
+    if not user.totp_enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Activa antes el 2FA")
+    codes = totp.generate_recovery_codes()
+    user.totp_recovery = [totp.hash_code(c) for c in codes]
+    db.commit()
+    audit_log.record(db, username=user.username, action="auth.totp_recovery_regen")
+    return {"recovery_codes": codes}
 
 
 @router.post("/pin")

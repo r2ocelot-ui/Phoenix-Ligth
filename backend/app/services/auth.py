@@ -66,4 +66,5 @@ def user_detail(user: User) -> UserDetail:
         has_pin=bool(getattr(user, "pin_hash", None)),
         has_pattern=bool(getattr(user, "pattern_hash", None)),
         has_totp=bool(getattr(user, "totp_enabled", False)),
+        totp_recovery_remaining=len(getattr(user, "totp_recovery", None) or []),
     )

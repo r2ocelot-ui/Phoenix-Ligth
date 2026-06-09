@@ -205,21 +205,28 @@ def _login(client, username, password):
 
 
 def test_account_locks_after_failed_logins(client):
-    _register(client, "boss")
-    boss = _token(client, "boss")  # valid session captured before lockout
+    # El guard se desactiva por defecto para pruebas; aquí verificamos la
+    # lógica del bloqueo, así que lo forzamos a ON durante el test.
+    from app.core.config import settings
+    settings.lockout_enabled = True
+    try:
+        _register(client, "boss")
+        boss = _token(client, "boss")  # valid session captured before lockout
 
-    # 5 wrong passwords (default threshold) — each rejected with 401.
-    for _ in range(5):
-        assert _login(client, "boss", "wrong").status_code == 401
-    # Now even the *correct* password is refused: the account is locked (429).
-    locked = _login(client, "boss", "secret123")
-    assert locked.status_code == 429, locked.text
+        # 5 wrong passwords (default threshold) — each rejected with 401.
+        for _ in range(5):
+            assert _login(client, "boss", "wrong").status_code == 401
+        # Now even the *correct* password is refused: the account is locked (429).
+        locked = _login(client, "boss", "secret123")
+        assert locked.status_code == 429, locked.text
 
-    # The lockout and the failed attempts show up in the admin security feed.
-    feed = client.get("/api/v1/audit/security", headers=_auth(boss)).json()
-    actions = {e["action"] for e in feed}
-    assert "auth.login_failed" in actions
-    assert "auth.lockout" in actions
+        # The lockout and the failed attempts show up in the admin security feed.
+        feed = client.get("/api/v1/audit/security", headers=_auth(boss)).json()
+        actions = {e["action"] for e in feed}
+        assert "auth.login_failed" in actions
+        assert "auth.lockout" in actions
+    finally:
+        settings.lockout_enabled = False
 
 
 def test_successful_login_resets_failed_counter(client):
@@ -342,6 +349,29 @@ def test_totp_setup_verify_and_login_enforcement(client):
     # Disable clears it.
     assert client.delete("/api/v1/auth/totp", headers=_auth(boss)).status_code == 200
     assert client.get("/api/v1/auth/me", headers=_auth(boss)).json()["has_totp"] is False
+
+
+def test_totp_recovery_code_login(client):
+    from app.services import totp as totp_svc
+    import time
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    setup = client.post("/api/v1/auth/totp/setup", headers=_auth(boss)).json()
+    # Setup devuelve claves de recuperación legibles.
+    assert len(setup["recovery_codes"]) == 8
+    rec = setup["recovery_codes"][0]
+    code = totp_svc._hotp(totp_svc._key(setup["secret"]), int(time.time() // 30))
+    client.post("/api/v1/auth/totp/verify", json={"code": code}, headers=_auth(boss))
+    # Login con clave de recuperación (boss sin patrón → ventana totp).
+    step1 = client.post("/api/v1/auth/login", data={"username": "boss", "password": "secret123"})
+    ch = step1.json()["challenge_token"]
+    ok = client.post("/api/v1/auth/login/totp", json={"challenge_token": ch, "totp": rec})
+    assert ok.status_code == 200, ok.text
+    # La misma clave ya no vale (se consumió).
+    step1b = client.post("/api/v1/auth/login", data={"username": "boss", "password": "secret123"})
+    again = client.post("/api/v1/auth/login/totp",
+                        json={"challenge_token": step1b.json()["challenge_token"], "totp": rec})
+    assert again.status_code == 401
 
 
 def test_admin_can_create_user_with_full_credentials(client):

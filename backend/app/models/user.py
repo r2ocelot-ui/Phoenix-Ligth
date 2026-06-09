@@ -24,6 +24,9 @@ class User(Base):
     # once totp_enabled is True (set after the user confirms a first code).
     totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Claves de recuperación 2FA: lista JSON de hashes (se consumen al usarse).
+    # Permiten entrar si el usuario pierde el móvil con el autenticador.
+    totp_recovery: Mapped[list] = mapped_column(JSON, default=list)
     # Brute-force guard: consecutive failures and an auto-expiring lockout.
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

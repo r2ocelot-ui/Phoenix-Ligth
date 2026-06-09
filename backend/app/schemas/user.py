@@ -28,6 +28,7 @@ class UserDetail(UserRead):
     has_pin: bool = False
     has_pattern: bool = False
     has_totp: bool = False
+    totp_recovery_remaining: int = 0
 
 
 class Token(BaseModel):
@@ -102,7 +103,8 @@ class LoginStep2(BaseModel):
 
 class LoginStep3(BaseModel):
     challenge_token: str
-    totp: str = Field(..., min_length=6, max_length=8)
+    # Código de 6 dígitos de la app O una clave de recuperación (p.ej. A3F9-K2QX).
+    totp: str = Field(..., min_length=6, max_length=12)
 
 
 class TotpVerify(BaseModel):
@@ -112,6 +114,7 @@ class TotpVerify(BaseModel):
 class TotpSetupResult(BaseModel):
     secret: str
     otpauth_uri: str
+    recovery_codes: list[str]  # en claro SOLO en la respuesta de setup
 
 
 class RankChange(BaseModel):

@@ -79,6 +79,8 @@ def check_blocked(db: Session, ip: str) -> tuple[bool, str | None]:
 
 def register_failure(db: Session, ip: str) -> IpBan | None:
     """Record a failed auth attempt and auto-ban if the threshold is crossed."""
+    if not settings.lockout_enabled:
+        return None  # guard desactivado (pruebas): no auto-ban por IP
     window = timedelta(minutes=settings.ip_ban_window_minutes)
     cutoff = _now() - window
     bucket = _failures.setdefault(ip, deque())

@@ -2993,8 +2993,13 @@
     const c = $("#content"); c.innerHTML = "";
     state.permisosTab = state.permisosTab || "usuarios";
 
+    // Pestaña Proyectos solo para Phoenix (owner): gestiona las ciudades.
+    const tabDefs = [["usuarios", "Usuarios"], ["rangos", "Rangos"]];
+    if (isOwnerUser()) tabDefs.push(["proyectos", "Proyectos"]);
+    if (state.permisosTab === "proyectos" && !isOwnerUser()) state.permisosTab = "usuarios";
+
     const tabs = el("div", "tabs");
-    [["usuarios", "Usuarios"], ["rangos", "Rangos"]].forEach(([k, lbl]) => {
+    tabDefs.forEach(([k, lbl]) => {
       const b = el("button", "tab" + (state.permisosTab === k ? " active" : ""), lbl);
       b.onclick = () => { state.permisosTab = k; loadPermisos(); };
       tabs.append(b);
@@ -3005,7 +3010,58 @@
     c.append(body);
 
     if (state.permisosTab === "usuarios") await renderPermisosUsuarios(body);
+    else if (state.permisosTab === "proyectos") await renderPermisosProyectos(body);
     else await renderPermisosRangos(body);
+  }
+
+  // Gestión de proyectos/ciudades (solo Phoenix/owner). Crear, listar, ver
+  // cuántos usuarios/cuadros tiene y borrar (si está vacío).
+  async function renderPermisosProyectos(body) {
+    try {
+      const [projects, users, regs] = await Promise.all([
+        api("/projects"),
+        api("/users").catch(() => []),
+        api("/cabinets/registry").catch(() => []),
+      ]);
+      const countUsers = (pid) => users.filter(u => u.project_id === pid).length;
+      const countCabs = (pid) => regs.filter(r => r.project_id === pid).length;
+
+      // Alta de proyecto.
+      const cp = el("div", "panel"); cp.style.marginBottom = "14px";
+      cp.append(el("div", null, "<strong>Crear proyecto / ciudad</strong> <span class='muted' style='font-size:12px'>· aísla cuadros y usuarios de cada cliente</span>"));
+      const row = el("div", "row"); row.style.marginTop = "10px"; row.style.gap = "8px"; row.style.flexWrap = "wrap";
+      const code = el("input"); code.placeholder = "código (p.ej. madrid)"; code.style.width = "180px";
+      const name = el("input"); name.placeholder = "nombre (p.ej. Madrid Centro)"; name.style.flex = "1";
+      const add = el("button", "btn sm", "Crear");
+      add.onclick = async () => {
+        if (!code.value.trim() || !name.value.trim()) { toast("Falta código o nombre.", true); return; }
+        try { await api("/projects", { method: "POST", body: JSON.stringify({ code: code.value.trim(), name: name.value.trim() }) }); toast("Proyecto creado"); loadProjectsForChip(); loadPermisos(); }
+        catch (e) { toast(e.message, true); }
+      };
+      row.append(code, name, add); cp.append(row); body.append(cp);
+
+      // Lista de proyectos.
+      const panel = el("div", "panel");
+      const t = el("table");
+      t.innerHTML = `<thead><tr><th>ID</th><th>Código</th><th>Nombre</th><th>Usuarios</th><th>Cuadros</th><th></th></tr></thead>`;
+      const tb = el("tbody");
+      projects.forEach(p => {
+        const nu = countUsers(p.id), nc = countCabs(p.id);
+        const tr = el("tr");
+        tr.innerHTML = `<td class="mono">${p.id}</td><td class="mono">${p.code}</td><td>${p.name}</td><td class="mono">${nu}</td><td class="mono">${nc}</td>`;
+        const td = el("td");
+        const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444";
+        del.onclick = async () => {
+          if (nu || nc) { toast(`No se puede borrar: ${nu} usuarios y ${nc} cuadros lo usan.`, true); return; }
+          if (!confirm(`¿Borrar el proyecto "${p.name}"?`)) return;
+          try { await api(`/projects/${p.id}`, { method: "DELETE" }); toast("Proyecto borrado"); loadProjectsForChip(); loadPermisos(); }
+          catch (e) { toast(e.message, true); }
+        };
+        td.append(del); tr.append(td); tb.append(tr);
+      });
+      if (!projects.length) tb.append(el("tr", null, `<td colspan="6" class="muted" style="text-align:center;padding:12px">Sin proyectos. Crea el primero arriba.</td>`));
+      t.append(tb); panel.append(t); body.append(panel);
+    } catch (e) { body.append(el("div", "empty", e.message)); }
   }
 
   async function renderPermisosUsuarios(body) {

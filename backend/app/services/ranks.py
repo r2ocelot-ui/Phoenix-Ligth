@@ -95,15 +95,15 @@ DEFAULT_RANKS: dict[str, dict] = {
         },
     },
     "admin_proyecto": {
-        "level": 5, "label": "Admin",
-        "description": "Administra una ciudad/instalación: usuarios, roles y configuración del proyecto.",
+        "level": 5, "label": "Director",
+        "description": "Director territorial: administra una ciudad/instalación entera (usuarios, roles, configuración del proyecto).",
         "permissions": {
             P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,
             P_AUDIT_READ, P_USER_VIEW, P_USER_MANAGE, P_ROLE_MANAGE,
         },
     },
     "owner": {
-        "level": 6, "label": "Owner",
+        "level": 6, "label": "Phoenix",
         "description": "Dueño del software Phoenix. Acceso total, multi-proyecto.",
         "permissions": {WILDCARD},
     },

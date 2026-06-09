@@ -900,6 +900,17 @@
     return box;
   }
 
+  // Autoformatea un input de código 2FA como "123 456" (3+espacio+3) mientras
+  // se teclea. Si el usuario mete una clave de recuperación (tiene letras o
+  // guion) no lo toca. El backend ignora los espacios igualmente.
+  function attachTotpSpace(inp) {
+    inp.addEventListener("input", () => {
+      if (/[A-Za-z-]/.test(inp.value)) return;  // clave de recuperación → no formatear
+      const d = inp.value.replace(/\D/g, "").slice(0, 6);
+      inp.value = d.length > 3 ? d.slice(0, 3) + " " + d.slice(3) : d;
+    });
+  }
+
   async function showSetTotp() {
     const modal = el("div", "modal"); const card = el("div", "modal-card"); card.style.maxWidth = "460px"; card.style.maxHeight = "88vh"; card.style.overflowY = "auto";
     const err = el("div", "err"); err.style.textAlign = "center"; err.style.minHeight = "16px";
@@ -952,12 +963,14 @@
       // Claves de recuperación.
       steps.append(recoveryBox(setup.recovery_codes));
       // Confirmación.
-      const codeIn = el("input"); codeIn.placeholder = "Código de 6 dígitos de la app"; codeIn.inputMode = "numeric"; codeIn.maxLength = 6; codeIn.style.cssText = "width:100%; text-align:center; font-size:18px; letter-spacing:4px; margin-top:6px";
+      const codeIn = el("input"); codeIn.placeholder = "Código (123 456)"; codeIn.inputMode = "numeric"; codeIn.maxLength = 7; codeIn.style.cssText = "width:100%; text-align:center; font-size:18px; letter-spacing:4px; margin-top:6px";
+      attachTotpSpace(codeIn);
       steps.append(codeIn);
       const confirm = el("button", "btn", "Confirmar y activar");
       confirm.onclick = async () => {
-        if (!/^\d{6}$/.test(codeIn.value.trim())) { err.textContent = "Introduce los 6 dígitos."; return; }
-        try { await api("/auth/totp/verify", { method: "POST", body: JSON.stringify({ code: codeIn.value.trim() }) }); toast("2FA activado ✅"); modal.remove(); await refreshMe(); }
+        const code = codeIn.value.replace(/\s/g, "");
+        if (!/^\d{6}$/.test(code)) { err.textContent = "Introduce los 6 dígitos."; return; }
+        try { await api("/auth/totp/verify", { method: "POST", body: JSON.stringify({ code }) }); toast("2FA activado ✅"); modal.remove(); await refreshMe(); }
         catch (e) { err.textContent = e.message; }
       };
       actions.insertBefore(confirm, cancel);
@@ -3796,13 +3809,18 @@
     finally { btn.disabled = false; }
   };
   $("#btn-totp-confirm").onclick = async () => {
-    const code = $("#li-totp3").value.trim();
-    // 6 dígitos (app) o una clave de recuperación (mín. 6 caracteres).
+    // El código numérico puede venir como "123 456"; las claves de
+    // recuperación se envían tal cual (el backend normaliza).
+    const raw = $("#li-totp3").value.trim();
+    const code = /[A-Za-z-]/.test(raw) ? raw : raw.replace(/\s/g, "");
     if (code.length < 6) { $("#login-err").textContent = "Introduce el código o una clave de recuperación."; return; }
     try { await loginStep3(state.loginChallenge, code); }
     catch (e) { $("#login-err").textContent = e.message; }
   };
-  $("#li-totp3") && ($("#li-totp3").onkeydown = (e) => { if (e.key === "Enter") $("#btn-totp-confirm").click(); });
+  if ($("#li-totp3")) {
+    attachTotpSpace($("#li-totp3"));
+    $("#li-totp3").onkeydown = (e) => { if (e.key === "Enter") $("#btn-totp-confirm").click(); };
+  }
   $("#btn-totp-back").onclick = () => { state.loginChallenge = null; showLoginStep(1); };
   $("#btn-pat-back").onclick = () => { state.loginChallenge = null; showLoginStep(1); };
   $("#btn-pat-reset").onclick = () => { if (state.loginPad) state.loginPad.reset(); $("#login-err").textContent = ""; };

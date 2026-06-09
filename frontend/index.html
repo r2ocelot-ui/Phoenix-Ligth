@@ -99,6 +99,10 @@
       display: flex; flex-direction: column; gap: 6px;
     }
     .user-dropdown .btn { width: 100%; }
+    /* Reloj fecha + hora en la topbar (estilo Hydra) */
+    .clock { text-align: right; line-height: 1.1; }
+    .clock-time { font: 700 16px/1 var(--mono, monospace); letter-spacing: .5px; }
+    .clock-date { font-size: 11px; color: var(--dim); text-transform: capitalize; }
 
     /* Flex column so #content fills the space and the footer can be pinned
        to the very bottom regardless of how much the active view occupies. */
@@ -535,12 +539,13 @@
       <nav id="nav">
         <a data-view="inicio" class="active"><span class="ico">◎</span> Inicio</a>
         <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">▦</span> Cuadros</a>
+        <a data-view="luminarias" data-perm="cabinet:read"><span class="ico">💡</span> Luminarias</a>
         <a data-view="topologia" data-perm="cabinet:read"><span class="ico">⌗</span> Topología</a>
         <a data-view="control" data-perm="cabinet:control"><span class="ico">⏻</span> Control</a>
         <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">⚠</span> Alarmas</a>
-        <a data-view="permisos" data-perm="user:manage"><span class="ico">⚿</span> Permisos</a>
         <a data-view="auditoria" data-perm="audit:read"><span class="ico">❑</span> Auditoría</a>
         <a data-view="seguridad" data-perm="user:manage"><span class="ico">⛨</span> Seguridad</a>
+        <a data-view="permisos" data-perm="user:manage"><span class="ico">⚿</span> Permisos</a>
       </nav>
       <div class="spacer"></div>
       <div class="userbox-mini muted">Kumiho Group · Phoenix</div>
@@ -552,6 +557,11 @@
           <div class="sub" id="view-sub">Resumen de la red de alumbrado</div>
         </div>
         <div class="row" style="gap:14px">
+          <!-- Reloj fecha + hora (estilo Hydra). -->
+          <div class="clock" id="topbar-clock">
+            <div class="clock-time" id="clock-time">--:--:--</div>
+            <div class="clock-date" id="clock-date">—</div>
+          </div>
           <div class="row">
             <span class="dot ok" id="live-dot"></span>
             <span class="muted" id="live-label" style="font-size:12px">conectando…</span>
@@ -922,6 +932,7 @@
     connectWS();
     startIdleWatch();
     mountEventDock();
+    startClock();
     if (!window._fallback) window._fallback = setInterval(() => {
       if (!window._ws || window._ws.readyState !== 1) refreshLive();
     }, 10000);
@@ -978,6 +989,18 @@
   }
   function closeProjectPicker() { $("#project-picker")?.classList.add("hidden"); }
   function closeUserMenu() { $("#user-dropdown")?.classList.add("hidden"); }
+  // Reloj de la topbar: hora cada segundo, fecha en español.
+  function startClock() {
+    if (window._clockTimer) return;
+    const tick = () => {
+      const t = $("#clock-time"), d = $("#clock-date");
+      if (!t || !d) return;
+      const now = new Date();
+      t.textContent = now.toLocaleTimeString("es-ES");
+      d.textContent = now.toLocaleDateString("es-ES", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+    };
+    tick(); window._clockTimer = setInterval(tick, 1000);
+  }
   function pickProject(id) {
     state.activeProject = id;
     closeProjectPicker();
@@ -1180,6 +1203,7 @@
   const TITLES = {
     inicio: ["Inicio", "Mapa operativo · cuadros, circuitos y luminarias"],
     cuadros: ["Cuadros", "Estado y telemetría de los cuadros"],
+    luminarias: ["Luminarias", "Inventario de farolas · ficha por punto de luz"],
     mapa: ["Mapa", "Centros de mando y farolas sobre el plano"],
     topologia: ["Topología", "Centros de mando, circuitos y farolas"],
     control: ["Control", "Encendido, apagado y regulación (dimming)"],
@@ -1197,6 +1221,7 @@
     $("#view-sub").textContent = TITLES[view][1];
     render();
     if (view === "topologia") loadTopologia();
+    if (view === "luminarias") loadLuminarias();
     if (view === "usuarios") loadUsers();
     if (view === "rangos") loadRoles();
     if (view === "permisos") loadPermisos();
@@ -1474,7 +1499,11 @@
       const map = L.map("map", {
         attributionControl: false,
         fadeAnimation: false, zoomAnimation: false, markerZoomAnimation: false,
+        // Zoom abajo-izquierda para no tapar el chip de Ciudad (arriba-izda)
+        // ni el selector de estilo de mapa (arriba-dcha).
+        zoomControl: false,
       }).setView([40.4168, -3.7038], 13);
+      L.control.zoom({ position: "bottomleft" }).addTo(map);
       window._map = map;
       applyTileStyle(map);
       requestAnimationFrame(() => map.invalidateSize(false));
@@ -1805,6 +1834,74 @@
   async function ackCab(id) {
     try { await api(`/cabinets/${id}/alarms`, { method: "DELETE" }); toast(`Alarmas de ${id} reconocidas`); refreshLive(); }
     catch (e) { toast(e.message, true); }
+  }
+
+  // ============================ Luminarias (inventario) ============================
+  // Lista plana de TODAS las farolas de la red, como "Cuadros" pero a nivel
+  // de punto de luz. Buscador por calle/CM/fabricante/modelo + filtro por CM.
+  // Clic en una fila → su ficha completa (openLightDetail).
+  async function loadLuminarias() {
+    const c = $("#content"); c.innerHTML = "";
+    try {
+      const tp = await api("/topology");
+      window._topoCache = tp;
+      // Aplano: cada luminaria + su cuadro y circuito.
+      const rows = [];
+      tp.cabinets.forEach(cab => {
+        const circById = Object.fromEntries(cab.circuits.map(x => [x.id, x]));
+        cab.points.forEach(pt => rows.push({ pt, cab, circ: circById[pt.circuit_id] }));
+      });
+
+      const bar = el("div", "row"); bar.style.marginBottom = "12px"; bar.style.gap = "10px"; bar.style.flexWrap = "wrap";
+      const search = el("input"); search.placeholder = "Buscar por calle, CM, fabricante, modelo, nº…"; search.style.flex = "1"; search.style.minWidth = "240px";
+      const cmFilter = el("select"); cmFilter.style.minWidth = "180px";
+      cmFilter.append(el("option", null, "Todos los cuadros"));
+      tp.cabinets.forEach(cab => { const o = el("option", null, `CM${cab.number} · ${cab.name || cab.code}`); o.value = cab.code; cmFilter.append(o); });
+      const counter = el("span", "muted"); counter.style.fontSize = "12px"; counter.style.alignSelf = "center";
+      bar.append(search, cmFilter, counter);
+      c.append(bar);
+
+      const panel = el("div", "panel");
+      const t = el("table");
+      t.innerHTML = `<thead><tr><th>Nº</th><th>Calle</th><th>CM</th><th>Circuito</th><th>Fase</th><th>Fabricante</th><th>Modelo</th><th>W</th></tr></thead>`;
+      const tb = el("tbody"); t.append(tb); panel.append(t);
+
+      const draw = () => {
+        const q = search.value.trim().toLowerCase();
+        const cm = cmFilter.value;
+        const items = rows.filter(({ pt, cab }) => {
+          if (cm && cab.code !== cm) return false;
+          if (!q) return true;
+          return [pt.street, cab.code, cab.name, pt.manufacturer, pt.model, String(pt.number), pt.locality]
+            .some(v => (v || "").toString().toLowerCase().includes(q));
+        });
+        counter.textContent = `${items.length} de ${rows.length} luminarias`;
+        tb.innerHTML = "";
+        const renderPage = (page) => {
+          tb.innerHTML = "";
+          page.forEach(({ pt, cab, circ }) => {
+            const tr = el("tr"); tr.style.cursor = "pointer";
+            const phaseCol = (tp.phase_colors || {})[pt.phase] || "#64748b";
+            tr.innerHTML = `<td class="mono">${pt.number}</td>`
+              + `<td>${pt.street || "<span class='muted'>—</span>"}${pt.street_number ? " " + pt.street_number : ""}</td>`
+              + `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${cab.color};margin-right:5px"></span>CM${cab.number}</td>`
+              + `<td>${circ ? "C" + circ.number : "—"}</td>`
+              + `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${phaseCol};margin-right:5px"></span>${pt.phase}</td>`
+              + `<td>${pt.manufacturer || "—"}</td><td>${pt.model || "—"}</td><td class="mono">${(pt.power_w || 0).toFixed(0)}</td>`;
+            tr.onclick = () => openLightDetail(cab, pt);
+            tb.append(tr);
+          });
+        };
+        // Paginación reutilizando el helper genérico.
+        const existingPager = panel.querySelector(".paginator");
+        if (existingPager) existingPager.remove();
+        if (items.length) panel.append(paginator(items, renderPage));
+        else { tb.innerHTML = ""; tb.append(el("tr", null, `<td colspan="8" class="muted" style="text-align:center;padding:14px">Sin luminarias.</td>`)); }
+      };
+      search.oninput = draw; cmFilter.onchange = draw;
+      draw();
+      c.append(panel);
+    } catch (e) { c.append(el("div", "empty", e.message)); }
   }
 
   // ============================ Topología (con editor) ============================
@@ -3250,9 +3347,13 @@
       );
       c.append(kpis);
 
+      // Las tres tarjetas de gestión van EN COLUMNAS (no apiladas) para
+      // ahorrar espacio vertical. auto-fit las reparte según el ancho.
+      const cols = el("div"); cols.style.display = "grid"; cols.style.gridTemplateColumns = "repeat(auto-fit, minmax(320px, 1fr))"; cols.style.gap = "16px"; cols.style.marginTop = "16px";
+
       // ----- Modo siege (solo Owner) -----
       if (state.me?.rank === "owner") {
-        const sg = el("div", "panel"); sg.style.marginTop = "16px";
+        const sg = el("div", "panel");
         try {
           const siege = await api("/security/siege");
           const head = el("div", "row between");
@@ -3271,11 +3372,11 @@
             sg.append(wl);
           }
         } catch (e) { /* no admin → skip */ }
-        c.append(sg);
+        cols.append(sg);
       }
 
       // ----- IP banlist (admin) -----
-      const ban = el("div", "panel"); ban.style.marginTop = "16px";
+      const ban = el("div", "panel");
       ban.append(el("div", "row between", "<strong>IPs baneadas</strong> <span class='muted' style='font-size:12px'>auto-ban y manual</span>"));
       try {
         const bans = await api("/security/bans");
@@ -3296,11 +3397,11 @@
         } else {
           ban.append(el("div", "empty", "Sin IPs baneadas."));
         }
-        // Form: banear a mano
-        const form = el("div", "row"); form.style.marginTop = "10px"; form.style.gap = "6px";
-        const ipIn = el("input"); ipIn.placeholder = "IP a banear"; ipIn.style.width = "180px";
-        const reIn = el("input"); reIn.placeholder = "motivo (opcional)"; reIn.style.flex = "1";
-        const minIn = el("input"); minIn.type = "number"; minIn.placeholder = "min (vacío=permanente)"; minIn.style.width = "160px";
+        // Form: banear a mano (vertical para caber en columna estrecha)
+        const form = el("div"); form.style.marginTop = "10px"; form.style.display = "grid"; form.style.gap = "6px";
+        const ipIn = el("input"); ipIn.placeholder = "IP a banear";
+        const reIn = el("input"); reIn.placeholder = "motivo (opcional)";
+        const minIn = el("input"); minIn.type = "number"; minIn.placeholder = "minutos (vacío = permanente)";
         const add = el("button", "btn sm", "Banear");
         add.onclick = async () => {
           if (!ipIn.value.trim()) return;
@@ -3312,10 +3413,10 @@
         form.append(ipIn, reIn, minIn, add);
         ban.append(form);
       } catch (e) { ban.append(el("div", "empty", "Sin permisos para gestionar IPs.")); }
-      c.append(ban);
+      cols.append(ban);
 
       // ----- Mis dispositivos (todos) -----
-      const dev = el("div", "panel"); dev.style.marginTop = "16px";
+      const dev = el("div", "panel");
       dev.append(el("div", "row between", "<strong>Mis dispositivos</strong> <span class='muted' style='font-size:12px'>sesiones recientes de este usuario</span>"));
       try {
         const devs = await api("/security/devices");
@@ -3335,9 +3436,10 @@
           dt.append(db); dev.append(dt);
         } else { dev.append(el("div", "empty", "Sin dispositivos registrados.")); }
       } catch (e) { dev.append(el("div", "empty", e.message)); }
-      c.append(dev);
+      cols.append(dev);
+      c.append(cols);
 
-      // ----- Feed de eventos (paginado) -----
+      // ----- Feed de eventos (paginado, ancho completo) -----
       const p = el("div", "panel"); p.style.marginTop = "16px";
       p.append(el("div", "row between", "<strong>Historial de seguridad</strong> <span class='muted' style='font-size:12px'>append-only</span>"));
       const t = el("table");

@@ -530,11 +530,12 @@
         </div>
         <div id="login-step3" class="hidden" style="text-align:center">
           <p class="tag" style="margin-bottom:8px">Paso 3 · Introduce el <strong>código 2FA</strong> de tu app (Google Authenticator).</p>
-          <input id="li-totp3" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="6 dígitos" style="text-align:center; font-size:20px; letter-spacing:6px" />
+          <input id="li-totp3" maxlength="12" placeholder="6 dígitos o clave de recuperación" style="text-align:center; font-size:18px; letter-spacing:3px" />
           <div class="row" style="justify-content:center; gap:8px; margin-top:10px">
             <button class="btn" id="btn-totp-confirm">Entrar</button>
             <button class="btn ghost sm" id="btn-totp-back">← Volver</button>
           </div>
+          <div class="switch" style="margin-top:8px">¿Perdiste el móvil? Usa una de tus <strong>claves de recuperación</strong> en el mismo campo.</div>
         </div>
       </div>
       <div class="err" id="login-err"></div>
@@ -865,12 +866,57 @@
   // usuario. Si ya está activo, ofrece desactivarlo; si no, genera el
   // secreto, lo muestra para introducir en la app y pide un código para
   // confirmar y activar.
+  // Carga (una vez) una librería QR ligera desde CDN. Si no hay internet,
+  // devuelve null y el modal cae al método de clave manual. Mismo supuesto
+  // que las tiles del mapa (el navegador del cliente tiene salida a la red).
+  function loadQrLib() {
+    if (window.QRCode) return Promise.resolve(window.QRCode);
+    if (window._qrLibPromise) return window._qrLibPromise;
+    window._qrLibPromise = new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js";
+      s.onload = () => resolve(window.QRCode || null);
+      s.onerror = () => resolve(null);
+      document.head.append(s);
+    });
+    return window._qrLibPromise;
+  }
+  // Caja con las claves de recuperación + copiar + descargar .txt.
+  function recoveryBox(codes) {
+    const box = el("div"); box.style.cssText = "margin:10px 0";
+    box.innerHTML = `<div class="muted" style="font-size:12px;margin-bottom:6px">🔑 <strong>Claves de recuperación</strong> · guárdalas en lugar seguro. Cada una sirve UNA vez si pierdes el móvil. No se vuelven a mostrar.</div>`;
+    const grid = el("div"); grid.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:6px;font-family:var(--mono,monospace);font-size:14px;background:rgba(255,255,255,.05);padding:10px;border-radius:8px;user-select:all";
+    codes.forEach(cd => { const d = el("div"); d.textContent = cd; grid.append(d); });
+    box.append(grid);
+    const row = el("div", "row"); row.style.cssText = "gap:8px;margin-top:8px";
+    const copy = el("button", "btn ghost sm", "Copiar");
+    copy.onclick = () => { navigator.clipboard?.writeText(codes.join("\n")); toast("Claves copiadas"); };
+    const dl = el("button", "btn ghost sm", "Descargar .txt");
+    dl.onclick = () => {
+      const blob = new Blob([`Phoenix Light · Claves de recuperación 2FA\nUsuario: ${state.me?.username || ""}\n\n` + codes.join("\n")], { type: "text/plain" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "phoenix-recovery-codes.txt"; a.click();
+    };
+    row.append(copy, dl); box.append(row);
+    return box;
+  }
+
   async function showSetTotp() {
-    const modal = el("div", "modal"); const card = el("div", "modal-card"); card.style.maxWidth = "460px";
+    const modal = el("div", "modal"); const card = el("div", "modal-card"); card.style.maxWidth = "460px"; card.style.maxHeight = "88vh"; card.style.overflowY = "auto";
     const err = el("div", "err"); err.style.textAlign = "center"; err.style.minHeight = "16px";
 
+    // --- Ya activado: estado + claves restantes + regenerar + desactivar ---
     if (state.me?.has_totp) {
-      card.innerHTML = `<h3>2FA activado ✅</h3><p class="desc">Tu cuenta pide un código de la app (Google Authenticator, Authy…) al iniciar sesión.</p>`;
+      const left = state.me?.totp_recovery_remaining ?? 0;
+      card.innerHTML = `<h3>2FA activado ✅</h3><p class="desc">Tu cuenta pide un código de la app al iniciar sesión.</p>
+        <div class="muted" style="font-size:13px">🔑 Claves de recuperación sin usar: <strong>${left}</strong></div>`;
+      const regenBox = el("div"); card.append(regenBox);
+      const actions = el("div", "actions");
+      const regen = el("button", "btn ghost", "Regenerar claves");
+      regen.onclick = async () => {
+        if (!confirm("Esto invalida tus claves actuales y genera unas nuevas. ¿Continuar?")) return;
+        try { const r = await api("/auth/totp/recovery", { method: "POST" }); regenBox.innerHTML = ""; regenBox.append(recoveryBox(r.recovery_codes)); toast("Nuevas claves generadas"); await refreshMe(); }
+        catch (e) { err.textContent = e.message; }
+      };
       const del = el("button", "btn ghost", "Desactivar 2FA"); del.style.color = "#ef4444";
       del.onclick = async () => {
         if (!confirm("¿Desactivar el 2FA? Tu cuenta dejará de pedir el código.")) return;
@@ -878,11 +924,12 @@
         catch (e) { err.textContent = e.message; }
       };
       const cancel = el("button", "btn ghost", "Cerrar"); cancel.onclick = () => modal.remove();
-      const actions = el("div", "actions"); actions.append(del, cancel);
+      actions.append(regen, del, cancel);
       card.append(err, actions); modal.append(card); document.body.append(modal);
       return;
     }
 
+    // --- Activación: QR + clave manual + claves de recuperación + confirmar ---
     card.innerHTML = `<h3>Activar 2FA</h3><p class="desc">Protege tu cuenta con un código que cambia cada 30 s, como en el banco.</p>`;
     const steps = el("div"); steps.innerHTML = `<div class="muted" style="font-size:13px">Generando clave…</div>`;
     card.append(steps, err);
@@ -893,17 +940,19 @@
 
     try {
       const setup = await api("/auth/totp/setup", { method: "POST" });
-      // Clave en grupos de 4 para teclear fácil + URI para apps que la admitan.
       const grouped = setup.secret.replace(/(.{4})/g, "$1 ").trim();
-      steps.innerHTML = `
-        <ol style="font-size:13px; line-height:1.6; padding-left:18px; margin:0 0 12px">
-          <li>Abre <strong>Google Authenticator</strong> (o Authy).</li>
-          <li>Elige <em>"Introducir clave de configuración"</em>.</li>
-          <li>Cuenta: <span class="mono">Phoenix · ${state.me?.username || ""}</span></li>
-          <li>Clave: <div class="mono" style="font-size:16px; letter-spacing:2px; background:rgba(255,255,255,.05); padding:8px; border-radius:8px; margin:6px 0; text-align:center; user-select:all">${grouped}</div></li>
-          <li>Escribe abajo el código de 6 dígitos que aparece.</li>
-        </ol>`;
-      const codeIn = el("input"); codeIn.placeholder = "Código de 6 dígitos"; codeIn.inputMode = "numeric"; codeIn.maxLength = 6; codeIn.style.cssText = "width:100%; text-align:center; font-size:18px; letter-spacing:4px";
+      steps.innerHTML = `<div style="text-align:center"><div class="muted" style="font-size:13px;margin-bottom:8px">Escanea el QR con <strong>Google Authenticator</strong> (o introduce la clave a mano):</div><div id="totp-qr" style="display:inline-block;background:#fff;padding:8px;border-radius:8px;min-height:160px;min-width:160px"></div></div>
+        <div class="mono" style="font-size:14px;letter-spacing:2px;background:rgba(255,255,255,.05);padding:8px;border-radius:8px;margin:10px 0;text-align:center;user-select:all">${grouped}</div>`;
+      // QR (best-effort): si carga la lib, lo dibujamos; si no, queda la clave.
+      loadQrLib().then(QR => {
+        const host = document.getElementById("totp-qr");
+        if (QR && host) { host.innerHTML = ""; new QR(host, { text: setup.otpauth_uri, width: 152, height: 152, correctLevel: QR.CorrectLevel.M }); }
+        else if (host) { host.innerHTML = `<div class="muted" style="font-size:11px;padding:20px">Sin QR (offline). Usa la clave de arriba.</div>`; }
+      });
+      // Claves de recuperación.
+      steps.append(recoveryBox(setup.recovery_codes));
+      // Confirmación.
+      const codeIn = el("input"); codeIn.placeholder = "Código de 6 dígitos de la app"; codeIn.inputMode = "numeric"; codeIn.maxLength = 6; codeIn.style.cssText = "width:100%; text-align:center; font-size:18px; letter-spacing:4px; margin-top:6px";
       steps.append(codeIn);
       const confirm = el("button", "btn", "Confirmar y activar");
       confirm.onclick = async () => {
@@ -3225,6 +3274,18 @@
     top.append(left, right);
     wrap.append(top);
 
+    // Línea de seguridad: credenciales (sin revelar nunca) + estado 2FA.
+    const sec = el("div", "user-detail-row"); sec.style.marginTop = "10px";
+    const credCell = el("div");
+    credCell.innerHTML = `<div class="muted" style="font-size:11px">Credenciales</div>`
+      + `<div style="font-size:13px">Contraseña <span class="mono">••••••••</span>`
+      + ` · PIN ${u.has_pin ? "✅" : "—"} · Patrón ${u.has_pattern ? "✅" : "—"}</div>`;
+    const totpCell = el("div");
+    totpCell.innerHTML = `<div class="muted" style="font-size:11px">2FA (Google Authenticator)</div>`
+      + `<div style="font-size:13px">${u.has_totp ? `✅ activo · 🔑 ${u.totp_recovery_remaining ?? 0} claves de recuperación` : "— sin activar"}</div>`;
+    sec.append(credCell, totpCell);
+    wrap.append(sec);
+
     // Permisos efectivos en chips.
     const eff = el("div"); eff.style.marginTop = "12px";
     eff.append(el("div", "muted", "Permisos efectivos"));
@@ -3736,7 +3797,8 @@
   };
   $("#btn-totp-confirm").onclick = async () => {
     const code = $("#li-totp3").value.trim();
-    if (!/^\d{6}$/.test(code)) { $("#login-err").textContent = "Introduce los 6 dígitos."; return; }
+    // 6 dígitos (app) o una clave de recuperación (mín. 6 caracteres).
+    if (code.length < 6) { $("#login-err").textContent = "Introduce el código o una clave de recuperación."; return; }
     try { await loginStep3(state.loginChallenge, code); }
     catch (e) { $("#login-err").textContent = e.message; }
   };

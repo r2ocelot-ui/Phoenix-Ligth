@@ -85,10 +85,12 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Guard de producción del `jwt_secret` | 🧪 | Arrancar con `PHOENIX_DEMO_MODE=false` y `jwt_secret` por defecto → revienta el arranque |
 | `tools/make_release.py` (paquete limpio estilo Hydra) | 🧪 | `python3 tools/make_release.py` → `dist/phoenix-cliente-<fecha>.zip` sin `.git/.venv/.db/tests` |
 | `services/sun.py` + endpoint `/cabinets/{id}/sun` | 🧪 | Sunrise/sunset astronómico OFFLINE para sanity-check de la fotocélula |
+| Tarifa por tramos → dimming por coste (`services/tariff.py` + `/tariff`) | 🧪 | `GET /tariff/now` y `/schedule`; recorta dimming en punta sin bajar del mínimo de seguridad |
 
-### 🔴 Pendiente urgente
+### 🟡 Pendiente — primero mañana
 | Bloque | Estado | Qué pasa |
 |---|---|---|
+| ⏰ **Bug TZ en tarifa**: usa la hora del servidor (`datetime.now()`) | 🟡 | Si el server va en UTC, los tramos salen 2 h corridos. Fijar `tariff_timezone` (`zoneinfo`, sigue offline). Parche **V1.R1.P1** |
 | Telemetría de fotocélula (sensor lux) en CM | 🟢 | Reportar lectura + estado del sensor como el resto (voltaje, temp…). **Próximo paso natural tras `sun.py`** |
 | Token JWT fuera de `localStorage` → cookie HttpOnly | 🟡 | Hoy un XSS roba el token |
 | Token del WebSocket sale por URL | 🟡 | Acaba en logs de proxies. Migrar a ticket efímero o subprotocolo |

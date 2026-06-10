@@ -36,12 +36,11 @@ def seed_demo_admin(db: Session, username: str, password: str) -> None:
         full_name="Phoenix Owner (demo)",
         phone="+34 600 000 000",
         job_title="Responsable de plataforma",
-        department="Madrid Centro",
+        department="Operaciones",
+        site="Madrid Centro",
         shift="oficina",
-        # Pack contractual
+        # Pack contractual — interno: solo nº empleado, sin DNI ni empresa
         employee_id="PHX-0001",
-        national_id="00000000T",
-        vehicle="Furgoneta 1234-ABC",
         notes="Cuenta de demostración sembrada al arrancar.",
     ))
     db.commit()

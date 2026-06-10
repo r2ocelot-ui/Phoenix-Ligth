@@ -128,7 +128,12 @@ def update_profile(
     user = _get(db, user_id, actor)
     data = body.model_dump(exclude_unset=True)
     for field, value in data.items():
-        setattr(user, field, (value or "").strip())
+        if isinstance(value, str):
+            value = value.strip()
+        elif value is None and field != "on_call_until":
+            value = ""  # campos de texto: borrar = cadena vacía
+        # ``on_call_until`` admite None (sin guardia) o una fecha; pasa tal cual.
+        setattr(user, field, value)
     db.commit()
     db.refresh(user)
     audit_log.record(

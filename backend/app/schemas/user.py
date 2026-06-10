@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,11 +35,13 @@ class UserDetail(UserRead):
     phone: str = ""
     job_title: str = ""
     department: str = ""
-    shift: str = ""
-    # Pack contractual (contratos externos):
+    site: str = ""
+    shift: str = ""                       # mañana / tarde / oficina
+    on_call_until: date | None = None     # de guardia hasta esta fecha
+    # Pack contractual:
     employee_id: str = ""
     national_id: str = ""
-    vehicle: str = ""
+    company: str = ""
     # Auditoría visible en la ficha (read-only, la fija el login):
     last_login_at: datetime | None = None
     last_login_ip: str = ""
@@ -55,10 +57,12 @@ class ProfileUpdate(BaseModel):
     phone: str | None = Field(default=None, max_length=40)
     job_title: str | None = Field(default=None, max_length=80)
     department: str | None = Field(default=None, max_length=80)
+    site: str | None = Field(default=None, max_length=80)
     shift: str | None = Field(default=None, max_length=32)
+    on_call_until: date | None = None  # None borra la guardia
     employee_id: str | None = Field(default=None, max_length=40)
     national_id: str | None = Field(default=None, max_length=20)
-    vehicle: str | None = Field(default=None, max_length=40)
+    company: str | None = Field(default=None, max_length=120)
     notes: str | None = Field(default=None, max_length=512)
 
 

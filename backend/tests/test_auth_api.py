@@ -725,11 +725,13 @@ def test_admin_edits_worker_profile_and_notes(client):
             "full_name": "Curro Jiménez",
             "phone": "+34 600 123 456",
             "job_title": "Técnico de campo",
-            "department": "Madrid Sur",
-            "shift": "noche",
-            "employee_id": "PHX-0042",
+            "department": "Operaciones",
+            "site": "Madrid Sur",
+            "shift": "tarde",
+            "on_call_until": "2099-12-31",
+            "employee_id": "",
             "national_id": "12345678Z",
-            "vehicle": "Furgoneta 4321-XYZ",
+            "company": "Iluminaciones García SL",
             "notes": "Disponible para guardias.",
         },
         headers=_auth(boss),
@@ -738,13 +740,17 @@ def test_admin_edits_worker_profile_and_notes(client):
     body = r.json()
     assert body["full_name"] == "Curro Jiménez"
     assert body["national_id"] == "12345678Z"
-    assert body["shift"] == "noche"
+    assert body["shift"] == "tarde"
+    assert body["site"] == "Madrid Sur"
+    assert body["company"] == "Iluminaciones García SL"
+    assert body["on_call_until"] == "2099-12-31"
     # Las notas internas SÍ se devuelven a quien gestiona usuarios.
     assert body["notes"] == "Disponible para guardias."
 
     # Reabrir la ficha como admin conserva todo.
     detail = client.get(f"/api/v1/users/{uid}", headers=_auth(boss)).json()
-    assert detail["employee_id"] == "PHX-0042"
+    assert detail["company"] == "Iluminaciones García SL"
+    assert detail["on_call_until"] == "2099-12-31"
     assert detail["notes"] == "Disponible para guardias."
 
 
@@ -772,14 +778,34 @@ def test_profile_partial_update_keeps_other_fields(client):
     _create_user(client, boss, "curro")
     uid = _id_of(client, boss, "curro")
     client.patch(f"/api/v1/users/{uid}/profile",
-                 json={"full_name": "Curro", "vehicle": "Coche 1"}, headers=_auth(boss))
+                 json={"full_name": "Curro", "site": "Madrid Sur"}, headers=_auth(boss))
     # Un PATCH posterior que solo toca el teléfono no borra lo anterior.
     client.patch(f"/api/v1/users/{uid}/profile",
                  json={"phone": "+34 911 000 000"}, headers=_auth(boss))
     d = client.get(f"/api/v1/users/{uid}", headers=_auth(boss)).json()
     assert d["full_name"] == "Curro"
-    assert d["vehicle"] == "Coche 1"
+    assert d["site"] == "Madrid Sur"
     assert d["phone"] == "+34 911 000 000"
+
+
+def test_on_call_until_can_be_cleared(client):
+    """Eje 'guardia' independiente del turno: se fija una fecha y luego se
+    borra mandando null. El turno base no debería verse afectado."""
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    _create_user(client, boss, "curro")
+    uid = _id_of(client, boss, "curro")
+    client.patch(f"/api/v1/users/{uid}/profile",
+                 json={"shift": "mañana", "on_call_until": "2099-06-15"}, headers=_auth(boss))
+    d = client.get(f"/api/v1/users/{uid}", headers=_auth(boss)).json()
+    assert d["shift"] == "mañana"
+    assert d["on_call_until"] == "2099-06-15"
+    # Quitar la guardia con null no toca el turno.
+    client.patch(f"/api/v1/users/{uid}/profile",
+                 json={"on_call_until": None}, headers=_auth(boss))
+    d = client.get(f"/api/v1/users/{uid}", headers=_auth(boss)).json()
+    assert d["on_call_until"] is None
+    assert d["shift"] == "mañana"
 
 
 def test_profile_edit_requires_user_manage(client):

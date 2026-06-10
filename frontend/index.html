@@ -3359,20 +3359,66 @@
 
   // Ficha del trabajador. Solo lectura por defecto; con permiso user:manage
   // aparece "Editar ficha" y los campos se vuelven editables (PATCH /profile).
-  const FICHA_SHIFTS = ["", "mañana", "tarde", "noche", "24h", "oficina"];
+  // Turnos reales: dos turnos operativos + oficina (sin turno fijo).
+  // Solo 2 turnos operativos + oficina. Las horas concretas las marca el
+  // convenio/contrato (no se fijan en código).
+  const FICHA_SHIFTS = [
+    { v: "", label: "—" },
+    { v: "mañana",  label: "Mañana" },
+    { v: "tarde",   label: "Tarde / noche" },
+    { v: "oficina", label: "Oficina (sin turno fijo)" },
+  ];
   const FICHA_LABORAL = [
-    ["full_name", "Nombre completo"], ["phone", "Teléfono"],
-    ["job_title", "Cargo"], ["department", "Departamento / sede"],
-    ["shift", "Turno"],
+    ["full_name",  "Nombre completo"],
+    ["phone",      "Teléfono"],
+    ["job_title",  "Cargo"],
+    ["department", "Departamento"],
+    ["site",       "Sede"],
+    ["shift",      "Turno base"],
+    ["on_call_until", "De guardia hasta"],
   ];
   const FICHA_CONTRACTUAL = [
-    ["employee_id", "Nº de empleado"], ["national_id", "DNI / NIF"],
-    ["vehicle", "Vehículo"],
+    ["employee_id", "Nº de empleado"],
+    ["national_id", "DNI / NIF"],
+    ["company",     "Empresa"],
   ];
+
+  // ¿Sigue de guardia hoy? Acepta una fecha YYYY-MM-DD (o null/vacío).
+  function isOnCallActive(yyyymmdd) {
+    if (!yyyymmdd) return false;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const end = new Date(yyyymmdd + "T00:00:00");
+    return !isNaN(end) && end.getTime() >= today.getTime();
+  }
 
   function fichaSection(u) {
     const box = el("div"); box.style.marginTop = "12px";
     const canEdit = has("user:manage");
+
+    // Adorno ✅/❌ — al lado del valor en modo lectura.
+    const filled = (val) => val != null && String(val).trim() !== "";
+    const valueWith = (val, formatted) => {
+      const wrap = el("span");
+      if (filled(val)) {
+        const tick = el("span"); tick.textContent = "✅ "; tick.style.color = "#22c55e";
+        wrap.append(tick);
+        const txt = el("span"); txt.textContent = formatted ?? val; wrap.append(txt);
+      } else {
+        const cross = el("span"); cross.textContent = "❌ "; cross.style.color = "#ef4444"; cross.style.opacity = ".75";
+        wrap.append(cross);
+        const txt = el("span", "muted"); txt.textContent = "—"; wrap.append(txt);
+      }
+      return wrap;
+    };
+
+    const shiftLabel = (v) => (FICHA_SHIFTS.find(s => s.v === v) || {}).label || "";
+    const fmtOnCall = (d) => {
+      if (!filled(d)) return null;
+      const dt = new Date(d + "T00:00:00");
+      const active = isOnCallActive(d);
+      const human = isNaN(dt) ? d : dt.toLocaleDateString();
+      return active ? `Hasta ${human}` : `Caducada (${human})`;
+    };
 
     const render = (editing) => {
       box.innerHTML = "";
@@ -3384,18 +3430,36 @@
         const r = el("div"); r.style.margin = "6px 0";
         const lab = el("div", "muted"); lab.style.fontSize = "11px"; lab.textContent = label;
         r.append(lab);
+
         if (editing) {
           let inp;
           if (key === "shift") {
             inp = el("select");
-            FICHA_SHIFTS.forEach(s => { const o = el("option", null, s || "—"); o.value = s; if ((u[key] || "") === s) o.selected = true; inp.append(o); });
+            FICHA_SHIFTS.forEach(s => {
+              const o = el("option", null, s.label); o.value = s.v;
+              if ((u[key] || "") === s.v) o.selected = true;
+              inp.append(o);
+            });
+          } else if (key === "on_call_until") {
+            inp = el("input"); inp.type = "date"; inp.value = u[key] || "";
+            inp.style.width = "100%";
+            const hint = el("div", "muted"); hint.style.fontSize = "10px";
+            hint.textContent = "Vacío = no está de guardia. Para fin de semana, pon el lunes siguiente.";
+            r.append(inp); inputs[key] = inp; r.append(hint);
+            return r;
           } else {
             inp = el("input"); inp.value = u[key] || ""; inp.style.width = "100%";
           }
           inputs[key] = inp; r.append(inp);
         } else {
           const v = el("div"); v.style.fontSize = "13px";
-          v.textContent = (u[key] && String(u[key]).trim()) ? u[key] : "—";
+          if (key === "shift") {
+            v.append(valueWith(u[key], shiftLabel(u[key])));
+          } else if (key === "on_call_until") {
+            v.append(valueWith(isOnCallActive(u[key]) ? u[key] : "", fmtOnCall(u[key])));
+          } else {
+            v.append(valueWith(u[key]));
+          }
           r.append(v);
         }
         return r;
@@ -3410,8 +3474,26 @@
       };
 
       const grid = el("div"); grid.style.display = "grid"; grid.style.gridTemplateColumns = "1fr 1fr"; grid.style.gap = "14px"; grid.style.marginTop = "8px";
-      grid.append(pack("Datos laborales", FICHA_LABORAL), pack("Datos contractuales", FICHA_CONTRACTUAL));
+      grid.append(
+        pack("Datos laborales", FICHA_LABORAL),
+        pack("Datos contractuales", FICHA_CONTRACTUAL),
+      );
       box.append(grid);
+
+      // Resumen visible en lectura: turno + guardia juntos pero como ejes
+      // independientes (la guardia se solapa al turno base esa semana).
+      if (!editing && (filled(u.shift) || isOnCallActive(u.on_call_until))) {
+        const summary = el("div"); summary.style.marginTop = "8px"; summary.style.display = "flex"; summary.style.gap = "8px"; summary.style.flexWrap = "wrap";
+        if (filled(u.shift)) {
+          const t = el("span", "perm-chip"); t.textContent = "🕒 " + shiftLabel(u.shift);
+          summary.append(t);
+        }
+        if (isOnCallActive(u.on_call_until)) {
+          const g = el("span", "perm-chip ok"); g.textContent = "🟢 De guardia · " + fmtOnCall(u.on_call_until);
+          summary.append(g);
+        }
+        box.append(summary);
+      }
 
       // Auditoría: último acceso + IP (siempre solo lectura, lo fija el login).
       const audit = el("div"); audit.style.marginTop = "8px";
@@ -3447,7 +3529,13 @@
           const save = el("button", "btn sm", "Guardar ficha");
           save.onclick = async () => {
             const body = {};
-            Object.entries(inputs).forEach(([k, inp]) => { body[k] = inp.value; });
+            Object.entries(inputs).forEach(([k, inp]) => {
+              if (k === "on_call_until") {
+                body[k] = inp.value || null;  // vacío = borrar la guardia
+              } else {
+                body[k] = inp.value;
+              }
+            });
             try {
               const updated = await api(`/users/${u.id}/profile`, { method: "PATCH", body: JSON.stringify(body) });
               Object.assign(u, updated);  // refresca el objeto local con lo guardado

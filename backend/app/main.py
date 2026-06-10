@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
-from app.api.v1 import alarms, audit, auth, cabinets, control, devices, projects, realtime, roles, security, topology, users
+from app.api.v1 import alarms, audit, auth, cabinets, control, devices, projects, realtime, roles, security, tariff, topology, users
 from app.core.config import settings
 from app.core.database import SessionLocal, get_db, init_db
 from app.core.mqtt_client import bus
@@ -116,6 +116,7 @@ app.include_router(devices.router, prefix=settings.api_v1_prefix, dependencies=_
 app.include_router(alarms.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(control.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(control.emergency_router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
+app.include_router(tariff.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 # realtime carries WebSocket endpoints — they don't get a Request, so the
 # guard is skipped for them. WS connections still go through auth.
 app.include_router(realtime.router, prefix=settings.api_v1_prefix)

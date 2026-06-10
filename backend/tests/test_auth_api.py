@@ -933,6 +933,20 @@ def test_production_safety_blocks_default_secret(monkeypatch):
     _check_production_safety()
 
 
+def test_tariff_now_endpoint(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    # Lunes a mediodía → Punta, tope 75%.
+    r = client.get("/api/v1/tariff/now?at=2026-06-08T12:00:00", headers=_auth(boss))
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["period"] == "P1"
+    assert data["label"] == "Punta"
+    assert data["level_cap"] == 75
+    # Sin auth → 401.
+    assert client.get("/api/v1/tariff/now").status_code == 401
+
+
 def test_sun_madrid_summer_solstice():
     """Sanity-check del cálculo astronómico offline. Madrid el solsticio
     de verano 2024: amanece ≈04:44 UTC (06:44 CEST), anochece ≈19:48 UTC

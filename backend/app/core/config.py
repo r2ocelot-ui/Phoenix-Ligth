@@ -86,5 +86,12 @@ class Settings(BaseSettings):
     demo_admin_username: str = "phoenix"
     demo_admin_password: str = "phoenix123"
 
+    # Dimming consciente del coste eléctrico (tarifa por tramos). Off por
+    # defecto: es una política opcional. ``tariff_floor_level`` es el mínimo
+    # de seguridad vial: nunca se baja de ahí aunque la luz esté cara. Los
+    # tramos y topes viven en services/tariff.py.
+    tariff_enabled: bool = False
+    tariff_floor_level: int = 40
+
 
 settings = Settings()

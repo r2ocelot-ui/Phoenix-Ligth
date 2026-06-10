@@ -17,3 +17,6 @@ build/
 .DS_Store
 .idea/
 .vscode/
+
+# Paquetes de release generados por tools/make_release.py
+dist/

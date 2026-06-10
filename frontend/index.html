@@ -3366,7 +3366,7 @@
     { v: "", label: "—" },
     { v: "mañana",  label: "Mañana" },
     { v: "tarde",   label: "Tarde / noche" },
-    { v: "oficina", label: "Oficina (sin turno fijo)" },
+    { v: "oficina", label: "Oficina" },
   ];
   const FICHA_LABORAL = [
     ["full_name",  "Nombre completo"],
@@ -3375,7 +3375,6 @@
     ["department", "Departamento"],
     ["site",       "Sede"],
     ["shift",      "Turno base"],
-    ["on_call_until", "De guardia hasta"],
   ];
   const FICHA_CONTRACTUAL = [
     ["employee_id", "Nº de empleado"],
@@ -3383,19 +3382,12 @@
     ["company",     "Empresa"],
   ];
 
-  // ¿Sigue de guardia hoy? Acepta una fecha YYYY-MM-DD (o null/vacío).
-  function isOnCallActive(yyyymmdd) {
-    if (!yyyymmdd) return false;
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    const end = new Date(yyyymmdd + "T00:00:00");
-    return !isNaN(end) && end.getTime() >= today.getTime();
-  }
-
   function fichaSection(u) {
     const box = el("div"); box.style.marginTop = "12px";
     const canEdit = has("user:manage");
 
-    // Adorno ✅/❌ — al lado del valor en modo lectura.
+    // Adorno ✅/❌ — al lado del valor en modo lectura. Sin guion: si está
+    // vacío, mostramos solo el ❌ (queda más limpio que "❌ —").
     const filled = (val) => val != null && String(val).trim() !== "";
     const valueWith = (val, formatted) => {
       const wrap = el("span");
@@ -3404,21 +3396,13 @@
         wrap.append(tick);
         const txt = el("span"); txt.textContent = formatted ?? val; wrap.append(txt);
       } else {
-        const cross = el("span"); cross.textContent = "❌ "; cross.style.color = "#ef4444"; cross.style.opacity = ".75";
+        const cross = el("span"); cross.textContent = "❌"; cross.style.color = "#ef4444"; cross.style.opacity = ".75";
         wrap.append(cross);
-        const txt = el("span", "muted"); txt.textContent = "—"; wrap.append(txt);
       }
       return wrap;
     };
 
     const shiftLabel = (v) => (FICHA_SHIFTS.find(s => s.v === v) || {}).label || "";
-    const fmtOnCall = (d) => {
-      if (!filled(d)) return null;
-      const dt = new Date(d + "T00:00:00");
-      const active = isOnCallActive(d);
-      const human = isNaN(dt) ? d : dt.toLocaleDateString();
-      return active ? `Hasta ${human}` : `Caducada (${human})`;
-    };
 
     const render = (editing) => {
       box.innerHTML = "";
@@ -3440,13 +3424,6 @@
               if ((u[key] || "") === s.v) o.selected = true;
               inp.append(o);
             });
-          } else if (key === "on_call_until") {
-            inp = el("input"); inp.type = "date"; inp.value = u[key] || "";
-            inp.style.width = "100%";
-            const hint = el("div", "muted"); hint.style.fontSize = "10px";
-            hint.textContent = "Vacío = no está de guardia. Para fin de semana, pon el lunes siguiente.";
-            r.append(inp); inputs[key] = inp; r.append(hint);
-            return r;
           } else {
             inp = el("input"); inp.value = u[key] || ""; inp.style.width = "100%";
           }
@@ -3455,8 +3432,6 @@
           const v = el("div"); v.style.fontSize = "13px";
           if (key === "shift") {
             v.append(valueWith(u[key], shiftLabel(u[key])));
-          } else if (key === "on_call_until") {
-            v.append(valueWith(isOnCallActive(u[key]) ? u[key] : "", fmtOnCall(u[key])));
           } else {
             v.append(valueWith(u[key]));
           }
@@ -3480,18 +3455,11 @@
       );
       box.append(grid);
 
-      // Resumen visible en lectura: turno + guardia juntos pero como ejes
-      // independientes (la guardia se solapa al turno base esa semana).
-      if (!editing && (filled(u.shift) || isOnCallActive(u.on_call_until))) {
+      // Resumen en lectura: chip del turno base (si tiene uno).
+      if (!editing && filled(u.shift)) {
         const summary = el("div"); summary.style.marginTop = "8px"; summary.style.display = "flex"; summary.style.gap = "8px"; summary.style.flexWrap = "wrap";
-        if (filled(u.shift)) {
-          const t = el("span", "perm-chip"); t.textContent = "🕒 " + shiftLabel(u.shift);
-          summary.append(t);
-        }
-        if (isOnCallActive(u.on_call_until)) {
-          const g = el("span", "perm-chip ok"); g.textContent = "🟢 De guardia · " + fmtOnCall(u.on_call_until);
-          summary.append(g);
-        }
+        const t = el("span", "perm-chip"); t.textContent = "🕒 " + shiftLabel(u.shift);
+        summary.append(t);
         box.append(summary);
       }
 
@@ -3529,13 +3497,7 @@
           const save = el("button", "btn sm", "Guardar ficha");
           save.onclick = async () => {
             const body = {};
-            Object.entries(inputs).forEach(([k, inp]) => {
-              if (k === "on_call_until") {
-                body[k] = inp.value || null;  // vacío = borrar la guardia
-              } else {
-                body[k] = inp.value;
-              }
-            });
+            Object.entries(inputs).forEach(([k, inp]) => { body[k] = inp.value; });
             try {
               const updated = await api(`/users/${u.id}/profile`, { method: "PATCH", body: JSON.stringify(body) });
               Object.assign(u, updated);  // refresca el objeto local con lo guardado

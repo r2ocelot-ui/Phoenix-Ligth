@@ -77,7 +77,6 @@ def user_detail(user: User, *, include_notes: bool = False) -> UserDetail:
         department=user.department or "",
         site=user.site or "",
         shift=user.shift or "",
-        on_call_until=user.on_call_until,
         employee_id=user.employee_id or "",
         national_id=user.national_id or "",
         company=user.company or "",

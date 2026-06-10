@@ -1,6 +1,6 @@
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -51,10 +51,6 @@ class User(Base):
     # Turno base: "mañana", "tarde" (cubre también la noche operativa) u
     # "oficina" (sin turno fijo). Las horas concretas las marca el convenio.
     shift: Mapped[str] = mapped_column(String(32), default="")
-    # Guardia: fecha hasta la que está localizable fuera de horario. Eje
-    # independiente del turno — alguien de mañana puede estar de guardia
-    # esa semana. NULL o fecha pasada = no está de guardia.
-    on_call_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     # Pack contractual:
     employee_id: Mapped[str] = mapped_column(String(40), default="")  # internos
     national_id: Mapped[str] = mapped_column(String(20), default="")  # DNI/NIF externos

@@ -5,13 +5,24 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.mqtt_client import bus
+from app.models.cabinet import Cabinet
 from app.models.user import User
-from app.services import audit_log, ranks
+from app.services import audit_log, ranks, tenancy
 from app.services.auth import require_permission
 
 router = APIRouter(prefix="/cabinets", tags=["control"])
 
 emergency_router = APIRouter(prefix="/emergency", tags=["control"])
+
+
+def _authorize_cabinet(db: Session, cabinet_id: str, user: User) -> None:
+    """404 si el cuadro no existe, o si está fuera del proyecto del usuario.
+    Cierra el bypass multi-tenant que dejaba que un operario de una ciudad
+    enviase comandos a cuadros de otra solo conociendo su ``cabinet_id``."""
+    cabinet = db.query(Cabinet).filter(Cabinet.code == cabinet_id).first()
+    if cabinet is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro no encontrado")
+    tenancy.ensure_visible(cabinet, user)
 
 
 @emergency_router.post("/all-on")
@@ -20,9 +31,15 @@ async def emergency_all_on(
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
     """Modo emergencia: enciende todo y pone dimming al 100% en cada cuadro
-    conocido. Pensado para incidencias (corte de luz, accidente, evento)."""
+    conocido. Pensado para incidencias (corte de luz, accidente, evento).
+
+    Multi-tenant: solo afecta a los cuadros del proyecto del usuario. Un
+    owner sin filtro activo abarca todos."""
+    visible = tenancy.cabinet_codes_in_scope(db, user, None)
     affected = []
     for cid in sorted(bus._known_cabinets):
+        if visible is not None and cid not in visible:
+            continue
         try:
             await bus.publish(f"phoenix/cabinets/{cid}/cmd/relay", {"state": "on"})
             await bus.publish(f"phoenix/cabinets/{cid}/cmd/dim", {"level": 100})
@@ -75,6 +92,7 @@ async def set_relay(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
+    _authorize_cabinet(db, cabinet_id, user)
     try:
         await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/relay", cmd.model_dump())
     except RuntimeError as exc:
@@ -92,6 +110,7 @@ async def set_dim(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
+    _authorize_cabinet(db, cabinet_id, user)
     try:
         await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/dim", cmd.model_dump())
     except RuntimeError as exc:

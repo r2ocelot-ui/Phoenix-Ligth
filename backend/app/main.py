@@ -24,8 +24,35 @@ from app.services.seed import seed_demo_admin, seed_demo_cabinets
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 
+DEFAULT_JWT_SECRET = "dev-secret-change-me"
+
+
+def _check_production_safety() -> None:
+    """Aborta el arranque si quedan defaults inseguros con el modo demo
+    apagado. La idea es no estrenar producción con el secreto de ejemplo
+    olvidado en ``.env``: una omisión muda que se ha cargado a más de un
+    despliegue. Se ejecuta en cada lifespan; con ``demo_mode=true`` (la
+    forma por defecto de la demo) no hace nada."""
+    if settings.demo_mode:
+        return
+    problems: list[str] = []
+    if settings.jwt_secret == DEFAULT_JWT_SECRET:
+        problems.append(
+            "PHOENIX_JWT_SECRET sigue en el valor por defecto. "
+            "Genera una clave aleatoria larga y exporta PHOENIX_JWT_SECRET."
+        )
+    if not settings.lockout_enabled:
+        problems.append(
+            "PHOENIX_LOCKOUT_ENABLED=false con demo apagado: el anti-fuerza"
+            "-bruta está desactivado. Actívalo (true) antes de producción."
+        )
+    if problems:
+        raise RuntimeError("Configuración insegura para producción:\n - " + "\n - ".join(problems))
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    _check_production_safety()
     init_db()
     with SessionLocal() as db:
         # Seed the editable role catalogue on first boot, then hydrate the

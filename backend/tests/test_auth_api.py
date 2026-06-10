@@ -77,6 +77,19 @@ def _id_of(client, token, username):
     return next(u["id"] for u in users if u["username"] == username)
 
 
+def _seed_cabinet(code: str = "CAB-001", project_id: int | None = None) -> None:
+    """Siembra un Cabinet en BD para que /relay y /dim no caigan en el 404
+    del bypass-multi-tenant guard. Sin esto, antes los tests publicaban al
+    broker a ciegas; ahora la API exige que el cuadro exista."""
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.cabinet import Cabinet
+    db = next(_app.dependency_overrides[get_db]())
+    if not db.query(Cabinet).filter(Cabinet.code == code).first():
+        db.add(Cabinet(code=code, name=code, project_id=project_id))
+        db.commit()
+
+
 def test_first_user_bootstraps_owner_then_registration_closed(client):
     assert _register(client, "boss").json()["rank"] == "owner"
     # Self-registration is closed once an account exists.
@@ -134,6 +147,7 @@ def test_novato_blocked_operador_allowed(client):
     boss = _token(client, "boss")
     _create_user(client, boss, "newbie", rank="novato")
     newbie = _token(client, "newbie")
+    _seed_cabinet()  # /relay exige que el cuadro exista (multi-tenant guard).
 
     blocked = client.post(
         "/api/v1/cabinets/CAB-001/relay", json={"state": "on"}, headers=_auth(newbie)
@@ -169,6 +183,7 @@ def test_per_user_permission_override_grants_control(client):
     assert r.status_code == 200
     assert "cabinet:control" in r.json()["permissions"]
 
+    _seed_cabinet()
     granted = client.post(
         "/api/v1/cabinets/CAB-001/dim", json={"level": 40}, headers=_auth(newbie)
     )
@@ -192,6 +207,7 @@ def test_cannot_assign_rank_above_own(client):
 def test_audit_log_records_actions(client):
     _register(client, "boss")
     boss = _token(client, "boss")
+    _seed_cabinet()
     client.post("/api/v1/cabinets/CAB-001/dim", json={"level": 50}, headers=_auth(boss))
 
     r = client.get("/api/v1/audit", headers=_auth(boss))
@@ -706,6 +722,7 @@ def test_only_owner_can_manage_projects(client):
 def test_activity_points_accumulate(client):
     _register(client, "boss")
     boss = _token(client, "boss")
+    _seed_cabinet()
     client.post("/api/v1/cabinets/CAB-001/dim", json={"level": 10}, headers=_auth(boss))
     me = client.get("/api/v1/auth/me", headers=_auth(boss)).json()
     assert me["activity_points"] >= 1
@@ -808,3 +825,124 @@ def test_last_login_ip_recorded(client):
     me = client.get("/api/v1/auth/me", headers=_auth(token)).json()
     assert me["last_login_ip"] == "203.0.113.7"
     assert me["last_login_at"] is not None
+
+
+# --- 🔴 Seguridad R2 -------------------------------------------------------
+def _setup_two_projects(client):
+    """Helper: dos proyectos (Madrid, Barcelona) + un cuadro en cada uno.
+    Devuelve (owner_token, project_madrid_id, project_bcn_id)."""
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.cabinet import Cabinet
+    from app.models.project import Project
+    db = next(_app.dependency_overrides[get_db]())
+    madrid = Project(code="madrid", name="Madrid"); db.add(madrid)
+    bcn = Project(code="bcn", name="Barcelona"); db.add(bcn)
+    db.commit(); db.refresh(madrid); db.refresh(bcn)
+    db.add(Cabinet(code="CAB-MAD", name="Madrid 1", project_id=madrid.id))
+    db.add(Cabinet(code="CAB-BCN", name="Barcelona 1", project_id=bcn.id))
+    db.commit()
+    _register(client, "owner")
+    return _token(client, "owner"), madrid.id, bcn.id
+
+
+def test_control_blocks_cross_project(client):
+    """Bypass multi-tenant en /relay y /dim: un operario asignado a un
+    proyecto no puede actuar sobre un cuadro de otro proyecto solo
+    conociendo su código. Antes Phoenix solo verificaba el permiso y
+    publicaba el comando MQTT a ciegas."""
+    own, madrid_id, bcn_id = _setup_two_projects(client)
+    client.post("/api/v1/users",
+                json={"username": "carlos", "password": "secret123", "rank": "operador"},
+                headers=_auth(own))
+    carlos_id = _id_of(client, own, "carlos")
+    client.post("/api/v1/projects/assign-user",
+                json={"user_id": carlos_id, "project_id": madrid_id}, headers=_auth(own))
+    carlos = _token(client, "carlos")
+
+    assert client.post("/api/v1/cabinets/CAB-MAD/relay", json={"state": "on"},
+                       headers=_auth(carlos)).status_code == 200
+    # Cuadro de otra ciudad → 404 (oculto, sin leak de su existencia).
+    assert client.post("/api/v1/cabinets/CAB-BCN/relay", json={"state": "on"},
+                       headers=_auth(carlos)).status_code == 404
+    assert client.post("/api/v1/cabinets/CAB-BCN/dim", json={"level": 50},
+                       headers=_auth(carlos)).status_code == 404
+    # Inexistente: también 404 (mismo trato).
+    assert client.post("/api/v1/cabinets/CAB-INEXIST/relay", json={"state": "on"},
+                       headers=_auth(carlos)).status_code == 404
+
+
+def test_emergency_all_on_scoped_to_project(client):
+    """El botón rojo recorría TODO bus._known_cabinets sin filtrar por
+    scope: un operario de Madrid podía encender Barcelona. Ahora solo
+    afecta a su proyecto; el owner sigue abarcando todos."""
+    own, madrid_id, _ = _setup_two_projects(client)
+    bus = mqtt_module.bus
+    bus._known_cabinets.add("CAB-MAD")
+    bus._known_cabinets.add("CAB-BCN")
+    try:
+        client.post("/api/v1/users",
+                    json={"username": "ana", "password": "secret123", "rank": "operador"},
+                    headers=_auth(own))
+        ana_id = _id_of(client, own, "ana")
+        client.post("/api/v1/projects/assign-user",
+                    json={"user_id": ana_id, "project_id": madrid_id}, headers=_auth(own))
+        ana = _token(client, "ana")
+        r = client.post("/api/v1/emergency/all-on", headers=_auth(ana))
+        assert r.status_code == 200
+        assert r.json()["cabinets"] == ["CAB-MAD"]  # NO CAB-BCN
+        # Owner sin filtro abarca todos.
+        r = client.post("/api/v1/emergency/all-on", headers=_auth(own))
+        assert set(r.json()["cabinets"]) == {"CAB-MAD", "CAB-BCN"}
+    finally:
+        bus._known_cabinets.discard("CAB-MAD")
+        bus._known_cabinets.discard("CAB-BCN")
+
+
+def test_ws_blocks_inactive_user(client):
+    """El WebSocket validaba la firma del token pero no que el usuario
+    siguiera activo: un user desactivado podía seguir conectado al feed.
+    Ahora se cierra con 4401."""
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.user import User
+    db = next(_app.dependency_overrides[get_db]())
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    user = db.query(User).filter(User.username == "boss").first()
+    user.is_active = False
+    db.commit()
+    with pytest.raises(Exception):
+        with client.websocket_connect(f"/api/v1/ws?token={boss}") as ws:
+            ws.receive_json()
+
+
+def test_production_safety_blocks_default_secret(monkeypatch):
+    """Arrancar con demo_mode=false y jwt_secret en el valor de ejemplo
+    es la receta clásica del despliegue inseguro. El guard del lifespan
+    debe abortar antes de aceptar peticiones."""
+    from app.core.config import settings
+    from app.main import DEFAULT_JWT_SECRET, _check_production_safety
+    monkeypatch.setattr(settings, "demo_mode", False)
+    monkeypatch.setattr(settings, "jwt_secret", DEFAULT_JWT_SECRET)
+    monkeypatch.setattr(settings, "lockout_enabled", True)
+    with pytest.raises(RuntimeError, match="PHOENIX_JWT_SECRET"):
+        _check_production_safety()
+    # Con un secreto distinto, no se queja.
+    monkeypatch.setattr(settings, "jwt_secret", "una-clave-larga-aleatoria-xxx")
+    _check_production_safety()
+
+
+def test_sun_madrid_summer_solstice():
+    """Sanity-check del cálculo astronómico offline. Madrid el solsticio
+    de verano 2024: amanece ≈04:44 UTC (06:44 CEST), anochece ≈19:48 UTC
+    (21:48 CEST). Tolerancia ±10 min para acomodar el algoritmo simplificado."""
+    from datetime import date
+    from app.services import sun
+    sr = sun.sunrise_utc(date(2024, 6, 21), 40.4168, -3.7038)
+    ss = sun.sunset_utc(date(2024, 6, 21), 40.4168, -3.7038)
+    assert sr is not None and ss is not None
+    # Ventana razonable: alba ~04:44 UTC, ocaso ~19:48 UTC.
+    assert 4 * 60 + 30 <= sr.hour * 60 + sr.minute <= 5 * 60
+    assert 19 * 60 + 30 <= ss.hour * 60 + ss.minute <= 20 * 60
+    assert ss > sr

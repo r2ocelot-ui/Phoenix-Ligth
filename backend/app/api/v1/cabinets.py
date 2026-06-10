@@ -6,7 +6,7 @@ from app.core.mqtt_client import bus
 from app.models.cabinet import Cabinet
 from app.models.user import User
 from app.schemas.cabinet import CabinetCreate, CabinetRead, CabinetUpdate
-from app.services import audit_log, ranks, tenancy
+from app.services import audit_log, ranks, sun, tenancy
 from app.services.auth import get_current_user, require_permission
 
 router = APIRouter(prefix="/cabinets", tags=["cabinets"])
@@ -62,6 +62,38 @@ def list_registry(
     q = db.query(Cabinet).order_by(Cabinet.code)
     q = tenancy.scope_query(q, Cabinet, actor, project_id)
     return q.all()
+
+
+@router.get("/{cabinet_id}/sun")
+def cabinet_sun(
+    cabinet_id: str,
+    date: str | None = None,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
+) -> dict:
+    """Salida/puesta del sol astronómicas para la posición del CM. Offline,
+    sin depender de internet. Pensado como red de seguridad de la
+    fotocélula: si el sensor lux falla o discrepa de estos valores, hay
+    motivo para sospechar de él."""
+    from datetime import date as _date
+    cabinet = db.query(Cabinet).filter(Cabinet.code == cabinet_id).first()
+    if cabinet is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro no encontrado")
+    tenancy.ensure_visible(cabinet, actor)
+    if cabinet.latitude is None or cabinet.longitude is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "El cuadro no tiene coordenadas configuradas")
+    target = _date.fromisoformat(date) if date else _date.today()
+    sr = sun.sunrise_utc(target, cabinet.latitude, cabinet.longitude)
+    ss = sun.sunset_utc(target, cabinet.latitude, cabinet.longitude)
+    return {
+        "cabinet_id": cabinet.code,
+        "date": target.isoformat(),
+        "latitude": cabinet.latitude,
+        "longitude": cabinet.longitude,
+        "sunrise_utc": sr.isoformat() if sr else None,
+        "sunset_utc": ss.isoformat() if ss else None,
+    }
 
 
 @router.post("/registry", response_model=CabinetRead, status_code=status.HTTP_201_CREATED)

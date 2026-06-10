@@ -100,6 +100,26 @@ estén 🔵, cerramos **R1** y abrimos **R2** para lo siguiente.
 |---|---|---|
 | Pegar `docs/HYDRA-SECURITY-NOTES.md` en la sesión de Hydra | 🟡 | Y aplicar checklist allí |
 
+### Integraciones externas candidatas (curado por Faro)
+Criterio: que aporte valor REAL al alumbrado y no meta dependencias
+frágiles. Lo offline siempre gana a lo que necesita internet.
+
+| Integración | Estado | Por qué |
+|---|---|---|
+| **Tarifa eléctrica por tramos (P1/P2/P3) offline** | 🟡 | Dimming por coste con config local. **Cero red, cero API, mucho valor.** Primero esto |
+| **ESIOS/REE — precio kWh en tiempo real (España)** | 🟡 | Dimming inteligente por coste real (valle 100% / pico 80%). Gratis con registro. La única API externa que cambia la cara a Phoenix |
+| **MQTT cruzado Phoenix ↔ Hydra** | 🟡 | Eventos smart-city (accidente→all-on; fallo eléctrico→ámbar). Interno, sin API externa. Solo si comparten despliegue |
+| **Telemetría de fotocélula (sensor lux) en el CM** | 🟢 | Pareja natural de `sun.py`: lux real + sanity-check astronómico |
+| **Fases lunares offline** | 🟢 | Astronomía pura, junto a `sun.py`. Ajustaría el margen de encendido. Coste cero, valor marginal |
+| **AEMET (meteo oficial España, clave gratis)** | 🟢 | El clima per se aporta poco al alumbrado; solo si surge un caso claro |
+
+**Descartadas (humo — no volver a proponer):**
+- APIs de "IA" genéricas → dependencia sin valor claro.
+- Google Maps / Geocoding de pago → **ya cubierto** por Leaflet + OSM +
+  Nominatim (geocoding inverso ya implementado en `reverseGeocode`).
+- Open-Meteo / clima genérico → para alumbrado no aporta lo suficiente,
+  y en red OT aislada ni siquiera llegaría.
+
 ---
 
 ## Plantilla para próximas revisiones

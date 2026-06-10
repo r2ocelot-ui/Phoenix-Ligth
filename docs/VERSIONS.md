@@ -124,16 +124,22 @@ frágiles. Lo offline siempre gana a lo que necesita internet.
 
 ## 🌆 Ecosistema Smartcity-1 — la visión "alma común"
 
-Cuatro verticales, **un solo bus de eventos**. Cada producto es
+Nueve verticales, **un solo bus de eventos**. Cada producto es
 autónomo (se puede vender solo), pero cuando coinciden en el mismo
 despliegue municipal se enteran de lo que hacen los demás y reaccionan.
+**Contrato técnico completo en `docs/SMARTCITY-BUS.md`.**
 
 | Producto | Vertical | Estado |
 |---|---|---|
-| **Phoenix** 🔥 | Alumbrado (CMs, luminarias, telemetría, alarmas) | Vivo (este repo) |
-| **Hydra** 🐍 | Semáforos (relés Modbus, matriz de conflictos, watchdog) | Vivo (otra sesión) |
-| **Argus** 👁️ | Videovigilancia (cámaras, detección, eventos) | Idea — no empezado |
-| **Osiris** ♻️ | Residuos / reciclaje (rutas, contenedores) | Idea — no empezado |
+| **Phoenix** 🔥 | Alumbrado / Lighting | Vivo (este repo) |
+| **Hydra** 🐍 | Tráfico / Semáforos | Vivo (otra sesión) |
+| **Argus** 👁️ | Vigilancia / Visión | Idea |
+| **Osiris** ♻️ | Basura / Residuos | Idea |
+| **Cernunnos** 🌿 | Medioambiente | Idea |
+| **Athena** 🦉 | Formación | Idea |
+| **Vulcan** ⚒️ | Hardware | Idea |
+| **Atlas** 🗺️ | Infraestructura | Idea |
+| **Orion** 🏹 | Control (panel único, orquesta todo) | Idea |
 
 ### Cómo se hablan (patrón correcto)
 Un **broker MQTT compartido** con namespace `smartcity/eventos/...`.

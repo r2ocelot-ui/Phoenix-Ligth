@@ -227,6 +227,31 @@ descompilar":
 
 ---
 
+## Integración Smartcity-1 — hablar con Phoenix (y el resto)
+
+Hydra puede unirse al **bus de eventos común** del ecosistema (Phoenix,
+Argus, Osiris…). El contrato completo está en **`docs/SMARTCITY-BUS.md`**
+(ese doc es la fuente de verdad; léelo entero). Resumen de la mitad de
+Hydra:
+
+- **Estado**: 🟡 no construido. Hoy Hydra usa WebSockets internos; hace
+  falta **añadir un cliente MQTT** (`mqtt`/`mqtt.js`) al backend Node y
+  conectarlo al broker compartido (TLS + auth, **no** el broker interno).
+- **Publica**: al entrar en safe-mode o detectar conflicto →
+  `smartcity/eventos/accidente` (o `fallo_semaforo`), con el sobre JSON
+  estándar (`id`, `source:"hydra"`, `ts`, `severity`, `location`).
+- **Se suscribe** a `smartcity/eventos/{fallo_red,obstaculo,emergencia}`
+  → mapea a la fase **"todo ámbar intermitente"** (la matriz de
+  conflictos ya la permite) en los cruces de esa `zone`.
+- **Seguridad**: el bus dispara acciones físicas → mismas reglas que el
+  resto (TLS, ACL por producto, validar `source`, no reaccionar a un
+  único mensaje sin corroboración para acciones críticas, auditar todo).
+
+> Prueba de fuego del ecosistema: **`fallo_red` de Phoenix → ámbar en
+> Hydra**. Si esa pareja funciona, el patrón está validado para los demás.
+
+---
+
 ## Checklist priorizada (para la otra sesión)
 
 🔴 **Hacer ya — agujeros reales**:
@@ -251,3 +276,7 @@ descompilar":
 - [ ] NTP fiable, usuario sin privilegios para el proceso.
 - [ ] Cadena de auditoría hash-encadenada.
 - [ ] Renovación online de licencia.
+
+🟢 **Ecosistema (cuando Hydra y Phoenix estén cerrados)**:
+- [ ] Cliente MQTT + integración Smartcity-1 (ver `docs/SMARTCITY-BUS.md`).
+- [ ] Prueba `fallo_red` de Phoenix → ámbar intermitente en Hydra.

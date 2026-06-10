@@ -25,7 +25,7 @@ arreglarlo.
 
 ## R1 — Base operativa completa  ·  🧪 pendiente de verificación visual
 
-Acumulado hasta 2026-06-09. Todo pasa 73/73 tests + smoke + JS lint.
+Acumulado hasta 2026-06-10. Todo pasa 79/79 tests + smoke + JS lint.
 Pendiente de que el capitán confirme en pantalla cada bloque:
 
 | Bloque | Estado | Qué probar |
@@ -35,6 +35,7 @@ Pendiente de que el capitán confirme en pantalla cada bloque:
 | Anti-keylogger (cambiar credencial pide la actual) | 🧪 | Cambiar PIN/patrón |
 | Anti-sabotaje (IP ban, siege, dispositivos) | 🧪 | Sección Seguridad |
 | 7 rangos editables (Phoenix/Director/…) | 🧪 | Permisos → Rangos |
+| Ficha del trabajador (4 packs + edición inline) | 🧪 | Permisos → desplegar usuario → ✎ Editar ficha. El demo `phoenix` ya viene relleno |
 | Multi-tenant (cada Director ve solo su ciudad) | 🧪 | Crear proyecto + asignar |
 | Inicio estilo Hydra (mapa + controles abajo) | 🧪 | **Mirar layout: leyenda al lado, herramientas+KPIs en fila** |
 | Usuario arriba-derecha + reloj | 🧪 | Topbar |

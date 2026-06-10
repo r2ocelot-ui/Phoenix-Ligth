@@ -108,7 +108,7 @@ frágiles. Lo offline siempre gana a lo que necesita internet.
 |---|---|---|
 | **Tarifa eléctrica por tramos (P1/P2/P3) offline** | 🟡 | Dimming por coste con config local. **Cero red, cero API, mucho valor.** Primero esto |
 | **ESIOS/REE — precio kWh en tiempo real (España)** | 🟡 | Dimming inteligente por coste real (valle 100% / pico 80%). Gratis con registro. La única API externa que cambia la cara a Phoenix |
-| **MQTT cruzado Phoenix ↔ Hydra** | 🟡 | Eventos smart-city (accidente→all-on; fallo eléctrico→ámbar). Interno, sin API externa. Solo si comparten despliegue |
+| **Bus Smartcity-1 (MQTT compartido Phoenix/Hydra/Argus/Osiris)** | 🟡 | Ver sección dedicada abajo |
 | **Telemetría de fotocélula (sensor lux) en el CM** | 🟢 | Pareja natural de `sun.py`: lux real + sanity-check astronómico |
 | **Fases lunares offline** | 🟢 | Astronomía pura, junto a `sun.py`. Ajustaría el margen de encendido. Coste cero, valor marginal |
 | **AEMET (meteo oficial España, clave gratis)** | 🟢 | El clima per se aporta poco al alumbrado; solo si surge un caso claro |
@@ -119,6 +119,59 @@ frágiles. Lo offline siempre gana a lo que necesita internet.
   Nominatim (geocoding inverso ya implementado en `reverseGeocode`).
 - Open-Meteo / clima genérico → para alumbrado no aporta lo suficiente,
   y en red OT aislada ni siquiera llegaría.
+
+---
+
+## 🌆 Ecosistema Smartcity-1 — la visión "alma común"
+
+Cuatro verticales, **un solo bus de eventos**. Cada producto es
+autónomo (se puede vender solo), pero cuando coinciden en el mismo
+despliegue municipal se enteran de lo que hacen los demás y reaccionan.
+
+| Producto | Vertical | Estado |
+|---|---|---|
+| **Phoenix** 🔥 | Alumbrado (CMs, luminarias, telemetría, alarmas) | Vivo (este repo) |
+| **Hydra** 🐍 | Semáforos (relés Modbus, matriz de conflictos, watchdog) | Vivo (otra sesión) |
+| **Argus** 👁️ | Videovigilancia (cámaras, detección, eventos) | Idea — no empezado |
+| **Osiris** ♻️ | Residuos / reciclaje (rutas, contenedores) | Idea — no empezado |
+
+### Cómo se hablan (patrón correcto)
+Un **broker MQTT compartido** con namespace `smartcity/eventos/...`.
+Cada producto **publica lo que pasa** sin saber quién escucha, y **se
+suscribe** a lo que le interesa sin saber quién publica. Acoplas
+mensajes, no código.
+
+```
+Argus ve obstáculo/basura → publica smartcity/eventos/obstaculo
+     ├─→ Phoenix sube dimming en la zona (seguridad)
+     ├─→ Osiris crea tarea para el operario (limpieza)
+     └─→ Hydra ámbar intermitente si es en un cruce
+
+Hydra detecta accidente → publica smartcity/eventos/accidente
+     ├─→ Phoenix all-on alrededor (visibilidad para emergencias)
+     └─→ Argus enfoca y graba las cámaras cercanas
+
+Phoenix detecta fallo eléctrico → publica smartcity/eventos/fallo_red
+     └─→ Hydra ámbar intermitente en los cruces afectados (fail-safe)
+```
+
+### Por qué esto es importante
+Esto **no** es un capricho técnico: es lo que diferencia un producto
+profesional ("plataforma Smartcity") de cuatro programas sueltos.
+Es lo que venden ETRA, SICE o Telefónica como Smartcity Platform.
+Y el coste de hacerlo bien desde el día 1 es **bajo**, porque solo
+hay que definir un contrato de eventos JSON acordado.
+
+### Orden recomendado (anti-dispersión)
+🚨 **Construir las 4 cosas a la vez = pozo eterno sin producto.**
+
+1. 🔵 **Phoenix R2 completo** primero — terminar 🔴 y 🟡 de esta tabla.
+2. 🟡 **Definir contrato "Smartcity-1"** — doc corto con topics + JSON.
+3. 🟡 **Hydra ↔ Phoenix se hablan** — primera prueba real del bus.
+4. 🟢 **Argus** después — videovigilancia es un mundo (visión + RGPD).
+5. 🟢 **Osiris** al final — logística + rutas.
+
+Cada paso deja **algo vendible** antes de pasar al siguiente.
 
 ---
 

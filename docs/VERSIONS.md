@@ -1,8 +1,9 @@
-# Phoenix-Light · Revisiones verificadas
+# Phoenix-Light · Versiones y revisiones
 
-Registro de revisiones. Una revisión solo se marca **🔵 OK** cuando el
-capitán la ha probado en pantalla y funciona. Hasta entonces queda
-🧪 (verificada por Faro: tests + smoke + lint) o 🔨 (en curso).
+Registro de **versiones (Vx)** y **revisiones (Rx.y)**. Un bloque solo se
+marca **🔵 OK** cuando el capitán lo ha probado en pantalla y funciona.
+Hasta entonces queda 🧪 (verificada por Faro: tests + smoke + lint) o
+🔨 (en curso).
 
 ## Cómo verificamos (doble visto bueno)
 Cada bloque necesita **las dos** verificaciones para pasar a 🔵 OK:
@@ -24,9 +25,19 @@ arreglarlo.
 > Faro NO puede ver el render del navegador: valida código y backend.
 > La verificación visual la hace siempre el capitán.
 
+## Nomenclatura (versión / revisión)
+Inspirada en el versionado semántico y coherente con Hydra (`V8.3-R39`):
+- **Vx — Versión**: salto grande (capacidad nueva, puede cambiar la base).
+  Ej.: `V1` (plataforma de alumbrado), `V2` (Phoenix en el ecosistema).
+- **Rx.y — Revisión**: cambio menor dentro de una versión — mejora,
+  endurecimiento o reparación. Ej.: `R1.1` (hardening sobre V1).
+
+> Regla simple: si te cambia "qué es" el producto → sube **V**. Si lo
+> mejora o arregla sin cambiar qué es → sube **R**.
+
 ---
 
-## R1 — Base operativa completa  ·  🧪 pendiente de verificación visual
+## V1 — Base operativa completa  ·  🧪 pendiente de verificación visual
 
 Acumulado hasta 2026-06-10. Todo pasa 84/84 tests + smoke + JS lint.
 Pendiente de que el capitán confirme en pantalla cada bloque:
@@ -55,11 +66,11 @@ Pendiente de que el capitán confirme en pantalla cada bloque:
 
 **Cómo marcar OK:** cuando pruebes un bloque y vaya bien, dímelo
 ("el login OK", "la topología OK"…) y lo paso a 🔵 aquí. Cuando todos
-estén 🔵, cerramos **R1** y abrimos **R2** para lo siguiente.
+estén 🔵, cerramos **V1** y la revisión **R1.1** pasa a ser lo activo.
 
 ---
 
-## R2 — Hardening de seguridad y release  ·  🧪 en marcha
+## R1.1 — Hardening de seguridad y release  ·  🧪 en marcha
 
 ### 🔴 Hecho hoy
 | Bloque | Estado | Qué probar |
@@ -122,7 +133,10 @@ frágiles. Lo offline siempre gana a lo que necesita internet.
 
 ---
 
-## 🌆 Ecosistema Smartcity-1 — la visión "alma común"
+## V2 — Ecosistema Smartcity-1 · 🌆 la visión "alma común"
+
+> Salto de **versión** (no revisión): Phoenix deja de ser una plataforma
+> aislada y pasa a ser un **nodo** que habla con los demás verticales.
 
 Nueve verticales, **un solo bus de eventos**. Cada producto es
 autónomo (se puede vender solo), pero cuando coinciden en el mismo
@@ -171,7 +185,7 @@ hay que definir un contrato de eventos JSON acordado.
 ### Orden recomendado (anti-dispersión)
 🚨 **Construir las 4 cosas a la vez = pozo eterno sin producto.**
 
-1. 🔵 **Phoenix R2 completo** primero — terminar 🔴 y 🟡 de esta tabla.
+1. 🔵 **Phoenix V1 + R1.1 completos** primero — terminar 🔴 y 🟡.
 2. 🟡 **Definir contrato "Smartcity-1"** — doc corto con topics + JSON.
 3. 🟡 **Hydra ↔ Phoenix se hablan** — primera prueba real del bus.
 4. 🟢 **Argus** después — videovigilancia es un mundo (visión + RGPD).
@@ -181,10 +195,11 @@ Cada paso deja **algo vendible** antes de pasar al siguiente.
 
 ---
 
-## Plantilla para próximas revisiones
+## Plantilla para próximas versiones / revisiones
 
 ```
-## R{n} — {título}  ·  {estado}
+## V{n} — {título}  ·  {estado}      ← salto grande
+## R{n}.{m} — {título}  ·  {estado}  ← mejora/arreglo dentro de V{n}
 Fecha · resumen.
 | Bloque | Estado | Qué probar |
 ```

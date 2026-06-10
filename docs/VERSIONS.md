@@ -25,15 +25,20 @@ arreglarlo.
 > Faro NO puede ver el render del navegador: valida código y backend.
 > La verificación visual la hace siempre el capitán.
 
-## Nomenclatura (versión / revisión)
-Inspirada en el versionado semántico y coherente con Hydra (`V8.3-R39`):
-- **Vx — Versión**: salto grande (capacidad nueva, puede cambiar la base).
-  Ej.: `V1` (plataforma de alumbrado), `V2` (Phoenix en el ecosistema).
-- **Rx.y — Revisión**: cambio menor dentro de una versión — mejora,
-  endurecimiento o reparación. Ej.: `R1.1` (hardening sobre V1).
+## Nomenclatura (versión / revisión / parche)
+Versionado semántico estilo `V.R.P`, coherente con Hydra (`V8.3-R39`):
+- **V — Versión** (mayor): cambia *qué es* el producto; puede romper
+  compatibilidad. Ej.: `V1` (plataforma de alumbrado), `V2` (ecosistema).
+- **R — Revisión** (menor): función nueva, mejora o endurecimiento, sin
+  romper nada. Ej.: `V1.R1` (hardening sobre V1).
+- **P — Parche**: solo repara un fallo, sin funcionalidad nueva.
+  Ej.: `V1.R1.P1`.
 
-> Regla simple: si te cambia "qué es" el producto → sube **V**. Si lo
-> mejora o arregla sin cambiar qué es → sube **R**.
+Formato `V{n}.R{n}.P{n}`, omitiendo los ceros de cola: `V1` = `V1.R0.P0`;
+`V1.R1` = primera revisión; `V1.R1.P1` = un arreglo sobre ella.
+
+> Regla simple: ¿cambia *qué es*? → **V**. ¿lo mejora/añade sin romper?
+> → **R**. ¿solo arregla un fallo? → **P**.
 
 ---
 
@@ -66,11 +71,11 @@ Pendiente de que el capitán confirme en pantalla cada bloque:
 
 **Cómo marcar OK:** cuando pruebes un bloque y vaya bien, dímelo
 ("el login OK", "la topología OK"…) y lo paso a 🔵 aquí. Cuando todos
-estén 🔵, cerramos **V1** y la revisión **R1.1** pasa a ser lo activo.
+estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 
 ---
 
-## R1.1 — Hardening de seguridad y release  ·  🧪 en marcha
+## V1.R1 — Hardening de seguridad y release  ·  🧪 en marcha
 
 ### 🔴 Hecho hoy
 | Bloque | Estado | Qué probar |
@@ -185,7 +190,7 @@ hay que definir un contrato de eventos JSON acordado.
 ### Orden recomendado (anti-dispersión)
 🚨 **Construir las 4 cosas a la vez = pozo eterno sin producto.**
 
-1. 🔵 **Phoenix V1 + R1.1 completos** primero — terminar 🔴 y 🟡.
+1. 🔵 **Phoenix V1 + V1.R1 completos** primero — terminar 🔴 y 🟡.
 2. 🟡 **Definir contrato "Smartcity-1"** — doc corto con topics + JSON.
 3. 🟡 **Hydra ↔ Phoenix se hablan** — primera prueba real del bus.
 4. 🟢 **Argus** después — videovigilancia es un mundo (visión + RGPD).
@@ -198,8 +203,9 @@ Cada paso deja **algo vendible** antes de pasar al siguiente.
 ## Plantilla para próximas versiones / revisiones
 
 ```
-## V{n} — {título}  ·  {estado}      ← salto grande
-## R{n}.{m} — {título}  ·  {estado}  ← mejora/arreglo dentro de V{n}
+## V{n} — {título}  ·  {estado}         ← salto grande (versión)
+## V{n}.R{m} — {título}  ·  {estado}    ← mejora/endurecimiento (revisión)
+## V{n}.R{m}.P{k} — {título}  ·  {estado} ← solo arreglo (parche)
 Fecha · resumen.
 | Bloque | Estado | Qué probar |
 ```

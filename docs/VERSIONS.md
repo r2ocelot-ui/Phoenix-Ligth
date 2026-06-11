@@ -92,10 +92,24 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Tarifa: **topes configurables** (`tariff_cap_punta/llano/valle`) | 🧪 | Ajustables por contrato vía settings; `GET /tariff/now` los refleja |
 | **MQTT seguro de ejemplo** (`infra/mosquitto.prod.conf`) | 🧪 | TLS + auth + ACL por cuadro, sin tocar el demo (anónimo) |
 | **Cabeceras de seguridad** HTTP (nosniff, Referrer-Policy, X-Frame-Options) | 🧪 | `GET /health` las devuelve; no rompen el render |
+| Fix: botón **"+ Nuevo rango"** abría en blanco | 🧪 | Permisos → Rangos → "+ Nuevo rango" ahora abre el formulario |
+| Rangos muestran su **nombre** (Director / Phoenix), no el id interno | 🧪 | Tabla de usuarios, ficha y topbar |
+| Username **capitalizado** al mostrar (pepe→Pepe) + **login case-insensitive** | 🧪 | Crea "pepe", se ve "Pepe"; entra con pepe/Pepe/PEPE |
+| Migración: usuario **`admin` heredado → `phoenix`** (si no hay phoenix) | 🧪 | BD vieja: el owner vuelve a ser phoenix con id 1, sin perder datos |
+| UI: **asignar usuario a proyecto** (+ `project_id` expuesto → arregla el contador que daba 0) | 🧪 | Permisos → desplegar usuario → selector "Proyecto / ciudad" |
+| Alta de proyecto: **autocompletar ciudad/CP** (Nominatim forward) | 🧪 | Buscar "Benidorm" o un CP → rellena nombre + sugiere código |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)
 y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
+
+**🔴 Investigar si reaparece**
+- **Rectángulo negro en el mapa** (zoom concreto, no a otros niveles). No se
+  vio nada en el código que lo dibuje → probable **tile de OSM fallido**.
+  Si vuelve a salir fijo en el mismo sitio, Faro lo mira a fondo.
+- Si tu BD tiene **a la vez** `admin` (viejo) y `phoenix`: la migración no
+  toca nada (hay phoenix). Borra el `admin` sobrante a mano desde Permisos →
+  Usuarios, o arranca con `phoenix.db` limpio.
 
 **🟡 Prioritario**
 | Bloque | Qué falta / por qué |

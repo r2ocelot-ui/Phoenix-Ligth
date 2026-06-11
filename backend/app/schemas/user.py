@@ -19,6 +19,7 @@ class UserRead(BaseModel):
     activity_points: int
     is_active: bool
     created_at: datetime
+    project_id: int | None = None
 
 
 class UserDetail(UserRead):

@@ -631,6 +631,11 @@
   function $(s) { return document.querySelector(s); }
   function el(tag, cls, html) { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
   function has(perm) { const p = state.me?.permissions || []; return p.includes("*") || p.includes(perm); }
+  // Capitaliza la primera letra para mostrar (ej. "pepe" → "Pepe"). El valor
+  // guardado en BD no cambia; el login es case-insensitive.
+  function cap(s) { return (s && s.length) ? s[0].toUpperCase() + s.slice(1) : (s || ""); }
+  // Nombre visible de un rango ("owner" → "Phoenix", "admin_proyecto" → "Director").
+  function rankLabel(id) { const r = (state.ranksCatalog || []).find(x => x.id === id); return r ? r.label : id; }
   function toast(msg, isErr) { const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (isErr ? " err" : ""); setTimeout(() => t.className = "toast", 3200); }
   function netMsg(e) {
     return /failed to fetch|networkerror|load failed/i.test(e?.message || "")
@@ -1064,14 +1069,15 @@
   async function boot() {
     state.me = await api("/auth/me");
     $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
-    $("#ub-user").textContent = state.me.username;
-    $("#ub-rank").textContent = state.me.rank;
+    $("#ub-user").textContent = cap(state.me.username);
+    $("#ub-rank").textContent = rankLabel(state.me.rank);
     $("#btn-emergency").style.display = has("cabinet:control") ? "" : "none";
     $("#btn-lock").style.display = (state.me.has_pin || state.me.has_pattern) ? "" : "none";
     document.querySelectorAll("#nav a").forEach(a => {
       const perm = a.dataset.perm; a.style.display = (!perm || has(perm)) ? "" : "none";
     });
     try { state.ranksCatalog = await api("/users/ranks"); } catch (e) { state.ranksCatalog = []; }
+    $("#ub-rank").textContent = rankLabel(state.me.rank);  // ya con el catálogo cargado
     await loadProjectsForChip();
     go("inicio");
     await refreshLive();
@@ -2796,6 +2802,21 @@
     } catch (e) { return null; }
   }
 
+  // Geocoding directo (texto → ubicación): "Benidorm" o un CP devuelve la
+  // ciudad/provincia. Para autocompletar el alta de proyecto. Best-effort.
+  async function forwardGeocode(query) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&accept-language=es&q=${encodeURIComponent(query)}`;
+      const r = await fetch(url, { headers: { "Accept-Language": "es" } });
+      if (!r.ok) return null;
+      const arr = await r.json();
+      if (!arr || !arr[0]) return null;
+      const a = arr[0].address || {};
+      const city = a.city || a.town || a.village || a.municipality || a.county || arr[0].display_name.split(",")[0];
+      return { city, province: a.province || a.state || "", postal_code: a.postcode || "" };
+    } catch (e) { return null; }
+  }
+
   // --- Borrados con confirmación -----------------------------------------
   async function deleteCabinet(cab) {
     if (!confirm(`¿Borrar el cuadro ${cab.code}?\n\nSe eliminarán también sus ${cab.circuits.length} circuitos y ${cab.points.length} luminarias. Esta acción no se puede deshacer.`)) return;
@@ -2935,7 +2956,7 @@
       const tb = el("tbody");
       users.forEach(u => {
         const tr = el("tr");
-        tr.innerHTML = `<td class="mono">${u.id}</td><td>${u.username}</td><td><span class="badge rank">${u.rank}</span></td><td class="mono">${u.activity_points}</td><td>${u.is_active ? "sí" : "no"}</td>`;
+        tr.innerHTML = `<td class="mono">${u.id}</td><td>${cap(u.username)}</td><td><span class="badge rank">${rankLabel(u.rank)}</span></td><td class="mono">${u.activity_points}</td><td>${u.is_active ? "sí" : "no"}</td>`;
         const td = el("td");
         if (has("user:manage")) {
           const sel = el("select"); sel.style.width = "150px";
@@ -2976,7 +2997,7 @@
       const canEdit = has("role:manage");
       const sorted = roles.slice().sort((a, b) => b.level - a.level);
       // Selección persistente entre re-renders.
-      if (!sorted.find(r => r.id === state.selectedRole)) {
+      if (state.selectedRole !== "__new__" && !sorted.find(r => r.id === state.selectedRole)) {
         state.selectedRole = sorted[0]?.id || null;
       }
 
@@ -3170,9 +3191,29 @@
       // Alta de proyecto.
       const cp = el("div", "panel"); cp.style.marginBottom = "14px";
       cp.append(el("div", null, "<strong>Crear proyecto / ciudad</strong> <span class='muted' style='font-size:12px'>· aísla cuadros y usuarios de cada cliente</span>"));
-      const row = el("div", "row"); row.style.marginTop = "10px"; row.style.gap = "8px"; row.style.flexWrap = "wrap";
       const code = el("input"); code.placeholder = "código (p.ej. madrid)"; code.style.width = "180px";
       const name = el("input"); name.placeholder = "nombre (p.ej. Madrid Centro)"; name.style.flex = "1";
+
+      // Fila de búsqueda: ciudad o CP → autocompleta nombre y sugiere código.
+      const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const searchRow = el("div", "row"); searchRow.style.marginTop = "10px"; searchRow.style.gap = "8px"; searchRow.style.flexWrap = "wrap";
+      const search = el("input"); search.placeholder = "🔍 buscar ciudad o CP (autocompleta)"; search.style.flex = "1";
+      const find = el("button", "btn ghost sm", "Buscar");
+      const doSearch = async () => {
+        const q = search.value.trim(); if (!q) return;
+        find.disabled = true; find.textContent = "Buscando…";
+        const res = await forwardGeocode(q);
+        find.disabled = false; find.textContent = "Buscar";
+        if (!res || !res.city) { toast("No encontrado. Prueba otra búsqueda.", true); return; }
+        name.value = res.province && res.province !== res.city ? `${res.city} (${res.province})` : res.city;
+        if (!code.value.trim()) code.value = slugify(res.city);
+        toast(`→ ${res.city}${res.postal_code ? " · CP " + res.postal_code : ""}`);
+      };
+      find.onclick = doSearch;
+      search.onkeydown = (e) => { if (e.key === "Enter") doSearch(); };
+      searchRow.append(search, find); cp.append(searchRow);
+
+      const row = el("div", "row"); row.style.marginTop = "10px"; row.style.gap = "8px"; row.style.flexWrap = "wrap";
       const add = el("button", "btn sm", "Crear");
       add.onclick = async () => {
         if (!code.value.trim() || !name.value.trim()) { toast("Falta código o nombre.", true); return; }
@@ -3243,10 +3284,10 @@
       <span class="caret">${isOpen ? "▾" : "▸"}</span>
       ${statusDot}
       <div class="user-meta">
-        <div class="user-name">${u.username}</div>
+        <div class="user-name">${cap(u.username)}</div>
         <div class="user-sub muted">id ${u.id} · ${u.activity_points} pts</div>
       </div>
-      <span class="badge rank">${u.rank}</span>`;
+      <span class="badge rank">${rankLabel(u.rank)}</span>`;
     head.onclick = () => { state.expandedUser = isOpen ? null : u.id; loadPermisos(); };
     row.append(head);
     if (isOpen) {
@@ -3286,6 +3327,25 @@
     right.innerHTML = `<div class="muted" style="font-size:11px">Email · creado</div><div style="font-size:13px">${u.email || "—"} · <span class="mono muted">${new Date(u.created_at).toLocaleDateString()}</span></div>`;
     top.append(left, right);
     wrap.append(top);
+
+    // Proyecto / ciudad — solo el owner puede reasignar (el backend lo exige).
+    if (isOwnerUser()) {
+      const projRow = el("div", "user-detail-row"); projRow.style.marginTop = "10px";
+      const pcell = el("div");
+      pcell.innerHTML = `<div class="muted" style="font-size:11px">Proyecto / ciudad</div>`;
+      const psel = el("select"); psel.style.minWidth = "180px";
+      const none = el("option", null, "— Global (sin proyecto) —"); none.value = ""; if (!u.project_id) none.selected = true; psel.append(none);
+      (state.projects || []).forEach(p => { const o = el("option", null, p.name); o.value = String(p.id); if (u.project_id === p.id) o.selected = true; psel.append(o); });
+      psel.onchange = async () => {
+        const pid = psel.value ? parseInt(psel.value, 10) : null;
+        const txt = psel.value ? psel.options[psel.selectedIndex].text : "Global";
+        try {
+          await api("/projects/assign-user", { method: "POST", body: JSON.stringify({ user_id: u.id, project_id: pid }) });
+          u.project_id = pid; toast(`${cap(u.username)} → ${txt}`);
+        } catch (e) { toast(e.message, true); psel.value = u.project_id ? String(u.project_id) : ""; }
+      };
+      pcell.append(psel); projRow.append(pcell); wrap.append(projRow);
+    }
 
     // Línea de seguridad: credenciales (sin revelar nunca) + estado 2FA.
     const sec = el("div", "user-detail-row"); sec.style.marginTop = "10px";
@@ -3586,7 +3646,7 @@
       ]);
       const canEdit = has("role:manage");
       const sorted = roles.slice().sort((a, b) => b.level - a.level);
-      if (!sorted.find(r => r.id === state.selectedRole)) state.selectedRole = sorted[0]?.id || null;
+      if (state.selectedRole !== "__new__" && !sorted.find(r => r.id === state.selectedRole)) state.selectedRole = sorted[0]?.id || null;
 
       const wrap = el("div", "roles-layout");
       const aside = el("div", "roles-list");

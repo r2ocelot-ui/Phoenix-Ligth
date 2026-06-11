@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from sqlalchemy import func
+
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.user import User
@@ -61,7 +63,7 @@ def create_user(
     actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> User:
     """Admin-driven account creation (there is no public self-registration)."""
-    if db.query(User).filter(User.username == body.username).first():
+    if db.query(User).filter(func.lower(User.username) == body.username.lower()).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "El usuario ya existe")
     rank = ranks.canonicalize(body.rank)
     if rank not in ranks.RANKS:

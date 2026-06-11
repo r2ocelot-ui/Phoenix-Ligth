@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Cookie, Depends, Form, HTTPException, Request, Response, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -106,7 +107,8 @@ def login(
     """
     ip = ip_guard.client_ip(request)
     ua = request.headers.get("user-agent")
-    user = db.query(User).filter(User.username == username).first()
+    # Búsqueda case-insensitive: "pepe" / "Pepe" / "PEPE" son el mismo usuario.
+    user = db.query(User).filter(func.lower(User.username) == (username or "").lower()).first()
     if user and auth_guard.is_locked(user):
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,

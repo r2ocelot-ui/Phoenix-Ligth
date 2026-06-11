@@ -41,6 +41,29 @@ def init_db() -> None:
     Base.metadata.create_all(engine)
     _autopatch_columns()
     _migrate_legacy_ranks()
+    _migrate_legacy_admin()
+
+
+def rename_legacy_admin(db) -> int:
+    """Renombra el usuario demo heredado ``admin`` (anterior al cambio de
+    nombre) a ``phoenix``, SOLO si ``phoenix`` aún no existe. Así un equipo
+    con BD vieja recupera el owner como ``phoenix`` (mismo id, contraseña y
+    credenciales) sin perder nada. Idempotente. Devuelve 1 si renombró."""
+    from app.models.user import User
+    if db.query(User).filter(User.username == "phoenix").first():
+        return 0  # ya hay phoenix → no tocamos nada (puede haber admin aparte)
+    admin = db.query(User).filter(User.username == "admin").first()
+    if not admin:
+        return 0
+    admin.username = "phoenix"
+    db.commit()
+    logger.info("Renombrado usuario heredado 'admin' → 'phoenix'")
+    return 1
+
+
+def _migrate_legacy_admin() -> None:
+    with SessionLocal() as db:
+        rename_legacy_admin(db)
 
 
 def _migrate_legacy_ranks() -> None:

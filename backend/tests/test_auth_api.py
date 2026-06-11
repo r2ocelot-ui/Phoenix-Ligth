@@ -999,3 +999,51 @@ def test_sun_madrid_summer_solstice():
     assert 4 * 60 + 30 <= sr.hour * 60 + sr.minute <= 5 * 60
     assert 19 * 60 + 30 <= ss.hour * 60 + ss.minute <= 20 * 60
     assert ss > sr
+
+
+# --- Fixes UI/backend del 11-jun ------------------------------------------
+def test_login_is_case_insensitive(client):
+    _register(client, "Boss")  # owner guardado como "Boss"
+    assert client.post("/api/v1/auth/login",
+                       data={"username": "boss", "password": "secret123"}).status_code == 200
+    assert client.post("/api/v1/auth/login",
+                       data={"username": "BOSS", "password": "secret123"}).status_code == 200
+
+
+def test_duplicate_username_case_insensitive(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    _create_user(client, boss, "pepe")
+    # "Pepe" debe colisionar con "pepe".
+    r = client.post("/api/v1/users", json={"username": "Pepe", "password": "secret123"},
+                    headers=_auth(boss))
+    assert r.status_code == 409
+
+
+def test_user_project_id_exposed_and_assignable(client):
+    own, madrid_id, _ = _setup_two_projects(client)
+    _create_user(client, own, "ana")
+    ana_id = _id_of(client, own, "ana")
+    d = client.get(f"/api/v1/users/{ana_id}", headers=_auth(own)).json()
+    assert d["project_id"] is None
+    assert client.post("/api/v1/projects/assign-user",
+                       json={"user_id": ana_id, "project_id": madrid_id},
+                       headers=_auth(own)).status_code == 200
+    d2 = client.get(f"/api/v1/users/{ana_id}", headers=_auth(own)).json()
+    assert d2["project_id"] == madrid_id
+    users = client.get("/api/v1/users", headers=_auth(own)).json()
+    assert any(u["id"] == ana_id and u["project_id"] == madrid_id for u in users)
+
+
+def test_rename_legacy_admin_to_phoenix(client):
+    from app.core.database import get_db, rename_legacy_admin
+    from app.core.security import hash_password
+    from app.main import app as _app
+    from app.models.user import User
+    db = next(_app.dependency_overrides[get_db]())
+    db.add(User(username="admin", password_hash=hash_password("x"), rank="owner"))
+    db.commit()
+    assert rename_legacy_admin(db) == 1
+    assert db.query(User).filter(User.username == "phoenix").first() is not None
+    assert db.query(User).filter(User.username == "admin").first() is None
+    assert rename_legacy_admin(db) == 0  # idempotente

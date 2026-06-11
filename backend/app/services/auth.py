@@ -63,6 +63,7 @@ def user_detail(user: User, *, include_notes: bool = False) -> UserDetail:
         activity_points=user.activity_points,
         is_active=user.is_active,
         created_at=user.created_at,
+        project_id=user.project_id,
         permissions=sorted(ranks.effective_permissions(user)),
         rank_level=ranks.rank_level(user.rank),
         progression=ranks.promotion_eligibility(user),

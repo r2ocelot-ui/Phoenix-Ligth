@@ -3,7 +3,7 @@
 > ⚠️ Plantilla. Completa los campos `<...>` y revísalo con un asesor legal
 > antes de entregarlo a un cliente. No es asesoramiento jurídico.
 
-**Titular de los derechos:** Angel Eduardo (empresa matriz de Hydra, Phoenix y el ecosistema Smartcity)
+**Titular de los derechos:** Angel Eduardo · **Kumiho** (empresa matriz de Hydra, Phoenix y el ecosistema Smartcity)
 **Producto:** Phoenix-Light (plataforma de telegestión de alumbrado).
 **Fecha de la versión:** 2026-06-11
 

@@ -5,6 +5,36 @@
 > donde vive Hydra** para que las aplique allí. Aquí no tocamos el código
 > de Hydra (no está en este repo).
 
+## ⏱️ Actualización 11-jun — replicar lo que Phoenix ya implementó
+
+Hoy Phoenix avanzó en seguridad y anti-copia. Hydra debería **replicar el
+mismo patrón, portado a Node**. Mapa directo (lo de Phoenix está hecho y
+probado; copia el enfoque, no el lenguaje):
+
+| En Phoenix (hecho hoy) | En Hydra (a hacer) | Por qué importa en Hydra |
+|---|---|---|
+| Auth **server-side** en todos los endpoints | middleware que exija sesión en `/api/*` **y en `/ws`** | hoy la auth de Hydra es solo de fachada (frontend); la API y el WS están **abiertos** |
+| JWT en **cookie HttpOnly + CSRF** (double-submit) | igual en Express | un XSS no roba la sesión; cookie `SameSite` + token CSRF en cabecera |
+| **Ticket efímero** para el WebSocket (1 uso, ~30 s) | **CRÍTICO** — el `/ws` de Hydra **mueve relés** con `tick` | un WS abierto = cualquiera controla el cruce; el ticket caduca y no vale para todo el sistema |
+| Hash **Argon2id** (doble formato, re-hash al login) | igual | credenciales robustas; migración invisible |
+| Licencia **Ed25519** (`backend/app/services/licensing.py` + `tools/make_license.py`) | portar a Node (`crypto` nativo o `@noble/ed25519`) | cliente solo lleva la **clave pública**; no puede falsificar licencias |
+| `LICENSE` + `EULA` (titular **Angel Eduardo / Kumiho**) | LICENSE/EULA propios de Hydra, mismo titular | palanca legal anti-copia |
+| **Cabeceras de seguridad** (nosniff, Referrer-Policy, X-Frame-Options) | `helmet` en Express | baratas, no rompen nada |
+| **CSP estricta** | **Hydra lo tiene FÁCIL**: su frontend es un bundle Vite (sin JS inline) → `script-src 'self'` ya | Phoenix NO puede aún (su JS va inline); Hydra **sí, ya mismo** |
+| **Guard de arranque** (no arrancar con secretos/sim por defecto en prod) | igual en Node | evita estrenar producción con valores demo |
+| Validar la **matriz de conflictos** también en `/api/relay/:n` | (ya detallado en §4) | el camino REST se salta la matriz que sí valida el `tick` |
+
+**No aplican a Hydra** (son de alumbrado, no de tráfico): la **tarifa
+eléctrica** y el cálculo **astronómico `sun.py`** de Phoenix.
+
+**Hydra ya gana a Phoenix** en una cosa: el **empaquetado limpio** (entrega
+el cliente compilado sin `.git/.venv/.db/tests`). Phoenix lo igualó hoy con
+`tools/make_release.py`.
+
+> Detalle de cada punto, abajo. Lo nuevo de hoy (cookie+CSRF, ticket WS,
+> Argon2id, cabeceras, CSP, guard de arranque) está en la **checklist** al
+> final marcado como 11-jun.
+
 ## Modelo de amenaza
 Hydra **regula semáforos**: un fallo no es un dashboard caído, es un
 **accidente de tráfico**. Hay que asumir varios atacantes posibles:
@@ -256,15 +286,19 @@ Hydra:
 
 🔴 **Hacer ya — agujeros reales**:
 - [ ] Auth server-side en todos los `/api/*` y `/ws` (JWT + lockout).
+      ↳ 11-jun: token en **cookie HttpOnly + CSRF** (double-submit) y hash **Argon2id**.
+- [ ] **Ticket efímero para el `/ws`** (1 uso, ~30 s) — el WS de Hydra **mueve relés**. (11-jun)
 - [ ] Validar matriz de conflictos también en `/api/relay/:n`.
 - [ ] Bind a `127.0.0.1` (o detrás de proxy con allowlist), no `0.0.0.0`.
 - [ ] HTTPS + WSS (TLS) — con certificado propio si es OT cerrada.
+- [ ] **Guard de arranque**: que NO arranque en prod con secretos o `simulationMode` por defecto. (11-jun)
 
 🟠 **Antes de entregar a cliente**:
-- [ ] Licencia firmada Ed25519 + huella del equipo.
+- [ ] Licencia firmada **Ed25519** + huella del equipo.
+      ↳ copia el esquema ya hecho en Phoenix (`backend/app/services/licensing.py` + `tools/make_license.py`).
 - [ ] Logs rotados, permisos `600` sobre licencia y auditoría.
-- [ ] CSP + cabeceras de seguridad en el HTML del frontend.
-- [ ] LICENSE/EULA + registrar autoría (RPI / Safe Creative).
+- [ ] **CSP estricta** (`script-src 'self'`) + cabeceras (`helmet`). Hydra lo tiene **fácil**: bundle Vite sin JS inline. (11-jun)
+- [ ] LICENSE/EULA (titular **Angel Eduardo / Kumiho**) + registrar autoría (RPI / Safe Creative).
 
 🟡 **Infra (lo coordinas con el ayuntamiento)**:
 - [ ] VLANs separadas: OT-Modbus, OT-Hydra, ofimática.

@@ -99,8 +99,12 @@ def _migrate_user_projects() -> None:
     with SessionLocal() as db:
         changed = 0
         for u in db.query(User).all():
-            if not (u.project_ids or []) and u.project_id is not None:
-                u.project_ids = [u.project_id]
+            desired = list(u.project_ids or [])
+            if not desired and u.project_id is not None:
+                desired = [u.project_id]
+            # Normaliza NULL → [] (y rellena desde project_id si procede).
+            if u.project_ids is None or u.project_ids != desired:
+                u.project_ids = desired
                 changed += 1
         if changed:
             db.commit()

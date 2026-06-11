@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class UserCreate(BaseModel):
@@ -21,6 +21,13 @@ class UserRead(BaseModel):
     created_at: datetime
     project_id: int | None = None
     project_ids: list[int] = []
+
+    @field_validator("project_ids", mode="before")
+    @classmethod
+    def _none_to_empty(cls, v):
+        # BDs viejas tienen project_ids = NULL; lo tratamos como lista vacía
+        # para no romper la serialización (causaba HTTP 500 al listar usuarios).
+        return v or []
 
 
 class UserDetail(UserRead):

@@ -1133,3 +1133,23 @@ def test_legacy_single_project_assignment_still_works(client):
                        headers=_auth(own)).status_code == 200
     d = client.get(f"/api/v1/users/{ana_id}", headers=_auth(own)).json()
     assert d["project_id"] == madrid_id and d["project_ids"] == [madrid_id]
+
+
+def test_users_list_tolerates_null_project_ids(client):
+    """Regresión del HTTP 500: un usuario con project_ids NULL (BD vieja) no
+    debe romper GET /users (el schema lo trata como [])."""
+    from app.core.database import get_db
+    from app.core.security import hash_password
+    from app.main import app as _app
+    from app.models.user import User
+    db = next(_app.dependency_overrides[get_db]())
+    u = User(username="legacy", password_hash=hash_password("x"), rank="owner")
+    u.project_ids = None  # simula NULL de BD vieja
+    db.add(u); db.commit()
+    own = _token(client, "legacy", "x") if False else None  # noqa
+    # Login normal del owner heredado y listar.
+    tok = client.post("/api/v1/auth/login", data={"username": "legacy", "password": "x"}).json()["access_token"]
+    r = client.get("/api/v1/users", headers=_auth(tok))
+    assert r.status_code == 200, r.text
+    me = next(x for x in r.json() if x["username"] == "legacy")
+    assert me["project_ids"] == []

@@ -1035,15 +1035,33 @@ def test_user_project_id_exposed_and_assignable(client):
     assert any(u["id"] == ana_id and u["project_id"] == madrid_id for u in users)
 
 
-def test_rename_legacy_admin_to_phoenix(client):
-    from app.core.database import get_db, rename_legacy_admin
+def test_reconcile_legacy_admin_renames_when_no_phoenix(client):
+    from app.core.database import get_db, reconcile_legacy_admin
     from app.core.security import hash_password
     from app.main import app as _app
     from app.models.user import User
     db = next(_app.dependency_overrides[get_db]())
     db.add(User(username="admin", password_hash=hash_password("x"), rank="owner"))
     db.commit()
-    assert rename_legacy_admin(db) == 1
+    assert reconcile_legacy_admin(db) == "renamed"
     assert db.query(User).filter(User.username == "phoenix").first() is not None
     assert db.query(User).filter(User.username == "admin").first() is None
-    assert rename_legacy_admin(db) == 0  # idempotente
+    assert reconcile_legacy_admin(db) == "noop"  # idempotente
+
+
+def test_reconcile_legacy_admin_deletes_leftover_in_demo(client):
+    """Si conviven 'admin' (viejo) y 'phoenix', en modo demo se borra el
+    sobrante (el capitán no puede borrarlo a mano: es owner como él)."""
+    from app.core.config import settings
+    from app.core.database import get_db, reconcile_legacy_admin
+    from app.core.security import hash_password
+    from app.main import app as _app
+    from app.models.user import User
+    db = next(_app.dependency_overrides[get_db]())
+    db.add(User(username="phoenix", password_hash=hash_password("x"), rank="owner"))
+    db.add(User(username="admin", password_hash=hash_password("x"), rank="owner"))
+    db.commit()
+    assert settings.demo_mode is True
+    assert reconcile_legacy_admin(db) == "deleted"
+    assert db.query(User).filter(User.username == "admin").first() is None
+    assert db.query(User).filter(User.username == "phoenix").first() is not None

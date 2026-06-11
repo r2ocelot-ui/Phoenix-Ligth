@@ -44,26 +44,39 @@ def init_db() -> None:
     _migrate_legacy_admin()
 
 
-def rename_legacy_admin(db) -> int:
-    """Renombra el usuario demo heredado ``admin`` (anterior al cambio de
-    nombre) a ``phoenix``, SOLO si ``phoenix`` aún no existe. Así un equipo
-    con BD vieja recupera el owner como ``phoenix`` (mismo id, contraseña y
-    credenciales) sin perder nada. Idempotente. Devuelve 1 si renombró."""
+def reconcile_legacy_admin(db) -> str:
+    """Reconcilia el usuario demo heredado ``admin`` (anterior al cambio de
+    nombre a ``phoenix``):
+
+    - Si NO existe ``phoenix`` → renombra ``admin`` → ``phoenix`` (conserva id,
+      contraseña y credenciales). Devuelve ``"renamed"``.
+    - Si YA existe ``phoenix`` y queda un ``admin`` heredado → es el sobrante
+      del cambio de nombre. En **modo demo** se elimina (devuelve ``"deleted"``);
+      en producción NO se toca por si ``admin`` fuese una cuenta real
+      (``"kept"``).
+
+    Idempotente. Devuelve ``"noop"`` si no hay ``admin``."""
     from app.models.user import User
-    if db.query(User).filter(User.username == "phoenix").first():
-        return 0  # ya hay phoenix → no tocamos nada (puede haber admin aparte)
     admin = db.query(User).filter(User.username == "admin").first()
     if not admin:
-        return 0
-    admin.username = "phoenix"
-    db.commit()
-    logger.info("Renombrado usuario heredado 'admin' → 'phoenix'")
-    return 1
+        return "noop"
+    phoenix = db.query(User).filter(User.username == "phoenix").first()
+    if phoenix is None:
+        admin.username = "phoenix"
+        db.commit()
+        logger.info("Renombrado usuario heredado 'admin' → 'phoenix'")
+        return "renamed"
+    if settings.demo_mode:
+        db.delete(admin)
+        db.commit()
+        logger.info("Eliminado usuario demo heredado 'admin' (ya existe 'phoenix')")
+        return "deleted"
+    return "kept"
 
 
 def _migrate_legacy_admin() -> None:
     with SessionLocal() as db:
-        rename_legacy_admin(db)
+        reconcile_legacy_admin(db)
 
 
 def _migrate_legacy_ranks() -> None:

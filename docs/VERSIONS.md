@@ -44,7 +44,7 @@ Formato `V{n}.R{n}.P{n}`, omitiendo los ceros de cola: `V1` = `V1.R0.P0`;
 
 ## V1 — Base operativa completa  ·  🧪 pendiente de verificación visual
 
-Acumulado hasta 2026-06-10. Todo pasa 84/84 tests + smoke + JS lint.
+Acumulado hasta 2026-06-11. Todo pasa 104/104 tests + smoke + JS lint.
 Pendiente de que el capitán confirme en pantalla cada bloque:
 
 | Bloque | Estado | Qué probar |
@@ -86,21 +86,16 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | `tools/make_release.py` (paquete limpio estilo Hydra) | 🧪 | `python3 tools/make_release.py` → `dist/phoenix-cliente-<fecha>.zip` sin `.git/.venv/.db/tests` |
 | `services/sun.py` + endpoint `/cabinets/{id}/sun` | 🧪 | Sunrise/sunset astronómico OFFLINE para sanity-check de la fotocélula |
 | Tarifa por tramos → dimming por coste (`services/tariff.py` + `/tariff`) | 🧪 | `GET /tariff/now` y `/schedule`; recorta dimming en punta sin bajar del mínimo de seguridad |
+| **V1.R1.P1** · Bug TZ de la tarifa corregido (`tariff_timezone` + `zoneinfo`) | 🧪 | UTC→hora local; en un server UTC los tramos ya NO salen 2 h corridos |
+| Encendido automático astronómico, **sin fotocélula** (`/cabinets/{id}/auto-level`) | 🧪 | `sun.py` decide ON/OFF + perfil + tope de tarifa. De día→0, de noche→nivel |
+| Licencia **Ed25519** + `LICENSE`/`EULA` + `GET /license` (`tools/make_license.py`) | 🧪 | keygen→sign→verify; cliente solo lleva clave pública. Off por defecto |
 
-### 🟡 Pendiente — primero mañana
+### 🟡 Pendiente
 | Bloque | Estado | Qué pasa |
 |---|---|---|
-| ⏰ **Bug TZ en tarifa**: usa la hora del servidor (`datetime.now()`) | 🟡 | Si el server va en UTC, los tramos salen 2 h corridos. Fijar `tariff_timezone` (`zoneinfo`, sigue offline). Parche **V1.R1.P1** |
-| Telemetría de fotocélula (sensor lux) en CM | 🟢 | Reportar lectura + estado del sensor como el resto (voltaje, temp…). **Próximo paso natural tras `sun.py`** |
 | Token JWT fuera de `localStorage` → cookie HttpOnly | 🟡 | Hoy un XSS roba el token |
 | Token del WebSocket sale por URL | 🟡 | Acaba en logs de proxies. Migrar a ticket efímero o subprotocolo |
-
-### 🟡 Anti-copia / convertir en producto
-| Bloque | Estado | Qué pasa |
-|---|---|---|
-| `licensing.py` cableado + `config.py` con `license_*` | 🟡 | Hoy si lo usas peta (faltan settings) |
-| Migrar HMAC → Ed25519 en licensing | 🟡 | Documentado en DECISIONS, pendiente |
-| `LICENSE` + EULA en la raíz | 🟡 | Sin él, no hay palanca legal |
+| Completar `<placeholders>` legales en `LICENSE` y `docs/EULA.md` | 🟡 | Titular, contacto, jurisdicción — lo pones tú |
 | MQTT TLS + auth + ACL por cuadro | 🟡 | Hoy `allow_anonymous true` |
 | Mover lógica crítica al servidor (modelo híbrido) | 🟢 | La protección anti-RE real |
 
@@ -124,10 +119,10 @@ frágiles. Lo offline siempre gana a lo que necesita internet.
 
 | Integración | Estado | Por qué |
 |---|---|---|
-| **Tarifa eléctrica por tramos (P1/P2/P3) offline** | 🟡 | Dimming por coste con config local. **Cero red, cero API, mucho valor.** Primero esto |
+| **Tarifa eléctrica por tramos (P1/P2/P3) offline** | 🔵 | **Hecho** (`tariff.py` + `/tariff` + dimming coste-consciente) |
 | **ESIOS/REE — precio kWh en tiempo real (España)** | 🟡 | Dimming inteligente por coste real (valle 100% / pico 80%). Gratis con registro. La única API externa que cambia la cara a Phoenix |
 | **Bus Smartcity-1 (MQTT compartido Phoenix/Hydra/Argus/Osiris)** | 🟡 | Ver sección dedicada abajo |
-| **Telemetría de fotocélula (sensor lux) en el CM** | 🟢 | Pareja natural de `sun.py`: lux real + sanity-check astronómico |
+| **Telemetría de fotocélula (sensor lux) en el CM** | ⚪ | Descartada de momento: el capitán va **sin fotocélula** (encendido astronómico con `sun.py`). Solo si se quiere validación cruzada |
 | **Fases lunares offline** | 🟢 | Astronomía pura, junto a `sun.py`. Ajustaría el margen de encendido. Coste cero, valor marginal |
 | **AEMET (meteo oficial España, clave gratis)** | 🟢 | El clima per se aporta poco al alumbrado; solo si surge un caso claro |
 

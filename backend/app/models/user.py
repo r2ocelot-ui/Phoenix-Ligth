@@ -34,6 +34,12 @@ class User(Base):
     # Multi-tenant scaffolding (see docs/DECISIONS.md §3.1). NULL = global,
     # which is the default until proper tenant scoping is wired up.
     project_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Multi-proyecto (N:N): lista de ids de proyectos que el usuario cubre.
+    # Un usuario ve los recursos de CUALQUIERA de sus proyectos (director con
+    # su zona, ingeniero con varias ciudades). ``project_id`` queda como el
+    # "principal" (ciudad activa por defecto). Nullable para que la migración
+    # aditiva pueda añadir la columna a BDs existentes.
+    project_ids: Mapped[list] = mapped_column(JSON, default=list, nullable=True)
     # Per-user permission overrides on top of the rank defaults.
     extra_permissions: Mapped[list] = mapped_column(JSON, default=list)
     denied_permissions: Mapped[list] = mapped_column(JSON, default=list)

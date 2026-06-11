@@ -19,4 +19,8 @@ class ProjectCreate(BaseModel):
 
 class ProjectAssignUser(BaseModel):
     user_id: int
-    project_id: int | None  # None = unassign (global)
+    # Multi-proyecto: lista completa que REEMPLAZA la asignación. Si se omite,
+    # se acepta el ``project_id`` único (compatibilidad). Lista vacía o
+    # ``project_id=None`` = sin proyecto (global).
+    project_ids: list[int] | None = None
+    project_id: int | None = None

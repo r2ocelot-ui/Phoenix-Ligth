@@ -3328,23 +3328,33 @@
     top.append(left, right);
     wrap.append(top);
 
-    // Proyecto / ciudad — solo el owner puede reasignar (el backend lo exige).
+    // Proyectos / ciudades (multi-proyecto) — solo el owner puede reasignar.
+    // Un usuario puede cubrir varias ciudades (director con su zona, ingeniero
+    // con Benidorm + Terra Mítica + Finestrat). Aplica a CUALQUIER rango.
     if (isOwnerUser()) {
-      const projRow = el("div", "user-detail-row"); projRow.style.marginTop = "10px";
-      const pcell = el("div");
-      pcell.innerHTML = `<div class="muted" style="font-size:11px">Proyecto / ciudad</div>`;
-      const psel = el("select"); psel.style.minWidth = "180px";
-      const none = el("option", null, "— Global (sin proyecto) —"); none.value = ""; if (!u.project_id) none.selected = true; psel.append(none);
-      (state.projects || []).forEach(p => { const o = el("option", null, p.name); o.value = String(p.id); if (u.project_id === p.id) o.selected = true; psel.append(o); });
-      psel.onchange = async () => {
-        const pid = psel.value ? parseInt(psel.value, 10) : null;
-        const txt = psel.value ? psel.options[psel.selectedIndex].text : "Global";
+      const projRow = el("div"); projRow.style.marginTop = "10px";
+      projRow.innerHTML = `<div class="muted" style="font-size:11px">Proyectos / ciudades <span style="opacity:.7">(marca las que cubre)</span></div>`;
+      const projects = state.projects || [];
+      const current = new Set((u.project_ids && u.project_ids.length) ? u.project_ids : (u.project_id ? [u.project_id] : []));
+      const box = el("div"); box.style.display = "flex"; box.style.flexWrap = "wrap"; box.style.gap = "12px"; box.style.marginTop = "6px";
+      const save = async () => {
+        const ids = [...box.querySelectorAll("input:checked")].map(c => parseInt(c.value, 10));
         try {
-          await api("/projects/assign-user", { method: "POST", body: JSON.stringify({ user_id: u.id, project_id: pid }) });
-          u.project_id = pid; toast(`${cap(u.username)} → ${txt}`);
-        } catch (e) { toast(e.message, true); psel.value = u.project_id ? String(u.project_id) : ""; }
+          await api("/projects/assign-user", { method: "POST", body: JSON.stringify({ user_id: u.id, project_ids: ids }) });
+          u.project_ids = ids; u.project_id = ids[0] || null;
+          toast(ids.length ? `${cap(u.username)}: ${ids.length} ciudad(es)` : `${cap(u.username)}: global`);
+        } catch (e) { toast(e.message, true); }
       };
-      pcell.append(psel); projRow.append(pcell); wrap.append(projRow);
+      if (!projects.length) {
+        box.append(el("span", "muted", "No hay proyectos. Crea alguno en la pestaña Proyectos."));
+      }
+      projects.forEach(p => {
+        const lab = el("label"); lab.style.display = "inline-flex"; lab.style.alignItems = "center"; lab.style.gap = "5px"; lab.style.fontSize = "13px"; lab.style.cursor = "pointer";
+        const ck = el("input"); ck.type = "checkbox"; ck.value = String(p.id); if (current.has(p.id)) ck.checked = true;
+        ck.onchange = save;
+        lab.append(ck, document.createTextNode(p.name)); box.append(lab);
+      });
+      projRow.append(box); wrap.append(projRow);
     }
 
     // Línea de seguridad: credenciales (sin revelar nunca) + estado 2FA.

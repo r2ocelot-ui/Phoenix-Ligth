@@ -42,6 +42,7 @@ def init_db() -> None:
     _autopatch_columns()
     _migrate_legacy_ranks()
     _migrate_legacy_admin()
+    _migrate_user_projects()
 
 
 def reconcile_legacy_admin(db) -> str:
@@ -89,6 +90,21 @@ def reconcile_legacy_admin(db) -> str:
 def _migrate_legacy_admin() -> None:
     with SessionLocal() as db:
         reconcile_legacy_admin(db)
+
+
+def _migrate_user_projects() -> None:
+    """Rellena ``project_ids`` (multi-proyecto) a partir del ``project_id``
+    único existente, para usuarios que aún no lo tengan. Idempotente."""
+    from app.models.user import User
+    with SessionLocal() as db:
+        changed = 0
+        for u in db.query(User).all():
+            if not (u.project_ids or []) and u.project_id is not None:
+                u.project_ids = [u.project_id]
+                changed += 1
+        if changed:
+            db.commit()
+            logger.info("Multi-proyecto: inicializado project_ids en %d usuario(s)", changed)
 
 
 def _migrate_legacy_ranks() -> None:

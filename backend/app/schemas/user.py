@@ -20,6 +20,7 @@ class UserRead(BaseModel):
     is_active: bool
     created_at: datetime
     project_id: int | None = None
+    project_ids: list[int] = []
 
 
 class UserDetail(UserRead):

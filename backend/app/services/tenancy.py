@@ -28,30 +28,32 @@ def is_global(user: User) -> bool:
     return ranks.WILDCARD in ranks.effective_permissions(user)
 
 
-def effective_scope(user: User, override_project_id: int | None) -> int | None | object:
-    """Return the project id to filter by, or the sentinel ``NO_FILTER`` when
-    the caller may see everything.
+def scoped_project_ids(user: User, override_project_id: int | None = None) -> set[int] | None:
+    """Conjunto de project_ids que el usuario puede ver, o ``None`` si es owner
+    sin filtro (ve todo).
 
-    - For owners, the override (if any) wins. Without override, no filter.
-    - For non-owners the override is ignored: their assignment is the law.
+    - Owner: ``{override}`` si pasa una ciudad activa, si no ``None`` (todo).
+    - Resto: la unión de ``project_ids`` (multi-proyecto) y el ``project_id``
+      principal. Un set **vacío** significa "solo recursos globales" (sin
+      proyecto), conservando el comportamiento anterior.
     """
     if is_global(user):
-        if override_project_id is not None:
-            return override_project_id
-        return NO_FILTER
-    return user.project_id
-
-
-NO_FILTER = object()  # sentinel for "no scoping needed"
+        return {override_project_id} if override_project_id is not None else None
+    ids = set(user.project_ids or [])
+    if user.project_id is not None:
+        ids.add(user.project_id)
+    return ids
 
 
 def scope_query(query: Query, model, user: User, override_project_id: int | None = None) -> Query:
     """Apply the project filter to a SQLAlchemy query against ``model``.
     ``model`` must expose a ``project_id`` column."""
-    scope = effective_scope(user, override_project_id)
-    if scope is NO_FILTER:
+    ids = scoped_project_ids(user, override_project_id)
+    if ids is None:
         return query
-    return query.filter(model.project_id == scope)
+    if ids:
+        return query.filter(model.project_id.in_(ids))
+    return query.filter(model.project_id.is_(None))
 
 
 def ensure_visible(row, user: User) -> None:
@@ -62,7 +64,10 @@ def ensure_visible(row, user: User) -> None:
         return
     if is_global(user):
         return
-    if getattr(row, "project_id", None) != user.project_id:
+    ids = scoped_project_ids(user)
+    pid = getattr(row, "project_id", None)
+    visible = (pid in ids) if ids else (pid is None)
+    if not visible:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Recurso no encontrado")
 
 
@@ -71,10 +76,12 @@ def cabinet_codes_in_scope(db, user: User, override_project_id: int | None = Non
     signal "no restriction" (owner without override). Used by endpoints
     that key off ``cabinet_code`` rather than ``project_id`` directly."""
     from app.models.cabinet import Cabinet
-    scope = effective_scope(user, override_project_id)
-    if scope is NO_FILTER:
+    ids = scoped_project_ids(user, override_project_id)
+    if ids is None:
         return None
-    return {c.code for c in db.query(Cabinet.code).filter(Cabinet.project_id == scope).all()}
+    q = db.query(Cabinet.code)
+    q = q.filter(Cabinet.project_id.in_(ids)) if ids else q.filter(Cabinet.project_id.is_(None))
+    return {c.code for c in q.all()}
 
 
 def filter_by_cabinet_scope(items: Iterable, codes: set[str] | None, attr: str = "cabinet_id"):

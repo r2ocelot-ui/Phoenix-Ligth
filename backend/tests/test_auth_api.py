@@ -1083,3 +1083,53 @@ def test_reconcile_legacy_admin_deletes_leftover_in_demo(client):
     assert reconcile_legacy_admin(db) == "deleted"
     assert db.query(User).filter(User.username == "admin").first() is None
     assert db.query(User).filter(User.username == "phoenix").first() is not None
+
+
+def test_multi_project_user_sees_all_assigned(client):
+    """N:N: un usuario (cualquier rango) ve los recursos de TODOS sus
+    proyectos asignados, no solo uno. Caso SICE: Benidorm + Terra Mítica."""
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.cabinet import Cabinet
+    from app.models.project import Project
+    db = next(_app.dependency_overrides[get_db]())
+    p1 = Project(code="benidorm", name="Benidorm")
+    p2 = Project(code="terramitica", name="Terra Mitica")
+    p3 = Project(code="finestrat", name="Finestrat")
+    db.add_all([p1, p2, p3]); db.commit()
+    db.refresh(p1); db.refresh(p2); db.refresh(p3)
+    db.add(Cabinet(code="CAB-BEN", name="Ben", project_id=p1.id))
+    db.add(Cabinet(code="CAB-TM", name="TM", project_id=p2.id))
+    db.add(Cabinet(code="CAB-FIN", name="Fin", project_id=p3.id))
+    db.commit()
+
+    _register(client, "owner"); own = _token(client, "owner")
+    _create_user(client, own, "curro", rank="tecnico")
+    curro_id = _id_of(client, own, "curro")
+    # Asignar a 2 de los 3.
+    assert client.post("/api/v1/projects/assign-user",
+                       json={"user_id": curro_id, "project_ids": [p1.id, p2.id]},
+                       headers=_auth(own)).status_code == 200
+
+    curro = _token(client, "curro")
+    codes = {c["code"] for c in client.get("/api/v1/cabinets/registry", headers=_auth(curro)).json()}
+    assert codes == {"CAB-BEN", "CAB-TM"}                      # ve sus dos
+    assert client.post("/api/v1/cabinets/CAB-BEN/relay", json={"state": "on"},
+                       headers=_auth(curro)).status_code == 200
+    assert client.post("/api/v1/cabinets/CAB-FIN/relay", json={"state": "on"},
+                       headers=_auth(curro)).status_code == 404  # el tercero, no
+
+    d = client.get(f"/api/v1/users/{curro_id}", headers=_auth(own)).json()
+    assert set(d["project_ids"]) == {p1.id, p2.id}
+
+
+def test_legacy_single_project_assignment_still_works(client):
+    """Compat: asignar con 'project_id' único (UI vieja) sigue funcionando."""
+    own, madrid_id, bcn_id = _setup_two_projects(client)
+    _create_user(client, own, "ana")
+    ana_id = _id_of(client, own, "ana")
+    assert client.post("/api/v1/projects/assign-user",
+                       json={"user_id": ana_id, "project_id": madrid_id},
+                       headers=_auth(own)).status_code == 200
+    d = client.get(f"/api/v1/users/{ana_id}", headers=_auth(own)).json()
+    assert d["project_id"] == madrid_id and d["project_ids"] == [madrid_id]

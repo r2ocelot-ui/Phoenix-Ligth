@@ -64,9 +64,13 @@ def delete_project(
     project = db.get(Project, project_id)
     if not project:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Proyecto no encontrado")
-    # Refuse if anyone is still pinned to it (cabinets or users).
+    # Refuse if anyone is still pinned to it (cabinets or users). Para usuarios
+    # se mira tanto el principal como la lista multi-proyecto (JSON → en Python).
     from app.models.cabinet import Cabinet
-    in_use_u = db.query(User).filter(User.project_id == project_id).count()
+    in_use_u = sum(
+        1 for u in db.query(User).all()
+        if u.project_id == project_id or project_id in (u.project_ids or [])
+    )
     in_use_c = db.query(Cabinet).filter(Cabinet.project_id == project_id).count()
     if in_use_u or in_use_c:
         raise HTTPException(
@@ -86,19 +90,30 @@ def assign_user(
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ):
-    """Owner moves a user into a project (or out, with project_id=None)."""
+    """Owner asigna a un usuario su conjunto de proyectos (multi-proyecto).
+    ``project_ids`` reemplaza la lista; lista vacía = global (sin proyecto)."""
     _require_owner(actor)
     user = db.get(User, body.user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuario no encontrado")
-    if body.project_id is not None and not db.get(Project, body.project_id):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proyecto no encontrado")
-    old = user.project_id
-    user.project_id = body.project_id
+    # Resolver el conjunto: prioriza la lista; si no, el id único (legacy).
+    if body.project_ids is not None:
+        ids = list(dict.fromkeys(body.project_ids))  # dedup, conserva orden
+    elif body.project_id is not None:
+        ids = [body.project_id]
+    else:
+        ids = []
+    for pid in ids:
+        if not db.get(Project, pid):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"Proyecto {pid} no encontrado")
+    old = list(user.project_ids or [])
+    user.project_ids = ids
+    user.project_id = ids[0] if ids else None  # "principal" = el primero
     db.commit()
     audit_log.record(db, username=actor.username, action="project.assign_user",
-                     target=user.username, detail={"from": old, "to": body.project_id})
-    return {"ok": True, "user_id": user.id, "project_id": user.project_id}
+                     target=user.username, detail={"from": old, "to": ids})
+    return {"ok": True, "user_id": user.id, "project_ids": user.project_ids,
+            "project_id": user.project_id}
 
 
 @router.post("/{project_id}/assign-cabinet/{cabinet_code}")

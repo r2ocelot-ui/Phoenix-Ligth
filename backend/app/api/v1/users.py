@@ -82,6 +82,7 @@ def create_user(
         pattern_hash=hash_password(body.pattern) if body.pattern else None,
         rank=rank,
         project_id=new_project_id,
+        project_ids=[new_project_id] if new_project_id is not None else [],
     )
     db.add(user)
     db.commit()

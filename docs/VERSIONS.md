@@ -98,6 +98,8 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Migración: usuario **`admin` heredado → `phoenix`** (si no hay phoenix) | 🧪 | BD vieja: el owner vuelve a ser phoenix con id 1, sin perder datos |
 | UI: **asignar usuario a proyecto** (+ `project_id` expuesto → arregla el contador que daba 0) | 🧪 | Permisos → desplegar usuario → selector "Proyecto / ciudad" |
 | Alta de proyecto: **autocompletar ciudad/CP** (Nominatim forward) | 🧪 | Buscar "Benidorm" o un CP → rellena nombre + sugiere código |
+| **Multi-proyecto (N:N)**: un usuario cubre **varias ciudades** (cualquier rango) | 🧪 | Permisos → desplegar usuario → **casillas** de ciudades. Ve los cuadros de TODAS sus ciudades; el rango limita *qué* hace, los proyectos *dónde* |
+| Migración admin id 1 → phoenix (conserva id) + multi-proyecto desde project_id | 🧪 | Reiniciar backend: admin viejo pasa a phoenix con su id |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)
@@ -129,6 +131,7 @@ y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 | Cablear el auto-level a auto-dimming real (con override) | hoy es **asesor**; validar niveles en pantalla antes de darle las llaves |
 | **Dimming adaptativo por uso de la calle** (idea del capitán) | (a) perfil de uso por punto/cuadro *offline*: calles tranquilas más bajas, vías principales más altas; (b) dinámico por evento (presencia/tráfico→sube, accidente→máx) vía bus Smartcity/Argus. Une #4 + #6 + V2 |
 | Mover lógica crítica al servidor (modelo híbrido) | la protección anti-ingeniería-inversa real |
+| **Multi-proyecto FASE 2**: jerarquía zona→ciudad | regiones que agrupan ciudades (director asignado a "Levante" ve todas sus ciudades sin marcarlas una a una). Hoy se cubre marcando varias; esto es la elegancia para zonas grandes |
 | PBKDF2 → Argon2id | mejora del hashing. **⏸️ contigo**: migra credenciales + dependencia nativa nueva; con doble-formato de verificación |
 | Cifrar `totp_secret` en BD | hoy se guarda en claro (toca el 2FA; lo hago con backward-compat cuando digas) |
 | SQLite → Postgres + Alembic | para producción de verdad (**infra**: Postgres no disponible aquí) |

@@ -1,8 +1,12 @@
 """Tarifa por tramos + dimming consciente de coste (funciones puras)."""
 from datetime import datetime, time, timezone
+from zoneinfo import ZoneInfo
 
 from app.services import dimming_controller as dc
 from app.services import tariff
+
+MADRID = ZoneInfo("Europe/Madrid")
+MADRID_LAT, MADRID_LON = 40.4168, -3.7038
 
 # 2026-06-08 es lunes; 2026-06-13 es sábado (hoy del proyecto: 2026-06-10, X).
 MONDAY = datetime(2026, 6, 8)
@@ -55,3 +59,28 @@ def test_dimming_wrapper_applies_tariff():
     # No: 30 < floor 40 → sube al floor de seguridad.
     lvl_night = dc.resolve_level_cost_aware(time(3, 0), MONDAY.replace(hour=3), None, floor=40)
     assert lvl_night == 40
+
+
+# --- #2 · Encendido automático astronómico (sin fotocélula) ---------------
+def test_auto_level_off_during_day():
+    noon = datetime(2026, 6, 21, 13, 0, tzinfo=MADRID)  # mediodía de verano
+    assert dc.resolve_auto_level(noon, MADRID_LAT, MADRID_LON, floor=40) == 0
+
+
+def test_auto_level_on_at_night():
+    night = datetime(2026, 1, 15, 22, 0, tzinfo=MADRID)  # noche de invierno
+    assert dc.resolve_auto_level(night, MADRID_LAT, MADRID_LON, floor=40) > 0
+
+
+def test_auto_level_night_fallback_when_profile_zero():
+    # 07:35 a mediados de enero en Madrid: antes del alba (~08:35) → es de
+    # noche, pero el perfil horario (7:30-18:00) marca 0. Debe encender al
+    # nivel nocturno por defecto (valle → sin tope de tarifa).
+    pre_dawn = datetime(2026, 1, 15, 7, 35, tzinfo=MADRID)
+    assert dc.resolve_auto_level(pre_dawn, MADRID_LAT, MADRID_LON, floor=40) == dc.NIGHT_DEFAULT_LEVEL
+
+
+def test_auto_level_requires_tzaware():
+    import pytest
+    with pytest.raises(ValueError):
+        dc.resolve_auto_level(datetime(2026, 1, 15, 22, 0), MADRID_LAT, MADRID_LON, floor=40)

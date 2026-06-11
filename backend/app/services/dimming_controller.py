@@ -9,8 +9,10 @@ recorta el nivel en horas caras pero nunca por debajo de un mínimo de
 seguridad. Ver services/tariff.py.
 """
 from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
-from app.services import tariff
+from app.core.config import settings
+from app.services import sun, tariff
 
 
 DEFAULT_PROFILE: list[tuple[time, time, int]] = [
@@ -47,3 +49,36 @@ def resolve_level_cost_aware(
     caras pero nunca por debajo de ``floor`` (mínimo de seguridad)."""
     base = resolve_level(now, ambient_lux)
     return tariff.cost_aware_level(base, when, floor=floor)
+
+
+# Nivel al que se enciende si astronómicamente es de noche pero el perfil
+# horario (de horas fijas) cree que es de día y devuelve 0.
+NIGHT_DEFAULT_LEVEL = 100
+
+
+def resolve_auto_level(
+    when: datetime, latitude: float, longitude: float, *, floor: int,
+    use_tariff: bool = True,
+) -> int:
+    """Nivel de dimming decidido por el SOL (`sun.py`), SIN fotocélula.
+
+    - De día (astronómico) → 0 (apagado).
+    - De noche → nivel del perfil horario; si el perfil cree que es de día
+      (devuelve 0) pero astronómicamente es de noche, enciende a
+      ``NIGHT_DEFAULT_LEVEL``. Después aplica el tope de tarifa y nunca baja
+      del mínimo de seguridad ``floor``.
+
+    ``when`` debe llevar tzinfo (usa ``tariff.now_local()``). El sol manda
+    sobre el reloj: más fiable que horas fijas y sin hardware que se ensucie.
+    """
+    if when.tzinfo is None:
+        raise ValueError("`when` debe llevar tzinfo (usa tariff.now_local())")
+    if not sun.is_dark(when, latitude, longitude):
+        return 0
+    local = when.astimezone(ZoneInfo(settings.tariff_timezone))
+    base = resolve_level(local.time())
+    if base <= 0:
+        base = NIGHT_DEFAULT_LEVEL
+    if use_tariff:
+        return tariff.cost_aware_level(base, when, floor=floor)
+    return max(base, floor)

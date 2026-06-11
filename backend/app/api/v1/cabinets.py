@@ -1,12 +1,16 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.mqtt_client import bus
 from app.models.cabinet import Cabinet
 from app.models.user import User
 from app.schemas.cabinet import CabinetCreate, CabinetRead, CabinetUpdate
-from app.services import audit_log, ranks, sun, tenancy
+from app.services import audit_log, dimming_controller, ranks, sun, tariff, tenancy
 from app.services.auth import get_current_user, require_permission
 
 router = APIRouter(prefix="/cabinets", tags=["cabinets"])
@@ -93,6 +97,46 @@ def cabinet_sun(
         "longitude": cabinet.longitude,
         "sunrise_utc": sr.isoformat() if sr else None,
         "sunset_utc": ss.isoformat() if ss else None,
+    }
+
+
+@router.get("/{cabinet_id}/auto-level")
+def cabinet_auto_level(
+    cabinet_id: str,
+    at: str | None = None,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
+) -> dict:
+    """Nivel de dimming recomendado AHORA, decidido por el sol astronómico
+    (sin fotocélula) + el tope de tarifa. Une `sun.py` (¿es de noche?) y la
+    tarifa (recorte por coste, con mínimo de seguridad). Es asesor: no manda
+    el comando, lo mostraría el panel o lo usaría un futuro auto-dimming."""
+    cabinet = db.query(Cabinet).filter(Cabinet.code == cabinet_id).first()
+    if cabinet is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro no encontrado")
+    tenancy.ensure_visible(cabinet, actor)
+    if cabinet.latitude is None or cabinet.longitude is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "El cuadro no tiene coordenadas configuradas")
+    try:
+        when = datetime.fromisoformat(at) if at else tariff.now_local()
+    except ValueError:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            "Fecha 'at' inválida (usa ISO-8601)")
+    if when.tzinfo is None:  # naive → se asume hora local del despliegue
+        when = when.replace(tzinfo=ZoneInfo(settings.tariff_timezone))
+    period = tariff.current_period(when)
+    level = dimming_controller.resolve_auto_level(
+        when, cabinet.latitude, cabinet.longitude, floor=settings.tariff_floor_level,
+    )
+    return {
+        "cabinet_id": cabinet.code,
+        "at": when.isoformat(),
+        "is_dark": sun.is_dark(when, cabinet.latitude, cabinet.longitude),
+        "tariff_period": period,
+        "tariff_label": tariff.PERIOD_LABELS[period],
+        "recommended_level": level,
+        "floor": settings.tariff_floor_level,
     }
 
 

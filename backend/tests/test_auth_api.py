@@ -947,6 +947,26 @@ def test_tariff_now_endpoint(client):
     assert client.get("/api/v1/tariff/now").status_code == 401
 
 
+def test_cabinet_auto_level_endpoint(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.cabinet import Cabinet
+    db = next(_app.dependency_overrides[get_db]())
+    db.add(Cabinet(code="CAB-SOL", name="Sol", latitude=40.4168, longitude=-3.7038))
+    db.commit()
+    # Mediodía de verano en Madrid → de día → nivel 0.
+    r = client.get("/api/v1/cabinets/CAB-SOL/auto-level?at=2026-06-21T13:00:00", headers=_auth(boss))
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["is_dark"] is False
+    assert d["recommended_level"] == 0
+    # Un cuadro sin coordenadas → 422.
+    db.add(Cabinet(code="CAB-NOGEO", name="SinGeo")); db.commit()
+    assert client.get("/api/v1/cabinets/CAB-NOGEO/auto-level", headers=_auth(boss)).status_code == 422
+
+
 def test_sun_madrid_summer_solstice():
     """Sanity-check del cálculo astronómico offline. Madrid el solsticio
     de verano 2024: amanece ≈04:44 UTC (06:44 CEST), anochece ≈19:48 UTC

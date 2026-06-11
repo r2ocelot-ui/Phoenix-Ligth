@@ -66,12 +66,24 @@ def reconcile_legacy_admin(db) -> str:
         db.commit()
         logger.info("Renombrado usuario heredado 'admin' → 'phoenix'")
         return "renamed"
-    if settings.demo_mode:
-        db.delete(admin)
+    # Conviven ambos (residuo del cambio de nombre). Solo se reconcilia en demo;
+    # en producción no tocamos cuentas por si 'admin' fuese real.
+    if not settings.demo_mode:
+        return "kept"
+    if admin.id < phoenix.id:
+        # 'admin' es el más antiguo (id menor): lo conservamos como 'phoenix'
+        # para MANTENER ese id, y borramos el 'phoenix' duplicado más nuevo.
+        db.delete(phoenix)
         db.commit()
-        logger.info("Eliminado usuario demo heredado 'admin' (ya existe 'phoenix')")
-        return "deleted"
-    return "kept"
+        admin.username = "phoenix"
+        db.commit()
+        logger.info("Promovido 'admin' heredado → 'phoenix' (conserva id %s)", admin.id)
+        return "promoted"
+    # 'phoenix' ya es el más antiguo: solo limpiamos el 'admin' sobrante.
+    db.delete(admin)
+    db.commit()
+    logger.info("Eliminado usuario demo heredado 'admin' (ya existe 'phoenix')")
+    return "deleted"
 
 
 def _migrate_legacy_admin() -> None:

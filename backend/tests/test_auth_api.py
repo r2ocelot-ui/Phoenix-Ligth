@@ -1049,6 +1049,24 @@ def test_reconcile_legacy_admin_renames_when_no_phoenix(client):
     assert reconcile_legacy_admin(db) == "noop"  # idempotente
 
 
+def test_reconcile_legacy_admin_promotes_to_keep_id(client):
+    """admin viejo (id menor) + phoenix nuevo → admin se queda como phoenix
+    CONSERVANDO su id (lo que pidió el capitán: phoenix = id 1)."""
+    from app.core.database import get_db, reconcile_legacy_admin
+    from app.core.security import hash_password
+    from app.main import app as _app
+    from app.models.user import User
+    db = next(_app.dependency_overrides[get_db]())
+    db.add(User(username="admin", password_hash=hash_password("x"), rank="owner")); db.commit()
+    admin_id = db.query(User).filter(User.username == "admin").first().id
+    db.add(User(username="phoenix", password_hash=hash_password("x"), rank="owner")); db.commit()
+    assert reconcile_legacy_admin(db) == "promoted"
+    ph = db.query(User).filter(User.username == "phoenix").first()
+    assert ph is not None and ph.id == admin_id      # phoenix conserva el id viejo
+    assert db.query(User).filter(User.username == "phoenix").count() == 1
+    assert db.query(User).filter(User.username == "admin").first() is None
+
+
 def test_reconcile_legacy_admin_deletes_leftover_in_demo(client):
     """Si conviven 'admin' (viejo) y 'phoenix', en modo demo se borra el
     sobrante (el capitán no puede borrarlo a mano: es owner como él)."""

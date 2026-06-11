@@ -92,6 +92,10 @@ class Settings(BaseSettings):
     # tramos y topes viven en services/tariff.py.
     tariff_enabled: bool = False
     tariff_floor_level: int = 40
+    # Zona horaria del despliegue para los tramos de tarifa. Los periodos
+    # punta/valle son en hora CIVIL local, no en la del servidor (que suele
+    # ir en UTC). Sin esto, en un server UTC los tramos salían 2 h corridos.
+    tariff_timezone: str = "Europe/Madrid"
 
 
 settings = Settings()

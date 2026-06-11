@@ -13,6 +13,9 @@ Sin dependencias externas: funciona en redes OT aisladas.
 - P3 **Valle** (barato): 0–8 h laborables + **todo** el fin de semana.
 """
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from app.core.config import settings
 
 # Mapa hora→periodo para un día laborable (índice = hora 0–23).
 WORKDAY_PERIODS: tuple[str, ...] = (
@@ -34,12 +37,28 @@ PERIOD_LABELS: dict[str, str] = {"P1": "Punta", "P2": "Llano", "P3": "Valle"}
 LEVEL_CAP: dict[str, int] = {"P1": 75, "P2": 90, "P3": 100}
 
 
-def current_period(when: datetime) -> str:
-    """Periodo tarifario (P1/P2/P3) para ese instante en hora LOCAL.
+def _tz() -> ZoneInfo:
+    return ZoneInfo(settings.tariff_timezone)
 
-    Usa ``when.weekday()`` (0=lunes … 6=domingo) y ``when.hour``. El
-    servidor debe correr en la zona horaria del despliegue, o se pasa un
-    ``when`` ya en hora local."""
+
+def now_local() -> datetime:
+    """Hora actual en la zona del despliegue (NO la del servidor, que suele
+    ir en UTC). Es la que manda para decidir el tramo de tarifa."""
+    return datetime.now(_tz())
+
+
+def _to_local(when: datetime) -> datetime:
+    """Lleva ``when`` a la zona de tarifa. Si trae tzinfo se convierte; si es
+    naive se asume que ya viene en hora local del despliegue."""
+    return when.astimezone(_tz()) if when.tzinfo is not None else when
+
+
+def current_period(when: datetime) -> str:
+    """Periodo tarifario (P1/P2/P3) para ese instante, en hora civil LOCAL.
+
+    Convierte ``when`` a la zona del despliegue (`tariff_timezone`) antes de
+    mirar día/hora, así un datetime en UTC da el tramo correcto."""
+    when = _to_local(when)
     table = WEEKEND_PERIODS if when.weekday() >= 5 else WORKDAY_PERIODS
     return table[when.hour]
 

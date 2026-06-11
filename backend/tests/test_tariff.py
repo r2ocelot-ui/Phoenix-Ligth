@@ -1,5 +1,5 @@
 """Tarifa por tramos + dimming consciente de coste (funciones puras)."""
-from datetime import datetime, time
+from datetime import datetime, time, timezone
 
 from app.services import dimming_controller as dc
 from app.services import tariff
@@ -33,6 +33,18 @@ def test_cost_aware_caps_in_punta_but_respects_floor():
 def test_valle_has_no_cap():
     valle = MONDAY.replace(hour=3)
     assert tariff.cost_aware_level(100, valle, floor=40) == 100
+
+
+def test_utc_datetime_converted_to_local(monkeypatch):
+    """El bug V1.R1.P1: un datetime en UTC debe dar el tramo de la hora
+    LOCAL, no la del servidor. 21:25 UTC en verano = 23:25 en Madrid →
+    Llano (P2). Sin la conversión saldría Punta (P1, hora 21)."""
+    monkeypatch.setattr(tariff.settings, "tariff_timezone", "Europe/Madrid")
+    utc_2125 = datetime(2026, 6, 8, 21, 25, tzinfo=timezone.utc)  # lunes
+    assert tariff.current_period(utc_2125) == "P2"
+    # Comprobación de control: la misma hora interpretada como naive/local
+    # (hora 21) sí cae en Punta — demuestra que la conversión cambia el tramo.
+    assert tariff.current_period(datetime(2026, 6, 8, 21, 25)) == "P1"
 
 
 def test_dimming_wrapper_applies_tariff():

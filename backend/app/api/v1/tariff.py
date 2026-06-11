@@ -24,12 +24,13 @@ def tariff_now(
 ) -> dict:
     """Periodo tarifario actual (o de ``at``, ISO en hora local) + su tope."""
     try:
-        when = datetime.fromisoformat(at) if at else datetime.now()
+        when = datetime.fromisoformat(at) if at else tariff.now_local()
     except ValueError:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Fecha 'at' inválida (usa ISO-8601)")
     period = tariff.current_period(when)
     return {
         "at": when.isoformat(),
+        "timezone": settings.tariff_timezone,
         "period": period,
         "label": tariff.PERIOD_LABELS[period],
         "level_cap": tariff.LEVEL_CAP[period],

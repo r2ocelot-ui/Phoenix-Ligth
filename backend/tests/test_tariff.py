@@ -84,3 +84,12 @@ def test_auto_level_requires_tzaware():
     import pytest
     with pytest.raises(ValueError):
         dc.resolve_auto_level(datetime(2026, 1, 15, 22, 0), MADRID_LAT, MADRID_LON, floor=40)
+
+
+def test_level_cap_is_configurable(monkeypatch):
+    """Los topes por periodo se pueden ajustar al contrato real vía settings."""
+    monkeypatch.setattr(tariff.settings, "tariff_cap_punta", 60)
+    punta = datetime(2026, 6, 8, 12, tzinfo=MADRID)  # lunes mediodía → P1
+    assert tariff.level_cap("P1") == 60
+    # base 100 en punta ahora se recorta a 60 (no a 75).
+    assert tariff.cost_aware_level(100, punta, floor=40) == 60

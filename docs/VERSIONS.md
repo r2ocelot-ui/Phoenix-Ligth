@@ -89,6 +89,9 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **V1.R1.P1** · Bug TZ de la tarifa corregido (`tariff_timezone` + `zoneinfo`) | 🧪 | UTC→hora local; en un server UTC los tramos ya NO salen 2 h corridos |
 | Encendido automático astronómico, **sin fotocélula** (`/cabinets/{id}/auto-level`) | 🧪 | `sun.py` decide ON/OFF + perfil + tope de tarifa. De día→0, de noche→nivel |
 | Licencia **Ed25519** + `LICENSE`/`EULA` + `GET /license` (`tools/make_license.py`) | 🧪 | keygen→sign→verify; cliente solo lleva clave pública. Off por defecto |
+| Tarifa: **topes configurables** (`tariff_cap_punta/llano/valle`) | 🧪 | Ajustables por contrato vía settings; `GET /tariff/now` los refleja |
+| **MQTT seguro de ejemplo** (`infra/mosquitto.prod.conf`) | 🧪 | TLS + auth + ACL por cuadro, sin tocar el demo (anónimo) |
+| **Cabeceras de seguridad** HTTP (nosniff, Referrer-Policy, X-Frame-Options) | 🧪 | `GET /health` las devuelve; no rompen el render |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)
@@ -97,12 +100,12 @@ y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 **🟡 Prioritario**
 | Bloque | Qué falta / por qué |
 |---|---|
-| Token JWT → cookie `HttpOnly` | hoy un XSS roba el token de `localStorage` |
-| Token del WebSocket fuera de la URL | acaba en logs de proxies → ticket efímero/subprotocolo |
-| Completar datos legales `LICENSE`/`EULA` | Angel Eduardo ✓ · Kumiho ✓; **faltan contacto, localidad de jurisdicción y forma jurídica** (S.L.…) |
-| Licencia: modo de enforcement (suave/intermedio/duro) | hoy **suave** (solo informa); decisión pendiente del capitán |
-| Tarifa: tramos y topes **configurables por proyecto** | hoy fijos 2.0TD en `tariff.py`; encajar el contrato real (2.0TD/3.0TD) |
-| MQTT con TLS + auth + ACL por cuadro | hoy `allow_anonymous true` |
+| Token JWT → cookie `HttpOnly` | hoy un XSS roba el token de `localStorage`. **⏸️ contigo delante**: toca el login y añade CSRF; no se hace a ciegas |
+| Token del WebSocket fuera de la URL | acaba en logs → ticket efímero. **⏸️ contigo delante**: toca el login del WS, hay que probarlo en navegador |
+| Completar datos legales `LICENSE`/`EULA` | Angel Eduardo ✓ · Kumiho ✓; **faltan contacto, localidad de jurisdicción y forma jurídica** (S.L.…) — los pones tú |
+| Licencia: modo de enforcement (suave/intermedio/duro) | **decidido: suave por ahora**; al activar, preferible **intermedio** (periodo de gracia). Cambiarlo es trivial |
+| Tarifa: **TRAMOS** configurables por proyecto | topes ✓ (hechos hoy); falta que el horario punta/valle sea por proyecto (hoy 2.0TD fijo) |
+| MQTT en producción: aplicar `infra/mosquitto.prod.conf` | el ejemplo endurecido ✓; falta desplegarlo con certs reales (no toca al demo) |
 | Pegar `docs/HYDRA-SECURITY-NOTES.md` en la sesión de Hydra | y aplicar su checklist allí |
 | ESIOS/REE — precio kWh en tiempo real | dimming por coste real (detalle en *Integraciones*) |
 
@@ -110,11 +113,12 @@ y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 | Bloque | Qué falta / por qué |
 |---|---|
 | Cablear el auto-level a auto-dimming real (con override) | hoy es **asesor**; validar niveles en pantalla antes de darle las llaves |
+| **Dimming adaptativo por uso de la calle** (idea del capitán) | (a) perfil de uso por punto/cuadro *offline*: calles tranquilas más bajas, vías principales más altas; (b) dinámico por evento (presencia/tráfico→sube, accidente→máx) vía bus Smartcity/Argus. Une #4 + #6 + V2 |
 | Mover lógica crítica al servidor (modelo híbrido) | la protección anti-ingeniería-inversa real |
-| PBKDF2 → Argon2id | mejora del hashing de credenciales |
-| Cifrar `totp_secret` en BD | hoy se guarda en claro |
-| SQLite → Postgres + Alembic | para producción de verdad |
-| CSP estricta en `index.html` | defensa fuerte anti-XSS |
+| PBKDF2 → Argon2id | mejora del hashing. **⏸️ contigo**: migra credenciales + dependencia nativa nueva; con doble-formato de verificación |
+| Cifrar `totp_secret` en BD | hoy se guarda en claro (toca el 2FA; lo hago con backward-compat cuando digas) |
+| SQLite → Postgres + Alembic | para producción de verdad (**infra**: Postgres no disponible aquí) |
+| CSP estricta en `index.html` | defensa fuerte anti-XSS. **⏸️**: requiere externalizar el JS inline primero, o rompe el panel |
 | Limpiar `innerHTML` con datos dinámicos | pasar progresivamente a `textContent` |
 | Fases lunares offline · AEMET | marginales (detalle en *Integraciones*) |
 

@@ -967,6 +967,13 @@ def test_cabinet_auto_level_endpoint(client):
     assert client.get("/api/v1/cabinets/CAB-NOGEO/auto-level", headers=_auth(boss)).status_code == 422
 
 
+def test_security_headers_present(client):
+    r = client.get("/health")
+    assert r.headers.get("X-Content-Type-Options") == "nosniff"
+    assert r.headers.get("X-Frame-Options") == "SAMEORIGIN"
+    assert r.headers.get("Referrer-Policy") == "no-referrer"
+
+
 def test_license_status_endpoint(client):
     _register(client, "boss")
     boss = _token(client, "boss")

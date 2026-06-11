@@ -96,6 +96,12 @@ class Settings(BaseSettings):
     # punta/valle son en hora CIVIL local, no en la del servidor (que suele
     # ir en UTC). Sin esto, en un server UTC los tramos salían 2 h corridos.
     tariff_timezone: str = "Europe/Madrid"
+    # Topes de dimming por periodo (consciente del coste), configurables para
+    # encajar el contrato real. Los TRAMOS horarios siguen en services/tariff.py
+    # (pendiente: hacerlos configurables por proyecto).
+    tariff_cap_punta: int = 75   # P1
+    tariff_cap_llano: int = 90   # P2
+    tariff_cap_valle: int = 100  # P3
 
     # Licenciamiento anti-copia (on-premise), Ed25519. La clave PRIVADA la
     # guardamos nosotros y firma licencias con tools/make_license.py; el

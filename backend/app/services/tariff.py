@@ -31,10 +31,21 @@ WEEKEND_PERIODS: tuple[str, ...] = tuple("P3" for _ in range(24))
 
 PERIOD_LABELS: dict[str, str] = {"P1": "Punta", "P2": "Llano", "P3": "Valle"}
 
-# Tope de dimming permitido por periodo (consciente del coste). En valle no
-# se limita; en punta se recorta para ahorrar. Nunca baja del `floor` que
+# Topes por defecto (se pueden sobreescribir por settings/contrato). En valle
+# no se limita; en punta se recorta para ahorrar. Nunca baja del `floor` que
 # pasa el llamador (mínimo de seguridad del alumbrado).
 LEVEL_CAP: dict[str, int] = {"P1": 75, "P2": 90, "P3": 100}
+
+
+def level_cap(period: str) -> int:
+    """Tope de dimming del periodo, leído de settings (configurable por
+    contrato); cae a los valores por defecto si el periodo es desconocido."""
+    caps = {
+        "P1": settings.tariff_cap_punta,
+        "P2": settings.tariff_cap_llano,
+        "P3": settings.tariff_cap_valle,
+    }
+    return caps.get(period, LEVEL_CAP.get(period, 100))
 
 
 def _tz() -> ZoneInfo:
@@ -73,5 +84,5 @@ def cost_aware_level(base_level: int, when: datetime, *, floor: int) -> int:
     """
     if base_level <= 0:
         return 0
-    cap = LEVEL_CAP.get(current_period(when), 100)
+    cap = level_cap(current_period(when))
     return max(min(base_level, cap), floor)

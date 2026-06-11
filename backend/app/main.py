@@ -104,6 +104,18 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    """Cabeceras de seguridad seguras (no rompen el render). La CSP estricta
+    se deja pendiente porque hoy el frontend usa JS inline; iría tras
+    externalizar el script."""
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    return response
+
+
 app.include_router(auth.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(users.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)
 app.include_router(roles.router, prefix=settings.api_v1_prefix, dependencies=_HTTP_GUARD)

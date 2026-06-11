@@ -33,7 +33,7 @@ def tariff_now(
         "timezone": settings.tariff_timezone,
         "period": period,
         "label": tariff.PERIOD_LABELS[period],
-        "level_cap": tariff.LEVEL_CAP[period],
+        "level_cap": tariff.level_cap(period),
         "floor": settings.tariff_floor_level,
         "enabled": settings.tariff_enabled,
     }
@@ -47,7 +47,7 @@ def tariff_schedule(
     pintar la franja horaria en el panel."""
     return {
         "labels": tariff.PERIOD_LABELS,
-        "level_cap": tariff.LEVEL_CAP,
+        "level_cap": {p: tariff.level_cap(p) for p in tariff.PERIOD_LABELS},
         "floor": settings.tariff_floor_level,
         "enabled": settings.tariff_enabled,
         "workday": list(tariff.WORKDAY_PERIODS),

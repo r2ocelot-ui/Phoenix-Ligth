@@ -3,9 +3,9 @@
 > ⚠️ Plantilla. Completa los campos `<...>` y revísalo con un asesor legal
 > antes de entregarlo a un cliente. No es asesoramiento jurídico.
 
-**Titular de los derechos:** `<titular / empresa — completar>`
+**Titular de los derechos:** Angel Eduardo (empresa matriz de Hydra, Phoenix y el ecosistema Smartcity)
 **Producto:** Phoenix-Light (plataforma de telegestión de alumbrado).
-**Fecha de la versión:** `<fecha>`
+**Fecha de la versión:** 2026-06-11
 
 Al instalar o usar el Software, el Cliente acepta este Acuerdo.
 
@@ -43,7 +43,7 @@ permitida por la ley, la responsabilidad total del titular se limita al
 importe pagado por la licencia en los 12 meses previos.
 
 ## 7. Ley aplicable y jurisdicción
-Este Acuerdo se rige por la legislación de `<país/región — completar>`,
-con sumisión a los juzgados de `<localidad — completar>`.
+Este Acuerdo se rige por la legislación de **España**, con sumisión a los
+juzgados de `<localidad — completar>`.
 
 Contacto: `<email/teléfono — completar>`.

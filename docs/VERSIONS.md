@@ -95,7 +95,10 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 |---|---|---|
 | Token JWT fuera de `localStorage` → cookie HttpOnly | 🟡 | Hoy un XSS roba el token |
 | Token del WebSocket sale por URL | 🟡 | Acaba en logs de proxies. Migrar a ticket efímero o subprotocolo |
-| Completar `<placeholders>` legales en `LICENSE` y `docs/EULA.md` | 🟡 | Titular, contacto, jurisdicción — lo pones tú |
+| Completar datos legales en `LICENSE`/`EULA` | 🟡 | Titular Angel Eduardo ✓; faltan **nombre comercial registrado**, **contacto** y **localidad** de jurisdicción |
+| Licencia: modos de enforcement suave / intermedio / duro | 🟡 | Hoy **suave** (solo informa). Intermedio = periodo de gracia o modo solo-lectura. Duro = se niega a operar. Decisión del capitán |
+| Tramos y topes de tarifa **configurables por proyecto** | 🟡 | Hoy fijos 2.0TD en `tariff.py`. Para encajar el contrato real de cada instalación (2.0TD/3.0TD) |
+| Cablear el auto-level a auto-dimming real (con override) | 🟢 | Hoy es asesor. Recomiendo validar niveles en pantalla antes de darle las llaves |
 | MQTT TLS + auth + ACL por cuadro | 🟡 | Hoy `allow_anonymous true` |
 | Mover lógica crítica al servidor (modelo híbrido) | 🟢 | La protección anti-RE real |
 

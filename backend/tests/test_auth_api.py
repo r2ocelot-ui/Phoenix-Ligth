@@ -967,6 +967,18 @@ def test_cabinet_auto_level_endpoint(client):
     assert client.get("/api/v1/cabinets/CAB-NOGEO/auto-level", headers=_auth(boss)).status_code == 422
 
 
+def test_license_status_endpoint(client):
+    _register(client, "boss")
+    boss = _token(client, "boss")
+    r = client.get("/api/v1/license", headers=_auth(boss))
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["required"] is False   # off por defecto → modo abierto
+    assert d["valid"] is True
+    assert "fingerprint" in d
+    assert client.get("/api/v1/license").status_code == 401  # sin auth
+
+
 def test_sun_madrid_summer_solstice():
     """Sanity-check del cálculo astronómico offline. Madrid el solsticio
     de verano 2024: amanece ≈04:44 UTC (06:44 CEST), anochece ≈19:48 UTC

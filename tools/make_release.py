@@ -58,8 +58,9 @@ ALLOWLIST: list[tuple[str, str | None]] = [
     ("start.bat",                None),
     ("start.sh",                 None),
     (".env.example",             None),
-    # Docs públicas. ROADMAP queda; DECISIONS/VERSIONS no (notas internas).
+    # Docs públicas. ROADMAP + EULA quedan; DECISIONS/VERSIONS no (internas).
     ("docs/ROADMAP.md",          "docs/ROADMAP.md"),
+    ("docs/EULA.md",             "docs/EULA.md"),
     ("README.md",                None),
     ("LICENSE",                  None),  # avisa si falta
 ]

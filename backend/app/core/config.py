@@ -97,5 +97,13 @@ class Settings(BaseSettings):
     # ir en UTC). Sin esto, en un server UTC los tramos salían 2 h corridos.
     tariff_timezone: str = "Europe/Madrid"
 
+    # Licenciamiento anti-copia (on-premise), Ed25519. La clave PRIVADA la
+    # guardamos nosotros y firma licencias con tools/make_license.py; el
+    # cliente solo lleva la PÚBLICA, así no se puede falsificar aunque tenga
+    # el binario. Off por defecto: no bloquea nada hasta activarlo.
+    license_required: bool = False
+    license_public_key: str = ""   # Ed25519 pública (base64 raw, 32 bytes)
+    license_key: str = ""          # la licencia firmada del cliente
+
 
 settings = Settings()

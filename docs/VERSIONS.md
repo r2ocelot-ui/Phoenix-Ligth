@@ -77,7 +77,7 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 
 ## V1.R1 — Hardening de seguridad y release  ·  🧪 en marcha
 
-### 🔴 Hecho hoy
+### ✅ Hecho — 🧪 a falta de tu visto bueno (👁️)
 | Bloque | Estado | Qué probar |
 |---|---|---|
 | Multi-tenant en `/cabinets/{id}/relay`, `/dim`, `/emergency/all-on` | 🧪 | Un operador de Madrid no debe poder tocar cuadros de Barcelona (404, sin leak) |
@@ -90,31 +90,41 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Encendido automático astronómico, **sin fotocélula** (`/cabinets/{id}/auto-level`) | 🧪 | `sun.py` decide ON/OFF + perfil + tope de tarifa. De día→0, de noche→nivel |
 | Licencia **Ed25519** + `LICENSE`/`EULA` + `GET /license` (`tools/make_license.py`) | 🧪 | keygen→sign→verify; cliente solo lleva clave pública. Off por defecto |
 
-### 🟡 Pendiente
-| Bloque | Estado | Qué pasa |
-|---|---|---|
-| Token JWT fuera de `localStorage` → cookie HttpOnly | 🟡 | Hoy un XSS roba el token |
-| Token del WebSocket sale por URL | 🟡 | Acaba en logs de proxies. Migrar a ticket efímero o subprotocolo |
-| Completar datos legales en `LICENSE`/`EULA` | 🟡 | Titular Angel Eduardo ✓ · matriz **Kumiho** ✓; faltan **contacto**, **localidad** de jurisdicción y la **forma jurídica** si se registra (S.L., etc.) |
-| Licencia: modos de enforcement suave / intermedio / duro | 🟡 | Hoy **suave** (solo informa). Intermedio = periodo de gracia o modo solo-lectura. Duro = se niega a operar. Decisión del capitán |
-| Tramos y topes de tarifa **configurables por proyecto** | 🟡 | Hoy fijos 2.0TD en `tariff.py`. Para encajar el contrato real de cada instalación (2.0TD/3.0TD) |
-| Cablear el auto-level a auto-dimming real (con override) | 🟢 | Hoy es asesor. Recomiendo validar niveles en pantalla antes de darle las llaves |
-| MQTT TLS + auth + ACL por cuadro | 🟡 | Hoy `allow_anonymous true` |
-| Mover lógica crítica al servidor (modelo híbrido) | 🟢 | La protección anti-RE real |
+### 📋 Pendiente — todo lo que queda (X)
+Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)
+y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 
-### 🟢 Hardening continuo
-| Bloque | Estado | Qué pasa |
-|---|---|---|
-| PBKDF2 → Argon2id | 🟢 | Mejora, no urgente |
-| Cifrar `totp_secret` en BD | 🟢 | Hoy se guarda en claro |
-| SQLite → Postgres + Alembic | 🟢 | Para producción de verdad |
-| CSP estricta en `index.html` | 🟢 | Defensa contra XSS |
-| Limpiar `innerHTML` con datos dinámicos | 🟢 | Cambiar progresivamente a `textContent` |
+**🟡 Prioritario**
+| Bloque | Qué falta / por qué |
+|---|---|
+| Token JWT → cookie `HttpOnly` | hoy un XSS roba el token de `localStorage` |
+| Token del WebSocket fuera de la URL | acaba en logs de proxies → ticket efímero/subprotocolo |
+| Completar datos legales `LICENSE`/`EULA` | Angel Eduardo ✓ · Kumiho ✓; **faltan contacto, localidad de jurisdicción y forma jurídica** (S.L.…) |
+| Licencia: modo de enforcement (suave/intermedio/duro) | hoy **suave** (solo informa); decisión pendiente del capitán |
+| Tarifa: tramos y topes **configurables por proyecto** | hoy fijos 2.0TD en `tariff.py`; encajar el contrato real (2.0TD/3.0TD) |
+| MQTT con TLS + auth + ACL por cuadro | hoy `allow_anonymous true` |
+| Pegar `docs/HYDRA-SECURITY-NOTES.md` en la sesión de Hydra | y aplicar su checklist allí |
+| ESIOS/REE — precio kWh en tiempo real | dimming por coste real (detalle en *Integraciones*) |
 
-### Hydra (pendiente, otra sesión)
-| Bloque | Estado | Qué hacer |
-|---|---|---|
-| Pegar `docs/HYDRA-SECURITY-NOTES.md` en la sesión de Hydra | 🟡 | Y aplicar checklist allí |
+**🟢 No urgente**
+| Bloque | Qué falta / por qué |
+|---|---|
+| Cablear el auto-level a auto-dimming real (con override) | hoy es **asesor**; validar niveles en pantalla antes de darle las llaves |
+| Mover lógica crítica al servidor (modelo híbrido) | la protección anti-ingeniería-inversa real |
+| PBKDF2 → Argon2id | mejora del hashing de credenciales |
+| Cifrar `totp_secret` en BD | hoy se guarda en claro |
+| SQLite → Postgres + Alembic | para producción de verdad |
+| CSP estricta en `index.html` | defensa fuerte anti-XSS |
+| Limpiar `innerHTML` con datos dinámicos | pasar progresivamente a `textContent` |
+| Fases lunares offline · AEMET | marginales (detalle en *Integraciones*) |
+
+**👁️ Pendiente de TU verificación visual**
+- Toda la tabla de **V1 — Base operativa** (arriba) y lo **✅ Hecho** de V1.R1:
+  están 🧪 (Faro OK), faltan tus ojos para pasar a 🔵.
+
+**⚪ Aparcado (no hacer salvo que cambie la decisión)**
+- Telemetría de fotocélula → vamos **sin sensor** (encendido astronómico `sun.py`).
+- **V2 · Ecosistema Smartcity** y su bus MQTT → es salto de versión, va más adelante.
 
 ### Integraciones externas candidatas (curado por Faro)
 Criterio: que aporte valor REAL al alumbrado y no meta dependencias

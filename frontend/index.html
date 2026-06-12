@@ -3390,33 +3390,85 @@
     eff.append(chipsRow);
     wrap.append(eff);
 
-    // Acciones inferiores.
-    const acts = el("div", "user-actions");
-    const pw = el("button", "btn ghost sm", "Resetear contraseña");
-    pw.onclick = async () => {
-      const np = prompt(`Nueva contraseña para ${u.username} (mín. 6):`);
-      if (!np || np.length < 6) { if (np !== null) toast("Mínimo 6 caracteres.", true); return; }
-      try { await api(`/users/${u.id}/password`, { method: "POST", body: JSON.stringify({ password: np }) }); toast("Contraseña actualizada"); }
-      catch (e) { toast(e.message, true); }
-    };
-    acts.append(pw);
-    // El backend ya rechaza borrarse a uno mismo y borrar a iguales/superiores;
-    // ocultamos el botón en esos casos para evitar al usuario el error.
-    const myId = state.me?.id;
-    const canDelete = u.id !== myId
-      && (state.ranksCatalog || []).find(r => r.id === u.rank)
-      && (() => {
-        const myLevel = (state.ranksCatalog || []).find(r => r.id === state.me?.rank)?.level ?? 0;
-        const targetLevel = (state.ranksCatalog || []).find(r => r.id === u.rank)?.level ?? 0;
-        return targetLevel < myLevel;
-      })();
-    if (canDelete) {
+    // Acciones inferiores. El backend solo deja gestionar credenciales / borrar
+    // a un usuario de rango ESTRICTAMENTE inferior; ocultamos los botones en el
+    // resto (incluido uno mismo) para no mostrar acciones que darían 403.
+    const acts = el("div", "user-actions"); acts.style.flexWrap = "wrap";
+    const myLevel = (state.ranksCatalog || []).find(r => r.id === state.me?.rank)?.level ?? 0;
+    const targetLevel = (state.ranksCatalog || []).find(r => r.id === u.rank)?.level ?? 0;
+    const canManage = targetLevel < myLevel;
+    const who = cap(u.username);
+
+    if (canManage) {
+      const pw = el("button", "btn ghost sm", "🔑 Contraseña");
+      pw.onclick = async () => {
+        const np = prompt(`Nueva contraseña para ${who} (mín. 6):`);
+        if (!np || np.length < 6) { if (np !== null) toast("Mínimo 6 caracteres.", true); return; }
+        try { await api(`/users/${u.id}/password`, { method: "POST", body: JSON.stringify({ password: np }) }); toast("Contraseña actualizada"); }
+        catch (e) { toast(e.message, true); }
+      };
+      acts.append(pw);
+
+      const pinSet = el("button", "btn ghost sm", "📌 PIN nuevo");
+      pinSet.onclick = async () => {
+        const v = prompt(`Nuevo PIN para ${who} (4-8 dígitos):`);
+        if (!v) return;
+        if (!/^\d{4,8}$/.test(v)) { toast("PIN: 4-8 dígitos.", true); return; }
+        try { await api(`/users/${u.id}/pin`, { method: "POST", body: JSON.stringify({ pin: v }) }); toast("PIN actualizado"); loadPermisos(); }
+        catch (e) { toast(e.message, true); }
+      };
+      acts.append(pinSet);
+      if (u.has_pin) {
+        const pinDel = el("button", "btn ghost sm", "📌✕ Quitar PIN");
+        pinDel.onclick = async () => {
+          if (!confirm(`¿Quitar el PIN de ${who}?`)) return;
+          try { await api(`/users/${u.id}/pin`, { method: "DELETE" }); toast("PIN eliminado"); loadPermisos(); }
+          catch (e) { toast(e.message, true); }
+        };
+        acts.append(pinDel);
+      }
+
+      const patSet = el("button", "btn ghost sm", "✏ Patrón nuevo");
+      patSet.onclick = async () => {
+        const v = prompt(`Nuevo patrón para ${who} — secuencia de 4-9 puntos (0-8), p.ej. 0125:`);
+        if (!v) return;
+        if (!/^[0-8]{4,9}$/.test(v)) { toast("Patrón: 4-9 dígitos del 0 al 8.", true); return; }
+        try { await api(`/users/${u.id}/pattern`, { method: "POST", body: JSON.stringify({ pattern: v }) }); toast("Patrón actualizado"); loadPermisos(); }
+        catch (e) { toast(e.message, true); }
+      };
+      acts.append(patSet);
+      if (u.has_pattern) {
+        const patDel = el("button", "btn ghost sm", "✏✕ Quitar patrón");
+        patDel.onclick = async () => {
+          if (!confirm(`¿Quitar el patrón de ${who}?`)) return;
+          try { await api(`/users/${u.id}/pattern`, { method: "DELETE" }); toast("Patrón eliminado"); loadPermisos(); }
+          catch (e) { toast(e.message, true); }
+        };
+        acts.append(patDel);
+      }
+
+      if (u.has_totp) {
+        const rec = el("button", "btn ghost sm", "🔄 Claves 2FA");
+        rec.title = "Regenera las claves de recuperación (no desactiva el 2FA)";
+        rec.onclick = async () => {
+          if (!confirm(`¿Regenerar las claves de recuperación 2FA de ${who}?\n\nLas anteriores dejarán de servir. El 2FA NO se desactiva.`)) return;
+          try {
+            const r = await api(`/users/${u.id}/totp/recovery`, { method: "POST" });
+            alert(`Nuevas claves de recuperación de ${who}\n(apúntalas y entrégaselas — no se vuelven a mostrar):\n\n` + (r.recovery_codes || []).join("\n"));
+            loadPermisos();
+          } catch (e) { toast(e.message, true); }
+        };
+        acts.append(rec);
+      }
+    }
+
+    if (canManage && u.id !== state.me?.id) {
       const del = el("button", "btn ghost sm", "🗑 Eliminar usuario"); del.style.color = "#ef4444";
       del.onclick = async () => {
-        if (!confirm(`¿Eliminar al usuario "${u.username}"?\n\nEsta acción no se puede deshacer.`)) return;
+        if (!confirm(`¿Eliminar al usuario "${who}"?\n\nEsta acción no se puede deshacer.`)) return;
         try {
           await api(`/users/${u.id}`, { method: "DELETE" });
-          toast(`Usuario "${u.username}" eliminado`);
+          toast(`Usuario "${who}" eliminado`);
           state.expandedUser = null;
           loadPermisos();
         } catch (e) { toast(e.message, true); }

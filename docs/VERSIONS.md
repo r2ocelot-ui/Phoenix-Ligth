@@ -100,6 +100,8 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Alta de proyecto: **autocompletar ciudad/CP** (Nominatim forward) | 🧪 | Buscar "Benidorm" o un CP → rellena nombre + sugiere código |
 | **Multi-proyecto (N:N)**: un usuario cubre **varias ciudades** (cualquier rango) | 🧪 | Permisos → desplegar usuario → **casillas** de ciudades. Ve los cuadros de TODAS sus ciudades; el rango limita *qué* hace, los proyectos *dónde* |
 | Migración admin id 1 → phoenix (conserva id) + multi-proyecto desde project_id | 🧪 | Reiniciar backend: admin viejo pasa a phoenix con su id |
+| **Admin resetea/quita contraseña, PIN y patrón** + **regenera claves 2FA** (sin desactivar el 2FA) | 🧪 | Permisos → desplegar usuario → botones; solo sobre rangos **estrictamente inferiores** |
+| 🔒 Fix de escalado: resetear credenciales ahora exige rango inferior | 🧪 | Antes un admin_proyecto podía resetear la contraseña del owner |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

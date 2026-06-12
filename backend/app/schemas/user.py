@@ -105,6 +105,16 @@ class PasswordReset(BaseModel):
     password: str = Field(..., min_length=6)
 
 
+class AdminPinSet(BaseModel):
+    """Admin-driven PIN reset (no current_pin required)."""
+    pin: str = Field(..., pattern=r"^\d{4,8}$")
+
+
+class AdminPatternSet(BaseModel):
+    """Admin-driven pattern reset (no current_pattern required)."""
+    pattern: str = Field(..., pattern=r"^[0-8]{4,9}$")
+
+
 class PinSet(BaseModel):
     """Self-service PIN change: requires the current PIN if one is already set."""
     pin: str = Field(..., pattern=r"^\d{4,8}$")

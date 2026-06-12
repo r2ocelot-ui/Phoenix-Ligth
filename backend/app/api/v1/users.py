@@ -7,6 +7,8 @@ from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.user import User
 from app.schemas.user import (
+    AdminPatternSet,
+    AdminPinSet,
     PasswordReset,
     PermissionOverride,
     ProfileUpdate,
@@ -15,7 +17,7 @@ from app.schemas.user import (
     UserDetail,
     UserRead,
 )
-from app.services import audit_log, ranks, tenancy
+from app.services import audit_log, ranks, tenancy, totp
 from app.services.auth import require_permission, user_detail
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -43,6 +45,18 @@ def _get(db: Session, user_id: int, actor: User | None = None) -> User:
     if actor is not None:
         tenancy.ensure_visible(user, actor)
     return user
+
+
+def _ensure_manageable(actor: User, user: User) -> None:
+    """Anti-escalado: solo se pueden resetear las credenciales de un usuario de
+    rango ESTRICTAMENTE inferior al del actor — ni de un igual, ni de uno
+    superior, ni de uno mismo por esta vía (para eso está el autoservicio en
+    ``/auth/*``). Evita que un admin de proyecto secuestre la cuenta del owner."""
+    if ranks.rank_level(user.rank) >= ranks.rank_level(actor.rank):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "No puedes gestionar las credenciales de un usuario de tu mismo rango o superior",
+        )
 
 
 @router.get("", response_model=list[UserRead])
@@ -103,10 +117,96 @@ def set_password(
     actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
 ) -> dict:
     user = _get(db, user_id, actor)
+    _ensure_manageable(actor, user)
     user.password_hash = hash_password(body.password)
     db.commit()
     audit_log.record(db, username=actor.username, action="user.password_reset", target=user.username)
     return {"ok": True}
+
+
+# --- Reseteo de credenciales por admin (PIN / patrón). El 2FA NO se toca:
+# solo se pueden regenerar sus claves de recuperación (ver más abajo). ---
+@router.post("/{user_id}/pin")
+def admin_set_pin(
+    user_id: int,
+    body: AdminPinSet,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+) -> dict:
+    """El admin asigna un PIN nuevo (lo entrega al usuario; este lo rota luego)."""
+    user = _get(db, user_id, actor)
+    _ensure_manageable(actor, user)
+    user.pin_hash = hash_password(body.pin)
+    db.commit()
+    audit_log.record(db, username=actor.username, action="user.pin_reset", target=user.username)
+    return {"ok": True}
+
+
+@router.delete("/{user_id}/pin")
+def admin_clear_pin(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+) -> dict:
+    user = _get(db, user_id, actor)
+    _ensure_manageable(actor, user)
+    user.pin_hash = None
+    db.commit()
+    audit_log.record(db, username=actor.username, action="user.pin_clear", target=user.username)
+    return {"ok": True}
+
+
+@router.post("/{user_id}/pattern")
+def admin_set_pattern(
+    user_id: int,
+    body: AdminPatternSet,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+) -> dict:
+    user = _get(db, user_id, actor)
+    _ensure_manageable(actor, user)
+    user.pattern_hash = hash_password(body.pattern)
+    db.commit()
+    audit_log.record(db, username=actor.username, action="user.pattern_reset", target=user.username)
+    return {"ok": True}
+
+
+@router.delete("/{user_id}/pattern")
+def admin_clear_pattern(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+) -> dict:
+    user = _get(db, user_id, actor)
+    _ensure_manageable(actor, user)
+    user.pattern_hash = None
+    db.commit()
+    audit_log.record(db, username=actor.username, action="user.pattern_clear", target=user.username)
+    return {"ok": True}
+
+
+@router.post("/{user_id}/totp/recovery")
+def admin_regen_totp_recovery(
+    user_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+) -> dict:
+    """Regenera las claves de recuperación 2FA del usuario (invalida las
+    anteriores) y las devuelve en claro UNA sola vez para entregárselas.
+
+    NO desactiva el 2FA (se mantiene el "algo que tienes"). Las claves se
+    guardan hasheadas, así que ni el admin puede "verlas": solo regenerarlas.
+    Es la salida estándar cuando alguien pierde el móvil y los códigos."""
+    user = _get(db, user_id, actor)
+    _ensure_manageable(actor, user)
+    if not user.totp_enabled:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "El usuario no tiene 2FA activado")
+    codes = totp.generate_recovery_codes()
+    user.totp_recovery = [totp.hash_code(c) for c in codes]
+    db.commit()
+    audit_log.record(db, username=actor.username, action="user.totp_recovery_regen",
+                     target=user.username, detail={"count": len(codes)})
+    return {"recovery_codes": codes}
 
 
 @router.get("/{user_id}", response_model=UserDetail)

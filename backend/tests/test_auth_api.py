@@ -1153,3 +1153,50 @@ def test_users_list_tolerates_null_project_ids(client):
     assert r.status_code == 200, r.text
     me = next(x for x in r.json() if x["username"] == "legacy")
     assert me["project_ids"] == []
+
+
+# --- Reseteo de credenciales por admin (PIN/patrón) + regen 2FA -----------
+def test_admin_resets_and_clears_pin_and_pattern(client):
+    _register(client, "boss"); boss = _token(client, "boss")
+    _create_user(client, boss, "curro", rank="tecnico")
+    cid = _id_of(client, boss, "curro")
+    # PIN: poner y quitar.
+    assert client.post(f"/api/v1/users/{cid}/pin", json={"pin": "4321"}, headers=_auth(boss)).status_code == 200
+    assert client.get(f"/api/v1/users/{cid}", headers=_auth(boss)).json()["has_pin"] is True
+    assert client.delete(f"/api/v1/users/{cid}/pin", headers=_auth(boss)).status_code == 200
+    assert client.get(f"/api/v1/users/{cid}", headers=_auth(boss)).json()["has_pin"] is False
+    # Patrón: poner y quitar.
+    assert client.post(f"/api/v1/users/{cid}/pattern", json={"pattern": "0123"}, headers=_auth(boss)).status_code == 200
+    assert client.get(f"/api/v1/users/{cid}", headers=_auth(boss)).json()["has_pattern"] is True
+    assert client.delete(f"/api/v1/users/{cid}/pattern", headers=_auth(boss)).status_code == 200
+    assert client.get(f"/api/v1/users/{cid}", headers=_auth(boss)).json()["has_pattern"] is False
+
+
+def test_admin_cannot_reset_credentials_of_equal_or_higher_rank(client):
+    """Anti-escalado: un admin_proyecto no puede resetear al owner."""
+    _register(client, "boss"); boss = _token(client, "boss")
+    _create_user(client, boss, "ana", rank="admin_proyecto")
+    boss_id = _id_of(client, boss, "boss")
+    ana = _token(client, "ana")
+    assert client.post(f"/api/v1/users/{boss_id}/password", json={"password": "hacked123"}, headers=_auth(ana)).status_code == 403
+    assert client.post(f"/api/v1/users/{boss_id}/pin", json={"pin": "0000"}, headers=_auth(ana)).status_code == 403
+    assert client.delete(f"/api/v1/users/{boss_id}/pattern", headers=_auth(ana)).status_code == 403
+
+
+def test_admin_regen_totp_recovery(client):
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.user import User
+    _register(client, "boss"); boss = _token(client, "boss")
+    _create_user(client, boss, "curro", rank="tecnico")
+    cid = _id_of(client, boss, "curro")
+    # Sin 2FA → 400.
+    assert client.post(f"/api/v1/users/{cid}/totp/recovery", headers=_auth(boss)).status_code == 400
+    # Con 2FA activo → devuelve códigos nuevos en claro y los guarda hasheados.
+    db = next(_app.dependency_overrides[get_db]())
+    u = db.get(User, cid); u.totp_enabled = True; u.totp_secret = "SECRET"; db.commit()
+    r = client.post(f"/api/v1/users/{cid}/totp/recovery", headers=_auth(boss))
+    assert r.status_code == 200
+    codes = r.json()["recovery_codes"]
+    assert isinstance(codes, list) and len(codes) > 0
+    assert client.get(f"/api/v1/users/{cid}", headers=_auth(boss)).json()["totp_recovery_remaining"] == len(codes)

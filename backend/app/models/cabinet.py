@@ -26,6 +26,16 @@ class Cabinet(Base):
     # Project / city scope. NULL = "global" (visible only to owners or to
     # users without a project assigned). See services/tenancy.py.
     project_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    # Modo de regulación del alumbrado (ver services/dimming_controller.py):
+    #   "manual"   → el operario fija el nivel; el programador no lo toca.
+    #   "schedule" → programa horario fijo (+ lux). Determinista.
+    #   "ai"       → motor adaptativo: sol + tarifa + lux + perfil de calle.
+    dimming_mode: Mapped[str] = mapped_column(String(16), default="schedule")
+    # Perfil de uso de la vía (suelo de seguridad del modo IA):
+    #   "arterial"    → vía principal: mantener alto.
+    #   "residential" → calle residencial tranquila: bajar agresivo.
+    #   "crossing"    → paso de peatones / glorieta: nunca por debajo de X.
+    street_profile: Mapped[str] = mapped_column(String(16), default="residential")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

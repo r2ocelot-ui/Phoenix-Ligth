@@ -93,3 +93,56 @@ def test_level_cap_is_configurable(monkeypatch):
     assert tariff.level_cap("P1") == 60
     # base 100 en punta ahora se recorta a 60 (no a 75).
     assert tariff.cost_aware_level(100, punta, floor=40) == 60
+
+
+# --- Modo IA · dimming adaptativo por reglas (offline) --------------------
+def test_ai_off_during_day():
+    """El sol manda: de día astronómico, apagado en cualquier perfil."""
+    noon = datetime(2026, 6, 21, 13, 0, tzinfo=MADRID)
+    for profile in ("arterial", "residential", "crossing"):
+        assert dc.resolve_ai_level(noon, MADRID_LAT, MADRID_LON,
+                                   street_profile=profile) == 0
+
+
+def test_ai_requires_tzaware():
+    import pytest
+    with pytest.raises(ValueError):
+        dc.resolve_ai_level(datetime(2026, 1, 15, 22, 0), MADRID_LAT, MADRID_LON)
+
+
+def test_ai_evening_uses_profile_base():
+    """A primera hora de la noche (no profunda) sale la base del perfil, con
+    el tope de tarifa del tramo. 20:00 invierno = noche, punta (P1, tope 75)."""
+    evening = datetime(2026, 1, 15, 20, 0, tzinfo=MADRID)
+    # arterial base 100 → recortado a 75 por punta.
+    assert dc.resolve_ai_level(evening, MADRID_LAT, MADRID_LON,
+                               street_profile="arterial") == 75
+    # residential base 70 → por debajo del tope, intacto.
+    assert dc.resolve_ai_level(evening, MADRID_LAT, MADRID_LON,
+                               street_profile="residential") == 70
+
+
+def test_ai_deep_night_lowers_residential():
+    """En noche profunda (03:00, valle sin tope) la residencial baja respecto a
+    su base nocturna (70 → 42), pero por encima de su suelo (20)."""
+    deep = datetime(2026, 1, 15, 3, 0, tzinfo=MADRID)
+    lvl = dc.resolve_ai_level(deep, MADRID_LAT, MADRID_LON, street_profile="residential")
+    assert lvl == 42  # round(70 * 0.6)
+    assert lvl >= dc.STREET_FLOOR["residential"]
+
+
+def test_ai_crossing_never_below_safety_floor():
+    """Un paso de peatones nunca baja de su suelo de seguridad (50), ni en
+    noche profunda ni con tarifa cara."""
+    deep = datetime(2026, 1, 15, 3, 0, tzinfo=MADRID)
+    lvl = dc.resolve_ai_level(deep, MADRID_LAT, MADRID_LON, street_profile="crossing")
+    assert lvl >= dc.STREET_FLOOR["crossing"] == 50
+
+
+def test_ai_low_lux_boosts_to_night_base():
+    """Si el sensor ve oscuro de verdad (nublado) en noche profunda, sube a la
+    base nocturna del perfil para mantener visibilidad."""
+    deep = datetime(2026, 1, 15, 3, 0, tzinfo=MADRID)
+    dark = dc.resolve_ai_level(deep, MADRID_LAT, MADRID_LON,
+                               street_profile="residential", ambient_lux=5.0)
+    assert dark == dc.STREET_NIGHT_BASE["residential"]  # 70, no el 42 de noche profunda

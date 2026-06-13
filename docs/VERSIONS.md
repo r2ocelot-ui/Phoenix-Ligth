@@ -112,6 +112,11 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Etiqueta de farola → "Farola 01" (2 dígitos, sin el prefijo del CM) | 🧪 | Ficha de luminaria; nuevo seed usa el formato corto |
 | Fix: Luminarias en blanco con "Todos los cuadros" seleccionado | 🧪 | Menú → Luminarias: ahora muestra todas; el filtro estaba descartando todo por bug de `<option>` sin value |
 | Seed: fases concretas (L1/L2) por circuito en lugar de "III" | 🧪 | Topología → Editar circuito: fase por defecto es L1; selector lista L1/L2/L3/III |
+| **Dimming en 3 modos por cuadro: Manual / Programa / IA** | 🧪 | Control → selector de modo. Manual = operario manda; Programa = horario+lux; IA = sol+tarifa+lux+perfil de calle |
+| **Motor IA de dimming (reglas offline, auditable)** | 🧪 | `dimming_controller.resolve_ai_level`: de día apagado, noche profunda baja, lux sube, tarifa recorta, suelo por perfil de vía |
+| **Perfil de calle** por CM (arteria / residencial / paso) | 🧪 | Topología → ficha del CM → "Perfil de calle (modo IA)". Define el suelo de seguridad de la IA |
+| Hotfix: `NameError: logger` en el arranque (TZ auto) | 🧪 | Arrancar con display_timezone=auto ya no revienta |
+| Fix: `/cabinets/{id}/snapshot` llamaba a `_merged(db)` sin scope | 🧪 | Endpoint corregido (pasa el scope del actor) |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

@@ -1348,6 +1348,16 @@
   }
 
   // ============================ Control ============================
+  // Modos de regulación por cuadro (coincide con el backend dimming_mode):
+  //   manual   → el operario manda; el programador no toca.
+  //   schedule → programa horario + lux. Determinista.
+  //   ai       → adaptativo: sol + tarifa + lux + perfil de calle.
+  const DIM_MODES = [
+    ["manual", "🔧 Manual", "El operario fija el nivel; el programador no lo toca."],
+    ["schedule", "🕒 Programa", "Horario astronómico + sensor de luz. Determinista."],
+    ["ai", "🧠 IA", "Adaptativo: sol + tarifa + lux + perfil de calle, con suelo de seguridad."],
+  ];
+  const PROFILE_LABELS = { arterial: "vía principal", residential: "residencial", crossing: "paso de peatones" };
   function renderControl(c) {
     c.innerHTML = "";
     if (!has("cabinet:control")) { c.append(el("div", "empty", "Tu rango no permite operar cuadros. Solo lectura.")); return; }
@@ -1360,45 +1370,50 @@
     const sel = el("select"); ids.forEach(id => { const o = el("option", null, id); o.value = id; if (id === cur.cabinet_id) o.selected = true; sel.append(o); });
     sel.onchange = () => { window._ctrlSel = sel.value; render(); };
     p.append(sel);
+
+    // Modo de regulación: Manual / Programa / IA (por cuadro).
+    const mode = cur.dimming_mode || "schedule";
+    const hasGeo = cur.latitude != null && cur.longitude != null;
+    p.append(el("label", null, "Modo de regulación"));
+    const modeRow = el("div", "row"); modeRow.style.gap = "6px"; modeRow.style.flexWrap = "wrap";
+    DIM_MODES.forEach(([id, lbl]) => {
+      const active = id === mode;
+      const b = el("button", "btn sm" + (active ? "" : " ghost"), lbl);
+      if (id === "ai" && !hasGeo) { b.disabled = true; b.title = "La IA necesita coordenadas del cuadro (ponlas en su ficha de topología)."; }
+      if (!active) b.onclick = () => modeCmd(cur.cabinet_id, id);
+      modeRow.append(b);
+    });
+    p.append(modeRow);
+    const modeHint = el("div", "muted"); modeHint.style.fontSize = "11px"; modeHint.style.marginTop = "4px";
+    const desc = (DIM_MODES.find(m => m[0] === mode) || [, , ""])[2];
+    modeHint.textContent = desc + (mode === "ai" ? ` · perfil de calle: ${PROFILE_LABELS[cur.street_profile || "residential"]}` : "");
+    p.append(modeHint);
+
     p.append(el("label", null, "Encendido / Apagado"));
     const relayRow = el("div", "row");
     const onBtn = el("button", "btn sm", "Encender"); onBtn.onclick = () => relay(cur.cabinet_id, "on");
     const offBtn = el("button", "btn sm ghost", "Apagar"); offBtn.onclick = () => relay(cur.cabinet_id, "off");
     relayRow.append(onBtn, offBtn); p.append(relayRow);
 
-    // Modo: manual (manda el operario) vs automático (programa horario + lux).
-    // Mientras esté en manual, el programador NO pisa el nivel del cuadro.
-    const isManual = !!cur.state?.manual;
-    const modeRow = el("div", "row between"); modeRow.style.marginTop = "12px"; modeRow.style.alignItems = "center";
-    const modeBadge = el("span", "badge " + (isManual ? "WARNING" : "ok"));
-    modeBadge.textContent = isManual ? "Modo manual" : "Modo automático";
-    modeRow.append(modeBadge);
-    if (isManual) {
-      const autoBtn = el("button", "btn ghost sm", "↻ Volver a automático");
-      autoBtn.onclick = () => autoCmd(cur.cabinet_id);
-      modeRow.append(autoBtn);
-    }
-    p.append(modeRow);
-    const modeHint = el("div", "muted"); modeHint.style.fontSize = "11px"; modeHint.style.marginTop = "4px";
-    modeHint.textContent = isManual
-      ? "El programador horario no tocará este cuadro hasta que vuelvas a automático."
-      : "El nivel lo fija el programa horario / sensor de luz. Al ajustar el dimming pasará a manual.";
-    p.append(modeHint);
-
     const dim = cur.state?.dim ?? 100;
-    p.append(el("label", null, `Regulación (dimming) · <span class="mono" id="dimv">${dim}%</span>`));
+    const dimLbl = mode === "manual"
+      ? "Regulación (dimming)"
+      : `Nivel actual (lo fija el modo ${mode === "ai" ? "IA" : "programa"})`;
+    p.append(el("label", null, `${dimLbl} · <span class="mono" id="dimv">${dim}%</span>`));
     const rng = el("input"); rng.type = "range"; rng.min = 0; rng.max = 100; rng.value = dim; rng.style.setProperty("--p", dim + "%");
     // Marco "arrastrando" para que el refresco en vivo no reinicie el slider
     // a mitad de gesto (la sensación de "hace lo que quiere").
     rng.onpointerdown = () => { window._dimDragging = true; };
     rng.oninput = () => { window._dimDragging = true; $("#dimv").textContent = rng.value + "%"; rng.style.setProperty("--p", rng.value + "%"); };
     p.append(rng);
-    const send = el("button", "btn", "Aplicar dimming"); send.onclick = () => { window._dimDragging = false; dimCmd(cur.cabinet_id, parseInt(rng.value, 10)); };
+    const send = el("button", "btn", mode === "manual" ? "Aplicar dimming" : "Aplicar (pasa a manual)");
+    send.onclick = () => { window._dimDragging = false; dimCmd(cur.cabinet_id, parseInt(rng.value, 10)); };
     p.append(send);
     c.append(p);
   }
-  async function autoCmd(id) {
-    try { await api(`/cabinets/${id}/auto`, { method: "POST" }); toast(`${id}: modo automático`); refreshLive(); }
+  async function modeCmd(id, mode) {
+    const lbl = mode === "ai" ? "IA" : (mode === "manual" ? "manual" : "programa");
+    try { await api(`/cabinets/${id}/mode`, { method: "POST", body: JSON.stringify({ mode }) }); toast(`${id}: modo ${lbl}`); refreshLive(); }
     catch (e) { toast(e.message, true); }
   }
   async function relay(id, st) {
@@ -1406,7 +1421,7 @@
     catch (e) { toast(e.message, true); }
   }
   async function dimCmd(id, level) {
-    try { await api(`/cabinets/${id}/dim`, { method: "POST", body: JSON.stringify({ level }) }); toast(`${id}: dimming ${level}%`); }
+    try { await api(`/cabinets/${id}/dim`, { method: "POST", body: JSON.stringify({ level }) }); toast(`${id}: dimming ${level}%`); refreshLive(); }
     catch (e) { toast(e.message, true); }
   }
 
@@ -1779,6 +1794,17 @@
     const lat = el("input"); lat.placeholder = "Latitud (opcional)"; lat.value = cab?.latitude ?? prefill?.latitude ?? "";
     const lon = el("input"); lon.placeholder = "Longitud (opcional)"; lon.value = cab?.longitude ?? prefill?.longitude ?? "";
     const coords = el("div", "row"); coords.style.gap = "8px"; coords.append(lat, lon);
+    // Perfil de uso de la vía — define el suelo de seguridad del modo IA del
+    // dimming (una arteria nunca baja tanto como una residencial).
+    const profile = el("select");
+    [["residential", "Residencial (baja agresivo)"],
+     ["arterial", "Vía principal (mantener alto)"],
+     ["crossing", "Paso de peatones / glorieta (suelo alto)"]].forEach(([v, lbl]) => {
+      const o = el("option", null, lbl); o.value = v;
+      if ((cab?.street_profile || "residential") === v) o.selected = true; profile.append(o);
+    });
+    const profWrap = el("div"); profWrap.innerHTML = `<div class="muted" style="font-size:11px;margin-bottom:4px">Perfil de calle (modo IA)</div>`;
+    profWrap.append(profile);
     // Ciudad / proyecto — solo el owner asigna (un director hereda el suyo).
     // Nuevo CM: preselecciona la ciudad activa del topbar. Editar: la del CM.
     let projSel = null;
@@ -1792,9 +1818,9 @@
       });
       const pwrap = el("div"); pwrap.innerHTML = `<div class="muted" style="font-size:11px;margin-bottom:4px">Ciudad / proyecto</div>`;
       pwrap.append(projSel);
-      form.append(code, name, number, zone, colorWrap, coords, pwrap);
+      form.append(code, name, number, zone, colorWrap, coords, profWrap, pwrap);
     } else {
-      form.append(code, name, number, zone, colorWrap, coords);
+      form.append(code, name, number, zone, colorWrap, coords, profWrap);
     }
     card.append(form);
 
@@ -1806,6 +1832,7 @@
         zone: zone.value.trim() || null, color: color.value,
         latitude: lat.value ? parseFloat(lat.value) : null,
         longitude: lon.value ? parseFloat(lon.value) : null,
+        street_profile: profile.value,
       };
       if (projSel) payload.project_id = projSel.value ? parseInt(projSel.value, 10) : null;
       try {

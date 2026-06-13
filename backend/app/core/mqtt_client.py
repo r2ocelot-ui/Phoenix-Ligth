@@ -21,7 +21,7 @@ import aiomqtt
 from app.core.config import settings
 from app.schemas.alarm import Alarm, AlarmSeverity, AlarmType
 from app.schemas.measurement import Measurement
-from app.services import alarm_engine, dimming_controller
+from app.services import alarm_engine, dimming_controller, tariff
 
 log = logging.getLogger("phoenix.mqtt")
 
@@ -62,29 +62,13 @@ class MQTTBus:
         await self._client.publish(topic, json.dumps(payload), qos=1)
 
     def record_command(
-        self, cabinet_id: str, *, relay: str | None = None,
-        dim: int | None = None, manual: bool = False,
+        self, cabinet_id: str, *, relay: str | None = None, dim: int | None = None
     ) -> None:
-        state = self.cabinet_state.setdefault(
-            cabinet_id, {"relay": "on", "dim": 100, "manual": False}
-        )
+        state = self.cabinet_state.setdefault(cabinet_id, {"relay": "on", "dim": 100})
         if relay is not None:
             state["relay"] = relay
         if dim is not None:
             state["dim"] = dim
-        # Un comando del operario marca el cuadro como "manual": el programador
-        # horario (_dimming_loop) deja de pisarlo hasta que se vuelva a "auto".
-        if manual:
-            state["manual"] = True
-
-    def set_auto(self, cabinet_id: str) -> bool:
-        """Devuelve el cuadro al programa automático de dimming. El siguiente
-        ciclo de _dimming_loop volverá a fijar el nivel según horario/lux."""
-        state = self.cabinet_state.get(cabinet_id)
-        if not state:
-            return False
-        state["manual"] = False
-        return True
 
     def _is_expected_on(self, cabinet_id: str) -> bool:
         state = self.cabinet_state.get(cabinet_id)
@@ -136,7 +120,7 @@ class MQTTBus:
                     "online": online,
                     "status": status,
                     "telemetry": self.last_telemetry.get(cid),
-                    "state": self.cabinet_state.get(cid, {"relay": "on", "dim": 100, "manual": False}),
+                    "state": self.cabinet_state.get(cid, {"relay": "on", "dim": 100}),
                     "alarms": alarms,
                 }
             )
@@ -285,16 +269,64 @@ class MQTTBus:
         except RuntimeError:
             pass  # broker not connected (e.g. demo mode); alarm is still tracked
 
+    def _load_dimming_configs(self) -> dict[str, dict]:
+        """Lee de la BD el modo y los datos de regulación de cada cuadro. Es
+        barato (SQLite) y se llama una vez por ciclo del programador."""
+        try:
+            from app.core.database import SessionLocal
+            from app.models.cabinet import Cabinet
+            with SessionLocal() as db:
+                return {
+                    c.code: {
+                        "mode": c.dimming_mode or "schedule",
+                        "lat": c.latitude, "lon": c.longitude,
+                        "profile": c.street_profile or "residential",
+                    }
+                    for c in db.query(Cabinet).all()
+                }
+        except Exception:
+            return {}
+
+    def _auto_level_for(self, cabinet_id: str, cfg: dict | None, mode: str) -> int:
+        """Nivel que toca AHORA para un cuadro en modo automático (schedule/ai).
+        IA sin coordenadas cae a programa horario (sin sol no hay astronómico)."""
+        lux = self.last_lux.get(cabinet_id)
+        cfg = cfg or {}
+        lat, lon = cfg.get("lat"), cfg.get("lon")
+        if mode == "ai" and lat is not None and lon is not None:
+            return dimming_controller.resolve_ai_level(
+                tariff.now_local(), lat, lon,
+                street_profile=cfg.get("profile", "residential"),
+                ambient_lux=lux, floor=settings.tariff_floor_level,
+            )
+        return dimming_controller.resolve_level(datetime.now().time(), ambient_lux=lux)
+
+    async def apply_level_now(self, cabinet) -> int | None:
+        """Calcula y aplica YA el nivel del cuadro según su modo (feedback
+        inmediato al cambiar de modo desde la UI). Devuelve el nivel, o None si
+        está en manual."""
+        mode = cabinet.dimming_mode or "schedule"
+        if mode == "manual":
+            return None
+        cfg = {"lat": cabinet.latitude, "lon": cabinet.longitude,
+               "profile": cabinet.street_profile or "residential"}
+        level = self._auto_level_for(cabinet.code, cfg, mode)
+        self.record_command(cabinet.code, dim=level)
+        await self._safe_publish(
+            f"phoenix/cabinets/{cabinet.code}/cmd/dim", {"level": level}
+        )
+        return level
+
     async def _dimming_loop(self) -> None:
         while True:
             await asyncio.sleep(settings.dimming_interval_s)
-            now = datetime.now().time()
+            configs = self._load_dimming_configs()
             for cabinet_id in list(self._known_cabinets):
-                state = self.cabinet_state.get(cabinet_id)
-                if state and state.get("manual"):
-                    continue  # el operario tomó control manual; no lo pisamos
-                lux = self.last_lux.get(cabinet_id)
-                level = dimming_controller.resolve_level(now, ambient_lux=lux)
+                cfg = configs.get(cabinet_id)
+                mode = (cfg or {}).get("mode", "schedule")
+                if mode == "manual":
+                    continue  # el operario tiene el control; no lo pisamos
+                level = self._auto_level_for(cabinet_id, cfg, mode)
                 self.record_command(cabinet_id, dim=level)
                 await self._safe_publish(
                     f"phoenix/cabinets/{cabinet_id}/cmd/dim", {"level": level}

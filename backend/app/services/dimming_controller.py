@@ -82,3 +82,70 @@ def resolve_auto_level(
     if use_tariff:
         return tariff.cost_aware_level(base, when, floor=floor)
     return max(base, floor)
+
+
+# ---- Modo IA: dimming adaptativo por reglas (offline) --------------------
+# Suelo de seguridad por perfil de vía: nivel mínimo que NUNCA se baja de
+# noche (visibilidad y seguridad vial).
+STREET_FLOOR: dict[str, int] = {"arterial": 60, "residential": 20, "crossing": 50}
+# Nivel base nocturno por perfil (punto de partida en horario de tarde-noche).
+STREET_NIGHT_BASE: dict[str, int] = {"arterial": 100, "residential": 70, "crossing": 90}
+# Ventana de "noche profunda" (hora civil local): tráfico/peatones mínimos.
+DEEP_NIGHT_START = time(0, 0)
+DEEP_NIGHT_END = time(5, 30)
+
+
+def _street_params(street_profile: str) -> tuple[int, int]:
+    """Devuelve (suelo, base_nocturna) del perfil; cae a residencial si es
+    desconocido."""
+    floor = STREET_FLOOR.get(street_profile, STREET_FLOOR["residential"])
+    night_base = STREET_NIGHT_BASE.get(street_profile, STREET_NIGHT_BASE["residential"])
+    return floor, night_base
+
+
+def resolve_ai_level(
+    when: datetime, latitude: float, longitude: float, *,
+    street_profile: str = "residential", ambient_lux: float | None = None,
+    floor: int | None = None, use_tariff: bool = True,
+) -> int:
+    """Dimming **adaptativo por reglas** (modo "IA"), 100 % offline y auditable.
+
+    Combina, en este orden:
+      1. **Sol** (`sun.py`): de día astronómico → 0 (apagado). El sol manda.
+      2. **Perfil de vía**: base nocturna y suelo de seguridad según sea
+         arteria / residencial / paso de peatones.
+      3. **Noche profunda** (0:00–5:30 local): franja de menor uso → se baja
+         hacia el suelo del perfil para ahorrar.
+      4. **Lux ambiente** (si hay sensor): si está realmente oscuro
+         (nublado/niebla) sube para mantener visibilidad.
+      5. **Tarifa** (`tariff.py`): recorta en horas caras, nunca por debajo del
+         suelo de seguridad.
+
+    Interfaz estable: el día de mañana se puede sustituir el cuerpo por un
+    modelo ML sin tocar a quien lo llama. ``when`` debe llevar tzinfo.
+    """
+    if when.tzinfo is None:
+        raise ValueError("`when` debe llevar tzinfo (usa tariff.now_local())")
+    profile_floor, night_base = _street_params(street_profile)
+    eff_floor = max(profile_floor, floor or 0)
+
+    # 1) El sol manda: de día, apagado.
+    if not sun.is_dark(when, latitude, longitude):
+        return 0
+
+    # 2/3) Base por perfil, rebajada en noche profunda (hora civil local).
+    local = when.astimezone(ZoneInfo(settings.tariff_timezone))
+    if DEEP_NIGHT_START <= local.time() < DEEP_NIGHT_END:
+        level = max(profile_floor, round(night_base * 0.6))
+    else:
+        level = night_base
+
+    # 4) Lux: si el sensor ve oscuro de verdad, garantizamos la base nocturna.
+    if ambient_lux is not None and ambient_lux < LUX_THRESHOLD_ON:
+        level = max(level, night_base)
+
+    # 5) Tarifa: recorte por coste con suelo de seguridad.
+    if use_tariff:
+        level = tariff.cost_aware_level(level, when, floor=eff_floor)
+
+    return max(min(level, 100), eff_floor)

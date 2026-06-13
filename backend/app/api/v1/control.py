@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -15,14 +17,15 @@ router = APIRouter(prefix="/cabinets", tags=["control"])
 emergency_router = APIRouter(prefix="/emergency", tags=["control"])
 
 
-def _authorize_cabinet(db: Session, cabinet_id: str, user: User) -> None:
-    """404 si el cuadro no existe, o si está fuera del proyecto del usuario.
-    Cierra el bypass multi-tenant que dejaba que un operario de una ciudad
-    enviase comandos a cuadros de otra solo conociendo su ``cabinet_id``."""
+def _authorize_cabinet(db: Session, cabinet_id: str, user: User) -> Cabinet:
+    """Devuelve el cuadro si existe y está dentro del proyecto del usuario;
+    si no, 404. Cierra el bypass multi-tenant que dejaba que un operario de una
+    ciudad enviase comandos a cuadros de otra solo conociendo su ``cabinet_id``."""
     cabinet = db.query(Cabinet).filter(Cabinet.code == cabinet_id).first()
     if cabinet is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro no encontrado")
     tenancy.ensure_visible(cabinet, user)
+    return cabinet
 
 
 @emergency_router.post("/all-on")
@@ -45,8 +48,15 @@ async def emergency_all_on(
             await bus.publish(f"phoenix/cabinets/{cid}/cmd/dim", {"level": 100})
         except RuntimeError:
             pass  # broker no conectado; el estado comandado igual se registra
-        bus.record_command(cid, relay="on", dim=100, manual=True)
+        bus.record_command(cid, relay="on", dim=100)
         affected.append(cid)
+    # En emergencia los cuadros pasan a manual para que el programador no los
+    # vuelva a regular hasta que el operario los devuelva a su modo.
+    if affected:
+        db.query(Cabinet).filter(Cabinet.code.in_(affected)).update(
+            {"dimming_mode": "manual"}, synchronize_session=False
+        )
+        db.commit()
     bus.notify()
     user.activity_points += 5
     db.add(user)
@@ -97,7 +107,7 @@ async def set_relay(
         await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/relay", cmd.model_dump())
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
-    bus.record_command(cabinet_id, relay=cmd.state, manual=True)
+    bus.record_command(cabinet_id, relay=cmd.state)
     bus.notify()
     _credit_and_audit(db, user, "cabinet.relay", cabinet_id, {"state": cmd.state})
     return {"sent": True, "cabinet_id": cabinet_id, "state": cmd.state}
@@ -110,28 +120,48 @@ async def set_dim(
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
-    _authorize_cabinet(db, cabinet_id, user)
+    cabinet = _authorize_cabinet(db, cabinet_id, user)
     try:
         await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/dim", cmd.model_dump())
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
-    bus.record_command(cabinet_id, dim=cmd.level, manual=True)
+    bus.record_command(cabinet_id, dim=cmd.level)
+    # Mover el slider = tomar control manual: el programador deja de tocarlo
+    # hasta que se devuelva a programa/IA desde el selector de modo.
+    if cabinet.dimming_mode != "manual":
+        cabinet.dimming_mode = "manual"
+        db.add(cabinet)
     bus.notify()
     _credit_and_audit(db, user, "cabinet.dim", cabinet_id, {"level": cmd.level})
-    return {"sent": True, "cabinet_id": cabinet_id, "level": cmd.level}
+    return {"sent": True, "cabinet_id": cabinet_id, "level": cmd.level, "mode": "manual"}
 
 
-@router.post("/{cabinet_id}/auto")
-async def set_auto(
+class ModeCommand(BaseModel):
+    mode: Literal["manual", "schedule", "ai"]
+
+
+@router.post("/{cabinet_id}/mode")
+async def set_mode(
     cabinet_id: str,
+    cmd: ModeCommand,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
-    """Devuelve el cuadro al programa automático de dimming (horario + lux).
-    Tras un ajuste manual el programador deja de tocar el cuadro; este endpoint
-    libera ese bloqueo para que vuelva a regularse solo."""
-    _authorize_cabinet(db, cabinet_id, user)
-    bus.set_auto(cabinet_id)
+    """Cambia el modo de regulación del cuadro:
+      - ``manual``   → el operario manda; el programador no lo toca.
+      - ``schedule`` → programa horario fijo (+ lux).
+      - ``ai``       → motor adaptativo: sol + tarifa + lux + perfil de calle.
+
+    En modo automático (schedule/ai) aplica YA el nivel calculado para dar
+    feedback inmediato, sin esperar al siguiente ciclo del programador."""
+    cabinet = _authorize_cabinet(db, cabinet_id, user)
+    cabinet.dimming_mode = cmd.mode
+    db.add(cabinet)
+    db.commit()
+    db.refresh(cabinet)
+    level = None
+    if cmd.mode != "manual":
+        level = await bus.apply_level_now(cabinet)
     bus.notify()
-    _credit_and_audit(db, user, "cabinet.auto", cabinet_id, {})
-    return {"ok": True, "cabinet_id": cabinet_id, "mode": "auto"}
+    _credit_and_audit(db, user, "cabinet.mode", cabinet_id, {"mode": cmd.mode})
+    return {"ok": True, "cabinet_id": cabinet_id, "mode": cmd.mode, "level": level}

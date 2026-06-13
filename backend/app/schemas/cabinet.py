@@ -1,4 +1,10 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+# Modo de regulación y perfil de vía (ver models/cabinet.py + dimming_controller).
+DimmingMode = Literal["manual", "schedule", "ai"]
+StreetProfile = Literal["arterial", "residential", "crossing"]
 
 
 class CabinetCreate(BaseModel):
@@ -10,6 +16,7 @@ class CabinetCreate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     project_id: int | None = None
+    street_profile: StreetProfile = "residential"
 
 
 class CabinetUpdate(BaseModel):
@@ -20,6 +27,8 @@ class CabinetUpdate(BaseModel):
     latitude: float | None = None
     longitude: float | None = None
     project_id: int | None = None  # mover el cuadro a una ciudad/proyecto
+    dimming_mode: DimmingMode | None = None
+    street_profile: StreetProfile | None = None
 
 
 class CabinetRead(BaseModel):
@@ -34,3 +43,5 @@ class CabinetRead(BaseModel):
     latitude: float | None
     longitude: float | None
     project_id: int | None = None
+    dimming_mode: str = "schedule"
+    street_profile: str = "residential"

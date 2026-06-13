@@ -42,6 +42,8 @@ def _merged(db: Session, visible_codes: set[str] | None) -> list[dict]:
         item["latitude"] = reg.latitude if reg else None
         item["longitude"] = reg.longitude if reg else None
         item["project_id"] = reg.project_id if reg else None
+        item["dimming_mode"] = reg.dimming_mode if reg else "schedule"
+        item["street_profile"] = reg.street_profile if reg else "residential"
         out.append(item)
     return out
 
@@ -255,9 +257,10 @@ def delete_cabinet(
 def get_cabinet(
     cabinet_id: str,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_CABINET_READ)),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
 ) -> dict:
-    for cabinet in _merged(db):
+    codes = tenancy.cabinet_codes_in_scope(db, actor, None)
+    for cabinet in _merged(db, codes):
         if cabinet["cabinet_id"] == cabinet_id:
             return cabinet
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown cabinet")

@@ -40,11 +40,17 @@ Formato de cada entrada:
   - Alcance del modo IA: **el más completo** → 3 modos (Manual / Programa / IA)
     + motor IA que combina **sol + tarifa + lux + perfil de calle**, con suelo
     de seguridad por tipo de vía.
+- **Hecho (cont.)** · Modo IA del dimming COMPLETO
+  - Modelo: `Cabinet.dimming_mode` (manual/schedule/ai) + `street_profile`
+    (arterial/residential/crossing). Auto-migración verificada en BD vieja.
+  - Motor `dimming_controller.resolve_ai_level` (reglas offline, auditable):
+    sol → perfil de vía → noche profunda → lux → tarifa, con suelo de seguridad.
+  - Bus: `_dimming_loop` ahora va por modo (lee BD); helpers `_auto_level_for`
+    y `apply_level_now` (feedback inmediato al cambiar de modo).
+  - API: `POST /cabinets/{id}/mode`; `/dim` pasa el cuadro a manual; emergencia
+    fija manual. 9 tests nuevos (132 verdes).
+  - UI: selector de 3 modos en Control + perfil de calle en la ficha del CM.
 - **Pendiente para la próxima**
-  - **Implementar el modo IA del dimming** (en curso): modelo `dimming_mode` +
-    `street_profile` en Cabinet, motor `resolve_ai_level`, bucle de la bus por
-    modo, endpoint `/cabinets/{id}/mode`, selector de 3 modos en Control y
-    perfil de calle en la ficha del CM. Con tests.
   - **CSP estricta** (CSP-B): reconocimiento ya hecho (sin `eval`/handlers
     inline; recursos externos mapeados: unpkg, cdnjs, Google Fonts, tiles
     carto/OSM/ArcGIS, Nominatim). Falta escribir la cabecera en

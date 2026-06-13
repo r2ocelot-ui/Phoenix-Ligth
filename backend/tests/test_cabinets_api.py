@@ -93,6 +93,48 @@ def test_create_cabinet_requires_manage(client):
     assert cab["online"] is False
 
 
+def test_set_mode_ai_persists(client):
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+    body = {"code": "CAB-AI", "name": "AI", "latitude": 40.4, "longitude": -3.7}
+    assert client.post("/api/v1/cabinets/registry", json=body, headers=headers).status_code == 201
+    r = client.post("/api/v1/cabinets/CAB-AI/mode", json={"mode": "ai"}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["mode"] == "ai"
+    # 'level' es int (de noche) o 0 (de día): no asumimos la hora del test.
+    assert r.json()["level"] is None or isinstance(r.json()["level"], int)
+    data = client.get("/api/v1/cabinets", headers=headers).json()
+    cab = next(c for c in data if c["cabinet_id"] == "CAB-AI")
+    assert cab["dimming_mode"] == "ai"
+    assert cab["street_profile"] == "residential"
+
+
+def test_set_mode_rejects_invalid(client):
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-M"}, headers=headers)
+    bad = client.post("/api/v1/cabinets/CAB-M/mode", json={"mode": "turbo"}, headers=headers)
+    assert bad.status_code == 422
+
+
+def test_dim_switches_cabinet_to_manual(client, monkeypatch):
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+    client.post(
+        "/api/v1/cabinets/registry",
+        json={"code": "CAB-D", "latitude": 40.4, "longitude": -3.7},
+        headers=headers,
+    )
+    client.post("/api/v1/cabinets/CAB-D/mode", json={"mode": "ai"}, headers=headers)
+    # No hay broker en test → publish lanzaría RuntimeError (503). Lo mockeamos.
+    async def _noop(*a, **k):
+        return None
+    monkeypatch.setattr(mqtt_module.bus, "publish", _noop)
+    r = client.post("/api/v1/cabinets/CAB-D/dim", json={"level": 10}, headers=headers)
+    assert r.status_code == 200
+    assert r.json()["mode"] == "manual"
+    data = client.get("/api/v1/cabinets", headers=headers).json()
+    cab = next(c for c in data if c["cabinet_id"] == "CAB-D")
+    assert cab["dimming_mode"] == "manual"
+
+
 def test_ws_rejects_bad_token(client):
     with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/api/v1/ws?token=bad") as ws:

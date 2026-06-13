@@ -103,14 +103,15 @@ async def set_relay(
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
     _authorize_cabinet(db, cabinet_id, user)
-    try:
-        await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/relay", cmd.model_dump())
-    except RuntimeError as exc:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+    # Best-effort: si no hay broker (demo/local), el comando se registra igual
+    # para que la UI lo refleje; no se cae con 503.
+    delivered = await bus.try_publish(
+        f"phoenix/cabinets/{cabinet_id}/cmd/relay", cmd.model_dump()
+    )
     bus.record_command(cabinet_id, relay=cmd.state)
     bus.notify()
     _credit_and_audit(db, user, "cabinet.relay", cabinet_id, {"state": cmd.state})
-    return {"sent": True, "cabinet_id": cabinet_id, "state": cmd.state}
+    return {"sent": delivered, "cabinet_id": cabinet_id, "state": cmd.state}
 
 
 @router.post("/{cabinet_id}/dim")
@@ -121,10 +122,11 @@ async def set_dim(
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
     cabinet = _authorize_cabinet(db, cabinet_id, user)
-    try:
-        await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/dim", cmd.model_dump())
-    except RuntimeError as exc:
-        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
+    # Best-effort: el nivel se registra aunque no haya broker (en demo/local
+    # antes daba 503 y el slider "volvía al % anterior").
+    delivered = await bus.try_publish(
+        f"phoenix/cabinets/{cabinet_id}/cmd/dim", cmd.model_dump()
+    )
     bus.record_command(cabinet_id, dim=cmd.level)
     # Mover el slider = tomar control manual: el programador deja de tocarlo
     # hasta que se devuelva a programa/IA desde el selector de modo.
@@ -133,7 +135,7 @@ async def set_dim(
         db.add(cabinet)
     bus.notify()
     _credit_and_audit(db, user, "cabinet.dim", cabinet_id, {"level": cmd.level})
-    return {"sent": True, "cabinet_id": cabinet_id, "level": cmd.level, "mode": "manual"}
+    return {"sent": delivered, "cabinet_id": cabinet_id, "level": cmd.level, "mode": "manual"}
 
 
 class ModeCommand(BaseModel):

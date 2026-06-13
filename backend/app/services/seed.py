@@ -85,7 +85,7 @@ def seed_demo_cabinets(db: Session) -> None:
         circuits = []
         for ci in range(2):
             circuit = Circuit(
-                cabinet_code=code, number=ci + 1, name=f"Circuito {ci + 1}",
+                cabinet_code=code, number=ci + 1, name="",
                 color=_CIRCUIT_COLORS[ci % len(_CIRCUIT_COLORS)],
                 phase=_PHASES[ci % len(_PHASES)],
                 # Half the points hang off each circuit; nominal is the sum

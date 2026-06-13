@@ -61,6 +61,16 @@ class MQTTBus:
             raise RuntimeError("MQTT client not connected")
         await self._client.publish(topic, json.dumps(payload), qos=1)
 
+    async def try_publish(self, topic: str, payload: dict) -> bool:
+        """Publica si hay broker; si no, devuelve False sin romper. El comando
+        del operario se registra igual (estado comandado), de modo que la UI
+        refleje el cambio aunque en demo/local no haya broker MQTT levantado."""
+        try:
+            await self.publish(topic, payload)
+            return True
+        except RuntimeError:
+            return False
+
     def record_command(
         self, cabinet_id: str, *, relay: str | None = None, dim: int | None = None
     ) -> None:

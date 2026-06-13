@@ -11,12 +11,23 @@
   }
   function $(s) { return document.querySelector(s); }
   function el(tag, cls, html) { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }
+  // Escapa texto del backend/usuario antes de interpolarlo en innerHTML. Sin
+  // esto, un nombre de cuadro/luminaria o un User-Agent con HTML ejecutaría JS
+  // (XSS almacenado). Úsalo SIEMPRE con datos no controlados por nosotros.
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
   function has(perm) { const p = state.me?.permissions || []; return p.includes("*") || p.includes(perm); }
   // Capitaliza la primera letra para mostrar (ej. "pepe" → "Pepe"). El valor
   // guardado en BD no cambia; el login es case-insensitive.
   function cap(s) { return (s && s.length) ? s[0].toUpperCase() + s.slice(1) : (s || ""); }
   // Nombre visible de un rango ("owner" → "Phoenix", "admin_proyecto" → "Director").
   function rankLabel(id) { const r = (state.ranksCatalog || []).find(x => x.id === id); return r ? r.label : id; }
+  // Etiqueta de un circuito sin duplicar ("Circuito 1 · Circuito 1"): solo
+  // añade el nombre si aporta algo distinto a "Circuito N".
+  function circuitLabel(ci) {
+    if (!ci) return "—";
+    const base = "Circuito " + ci.number;
+    return (ci.name && ci.name !== base) ? base + " · " + ci.name : base;
+  }
   // Formato de fechas/horas en la zona horaria del DESPLIEGUE (no la del
   // navegador). state.tz lo fija /auth/info (Europe/Madrid, Atlantic/Canary…).
   function _tzOpts(extra) { return Object.assign({ timeZone: state.tz || "Europe/Madrid" }, extra || {}); }
@@ -519,7 +530,7 @@
     picker.append(all);
     (state.projects || []).forEach(p => {
       const o = el("div", "opt" + (state.activeProject === p.id ? " active" : ""));
-      o.innerHTML = `<div><div>${p.name}</div><small class="mono">${p.code}</small></div><div>${state.activeProject === p.id ? "✓" : ""}</div>`;
+      o.innerHTML = `<div><div>${esc(p.name)}</div><small class="mono">${esc(p.code)}</small></div><div>${state.activeProject === p.id ? "✓" : ""}</div>`;
       o.onclick = () => pickProject(p.id);
       picker.append(o);
     });
@@ -1067,7 +1078,7 @@
       const t = cab.telemetry || {};
       const card = el("div", "card");
       const head = el("div", "cab-head");
-      head.append(el("div", null, `<div class="id">${cab.cabinet_id}</div><div class="nm">${cab.name || ""}</div>`),
+      head.append(el("div", null, `<div class="id">${esc(cab.cabinet_id)}</div><div class="nm">${esc(cab.name || "")}</div>`),
         el("div", null, `<span class="dot ${cab.online ? cab.status : 'off'}"></span> <span class="muted" style="font-size:12px">${cab.online ? cab.status : 'offline'}</span>`));
       card.append(head);
       const m = el("div", "metrics");
@@ -1297,7 +1308,7 @@
         if (tele.door_open != null) infra.push(tele.door_open ? "🚪 abierta" : "🚪 cerrada");
         if (tele.intrusion) infra.push("🚨 intrusión");
         const infraLine = infra.length ? `<br><span class="muted">${infra.join(" · ")}</span>` : "";
-        m.bindPopup(`<strong>CM${cab.number} · ${cab.name || cab.code}</strong><br><span class="muted">${cab.code} · ${cab._online ? cab._status : "offline"}</span><br>V ${fmt(tele, "voltage_v", " V")} · I ${fmt(tele, "current_a", " A", 2)}${infraLine}<br>${cab.circuits.length} circuitos · ${cab.points.length} farolas${ctrl}`);
+        m.bindPopup(`<strong>CM${cab.number} · ${esc(cab.name || cab.code)}</strong><br><span class="muted">${esc(cab.code)} · ${cab._online ? cab._status : "offline"}</span><br>V ${fmt(tele, "voltage_v", " V")} · I ${fmt(tele, "current_a", " A", 2)}${infraLine}<br>${cab.circuits.length} circuitos · ${cab.points.length} farolas${ctrl}`);
         m.off("popupopen").on("popupopen", () => { const b = document.getElementById("pop-" + cab.code); if (b) b.onclick = () => { window._ctrlSel = cab.code; go("control"); }; });
         pts.push([cab.latitude, cab.longitude]);
       }
@@ -1440,7 +1451,7 @@
     const tb = el("tbody");
     alarms.forEach(a => {
       const tr = el("tr");
-      tr.innerHTML = `<td class="mono">${a.cabinet_id}</td><td>${a.type}</td><td><span class="badge ${a.severity}">${a.severity}</span></td><td class="muted">${a.message || ""}</td>`;
+      tr.innerHTML = `<td class="mono">${esc(a.cabinet_id)}</td><td>${esc(a.type)}</td><td><span class="badge ${(a.severity || "").toLowerCase()}">${esc(a.severity)}</span></td><td class="muted">${esc(a.message || "")}</td>`;
       const td = el("td");
       if (canAck) { const b = el("button", "btn sm ghost", "ACK"); b.onclick = () => ackCab(a.cabinet_id); td.append(b); }
       tr.append(td); tb.append(tr);
@@ -1501,11 +1512,11 @@
             const tr = el("tr"); tr.style.cursor = "pointer";
             const phaseCol = (tp.phase_colors || {})[pt.phase] || "#64748b";
             tr.innerHTML = `<td class="mono">${pt.number}</td>`
-              + `<td>${pt.street || "<span class='muted'>—</span>"}${pt.street_number ? " " + pt.street_number : ""}</td>`
+              + `<td>${pt.street ? esc(pt.street) : "<span class='muted'>—</span>"}${pt.street_number ? " " + esc(pt.street_number) : ""}</td>`
               + `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${cab.color};margin-right:5px"></span>CM${cab.number}</td>`
               + `<td>${circ ? "C" + circ.number : "—"}</td>`
               + `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${phaseCol};margin-right:5px"></span>${pt.phase}</td>`
-              + `<td>${pt.manufacturer || "—"}</td><td>${pt.model || "—"}</td><td class="mono">${(pt.power_w || 0).toFixed(0)}</td>`;
+              + `<td>${pt.manufacturer ? esc(pt.manufacturer) : "—"}</td><td>${pt.model ? esc(pt.model) : "—"}</td><td class="mono">${(pt.power_w || 0).toFixed(0)}</td>`;
             tr.onclick = () => openLightDetail(cab, pt);
             tb.append(tr);
           });
@@ -1613,11 +1624,11 @@
     state.topoTab = state.topoTab || "cuadro";
 
     const head = el("div", "row between");
-    head.innerHTML = `<h3 style="margin:0"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cab.color};margin-right:8px"></span>CM${cab.number} · ${cab.name || cab.code}</h3>`;
+    head.innerHTML = `<h3 style="margin:0"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cab.color};margin-right:8px"></span>CM${cab.number} · ${esc(cab.name || cab.code)}</h3>`;
     const closeX = el("button", "btn ghost sm", "✕"); closeX.onclick = () => modal.remove();
     head.append(closeX);
     card.append(head);
-    card.append(el("div", "muted", `${cab.code} · ${cab.zone || "sin zona"} · ${cab.points.length} luminarias · ${cab.circuits.length} circuitos`));
+    card.append(el("div", "muted", `${esc(cab.code)} · ${esc(cab.zone || "sin zona")} · ${cab.points.length} luminarias · ${cab.circuits.length} circuitos`));
 
     const tabs = el("div", "tabs"); tabs.style.marginTop = "12px";
     [["cuadro", "Cuadro"], ["circuitos", "Circuitos"], ["luminarias", "Luminarias"], ["dispositivo", "Dispositivo"]].forEach(([k, lbl]) => {
@@ -1643,12 +1654,14 @@
       ["Nombre", cab.name || "—"],
       ["Número (CM)", cab.number],
       ["Zona", cab.zone || "—"],
-      ["Color", `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${cab.color};margin-right:6px"></span><span class="mono">${cab.color}</span>`],
-      ["Coordenadas", cab.latitude != null ? `${cab.latitude.toFixed(5)}, ${cab.longitude.toFixed(5)}` : "sin ubicar"],
+      ["Color", `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${cab.color};margin-right:6px"></span><span class="mono">${esc(cab.color)}</span>`, "", true],
+      ["Coordenadas", cab.latitude != null ? `${cab.latitude.toFixed(5)}, ${cab.longitude.toFixed(5)}` : "sin ubicar", "", true],
     ];
-    rows.forEach(([k, v, cls]) => {
+    // isHtml=true en las filas cuyo valor es marcado nuestro (color/coords);
+    // el resto son datos del usuario y se escapan.
+    rows.forEach(([k, v, cls, isHtml]) => {
       const cell = el("div");
-      cell.innerHTML = `<div class="muted" style="font-size:11px">${k}</div><div class="${cls || ""}" style="font-size:14px">${v}</div>`;
+      cell.innerHTML = `<div class="muted" style="font-size:11px">${k}</div><div class="${cls || ""}" style="font-size:14px">${isHtml ? v : esc(v)}</div>`;
       grid.append(cell);
     });
     body.append(grid);
@@ -1671,7 +1684,7 @@
     cab.circuits.forEach(ci => {
       const list = cab.points.filter(pt => pt.circuit_id === ci.id);
       const tr = el("tr");
-      tr.innerHTML = `<td class="mono">${ci.number}</td><td>${ci.name || "—"}</td>`
+      tr.innerHTML = `<td class="mono">${ci.number}</td><td>${ci.name ? esc(ci.name) : "—"}</td>`
         + `<td><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${ci.color};margin-right:6px"></span><span class="mono">${ci.color}</span></td>`
         + `<td>${ci.phase}</td><td class="mono">${(ci.expected_power_w || 0).toFixed(0)} W</td><td class="mono">${list.length}</td>`;
       const td = el("td");
@@ -1702,8 +1715,8 @@
     cab.points.slice().sort((a, b) => a.number - b.number).forEach(pt => {
       const ci = circById[pt.circuit_id];
       const tr = el("tr");
-      tr.innerHTML = `<td class="mono">${pt.number}</td><td>${pt.label || "—"}</td>`
-        + `<td>${ci ? "Circuito " + ci.number : "<span class='muted'>?</span>"}</td>`
+      tr.innerHTML = `<td class="mono">${pt.number}</td><td>${pt.label ? esc(pt.label) : "—"}</td>`
+        + `<td>${ci ? circuitLabel(ci) : "<span class='muted'>?</span>"}</td>`
         + `<td>${pt.phase}</td><td class="mono">${(pt.power_w || 0).toFixed(0)} W</td>`;
       const td = el("td");
       if (canEdit) {
@@ -1737,7 +1750,7 @@
         devices.forEach(d => {
           const tr = el("tr");
           const last = d.last_seen_at ? fmtDateTime(d.last_seen_at) : "nunca";
-          tr.innerHTML = `<td class="mono">${d.serial}</td><td class="mono">${d.imei || "—"}</td><td>${d.model || "—"}</td><td>${d.firmware || "—"}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
+          tr.innerHTML = `<td class="mono">${esc(d.serial)}</td><td class="mono">${d.imei ? esc(d.imei) : "—"}</td><td>${d.model ? esc(d.model) : "—"}</td><td>${d.firmware ? esc(d.firmware) : "—"}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
           const td = el("td");
           if (canEdit) {
             const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444";
@@ -1868,7 +1881,7 @@
     const form = el("div"); form.style.display = "grid"; form.style.gap = "10px";
     const number = el("input"); number.type = "number"; number.placeholder = "Número de circuito"; number.value = circ?.number ?? (cab.circuits.length + 1);
     const name = el("input"); name.placeholder = "Nombre (opcional)"; name.value = circ?.name || "";
-    const phase = el("select"); ["L1", "L2", "L3", "III"].forEach(p => { const o = el("option", null, p); o.value = p; if ((circ?.phase || "L1") === p) o.selected = true; phase.append(o); });
+    const phase = el("select"); ["L1", "L2", "L3"].forEach(p => { const o = el("option", null, p); o.value = p; if ((circ?.phase || "L1") === p) o.selected = true; phase.append(o); });
     const phaseWrap = el("div", "row"); phaseWrap.style.gap = "8px"; phaseWrap.style.alignItems = "center"; phaseWrap.append(el("span", "muted", "Fase"), phase);
     const color = el("input"); color.type = "color"; color.value = circ?.color || "#38bdf8";
     const colorWrap = el("div", "row"); colorWrap.style.gap = "8px"; colorWrap.style.alignItems = "center"; colorWrap.append(el("span", "muted", "Color"), color);
@@ -1920,23 +1933,38 @@
     head.innerHTML = `<h3 style="margin:0">💡 ${farolaName}</h3>`;
     const closeX = el("button", "btn ghost sm", "✕"); closeX.onclick = () => modal.remove();
     head.append(closeX); card.append(head);
-    if (pt.label && pt.label !== farolaName) card.append(el("div", "muted", pt.label));
+    if (pt.label && pt.label !== farolaName) { const lblNode = el("div", "muted"); lblNode.textContent = pt.label; card.append(lblNode); }
 
     card.style.maxWidth = "560px"; card.style.maxHeight = "85vh"; card.style.overflowY = "auto";
     const cmColor = cab.color || "#f97316";
     const circColor = circ ? circ.color : "#64748b";
     const sec = (txt) => { const h = el("div", "muted"); h.style.cssText = "font-size:11px; font-weight:600; letter-spacing:.5px; text-transform:uppercase; margin-top:14px; margin-bottom:6px; border-top:1px solid var(--border); padding-top:10px"; h.textContent = txt; card.append(h); };
     const grid = () => { const g = el("div"); g.style.display = "grid"; g.style.gridTemplateColumns = "1fr 1fr"; g.style.gap = "10px"; return g; };
-    const cell = (k, v) => { const d = el("div"); d.innerHTML = `<div class="muted" style="font-size:11px">${k}</div><div style="font-size:14px">${v || "<span class='muted'>—</span>"}</div>`; return d; };
+    // cell(): el valor es TEXTO (se escapa vía textContent). Trata el 0 como
+    // valor real, no como vacío. cellHtml(): cuando el valor lleva marcado
+    // nuestro (p.ej. un punto de color), escapando a mano los datos.
+    const cell = (k, v) => {
+      const d = el("div");
+      const kd = el("div", "muted"); kd.style.fontSize = "11px"; kd.textContent = k;
+      const vd = el("div"); vd.style.fontSize = "14px";
+      if (v === null || v === undefined || v === "") vd.innerHTML = "<span class='muted'>—</span>";
+      else vd.textContent = v;
+      d.append(kd, vd); return d;
+    };
+    const cellHtml = (k, html) => { const d = el("div"); d.innerHTML = `<div class="muted" style="font-size:11px">${esc(k)}</div><div style="font-size:14px">${html || "<span class='muted'>—</span>"}</div>`; return d; };
     const has = (k) => pt[k] != null && pt[k] !== "" && pt[k] !== 0;
 
     // === 🔌 Eléctrico Phoenix (lo primero — qué desconectar) ===
     sec("🔌 Eléctrico Phoenix");
+    // `online` lo envía /topology; `_online` solo lo setea el mapa. Al abrir la
+    // ficha desde la lista de Luminarias el mapa no ha corrido → usamos el que
+    // venga, así no sale "en línea" con el CM caído.
+    const cmOnline = cab.online ?? cab._online;
     const elec = grid(); elec.append(
-      cell("Centro de mando", `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${cmColor};margin-right:6px"></span>CM${cab.number} · ${cab.code}`),
-      cell("Circuito", circ ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${circColor};margin-right:6px"></span>Circuito ${circ.number}${circ.name ? " · " + circ.name : ""}` : "—"),
-      cell("Fase", `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${phaseColor};margin-right:6px"></span>${pt.phase}`),
-      cell("Estado CM", cab._online === false ? "🔴 offline" : "🟢 en línea"),
+      cellHtml("Centro de mando", `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${cmColor};margin-right:6px"></span>CM${cab.number} · ${esc(cab.code)}`),
+      cellHtml("Circuito", circ ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${circColor};margin-right:6px"></span>${esc(circuitLabel(circ))}` : "—"),
+      cellHtml("Fase", `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${phaseColor};margin-right:6px"></span>${esc(pt.phase)}`),
+      cell("Estado CM", cmOnline === false ? "🔴 offline" : "🟢 en línea"),
     );
     card.append(elec);
 
@@ -1973,7 +2001,7 @@
       cell("CP", pt.postal_code),
       cell("Vía", pt.street),
       cell("Número", pt.street_number),
-      cell("Posición", pt.latitude != null ? `<span class="mono" style="font-size:12px">${pt.latitude.toFixed(5)}, ${pt.longitude.toFixed(5)}</span>` : ""),
+      cellHtml("Posición", pt.latitude != null ? `<span class="mono" style="font-size:12px">${pt.latitude.toFixed(5)}, ${pt.longitude.toFixed(5)}</span>` : ""),
     );
     card.append(addr);
     if (has("notes")) card.append(cell("Observaciones", pt.notes));
@@ -2054,7 +2082,7 @@
     // Rellena el selector de circuitos con los del CM actual.
     const fillCircuits = () => {
       circuit.innerHTML = "";
-      (curCab?.circuits || []).forEach(ci => { const o = el("option", null, `Circuito ${ci.number}${ci.name ? " · " + ci.name : ""}`); o.value = ci.id; if (pt?.circuit_id === ci.id) o.selected = true; circuit.append(o); });
+      (curCab?.circuits || []).forEach(ci => { const o = el("option", null, circuitLabel(ci)); o.value = ci.id; if (pt?.circuit_id === ci.id) o.selected = true; circuit.append(o); });
       if (!(curCab?.circuits || []).length) { const o = el("option", null, "(sin circuitos — crea uno antes)"); o.value = ""; circuit.append(o); }
     };
     const elec = grid2();
@@ -2429,7 +2457,7 @@
       const tb = el("tbody");
       users.forEach(u => {
         const tr = el("tr");
-        tr.innerHTML = `<td class="mono">${u.id}</td><td>${cap(u.username)}</td><td><span class="badge rank">${rankLabel(u.rank)}</span></td><td class="mono">${u.activity_points}</td><td>${u.is_active ? "sí" : "no"}</td>`;
+        tr.innerHTML = `<td class="mono">${u.id}</td><td>${esc(cap(u.username))}</td><td><span class="badge rank">${esc(rankLabel(u.rank))}</span></td><td class="mono">${u.activity_points}</td><td>${u.is_active ? "sí" : "no"}</td>`;
         const td = el("td");
         if (has("user:manage")) {
           const sel = el("select"); sel.style.width = "150px";
@@ -2708,7 +2736,7 @@
       projects.forEach(p => {
         const nu = countUsers(p.id), nc = countCabs(p.id);
         const tr = el("tr");
-        tr.innerHTML = `<td class="mono">${p.id}</td><td class="mono">${p.code}</td><td>${p.name}</td><td class="mono">${nu}</td><td class="mono">${nc}</td>`;
+        tr.innerHTML = `<td class="mono">${p.id}</td><td class="mono">${esc(p.code)}</td><td>${esc(p.name)}</td><td class="mono">${nu}</td><td class="mono">${nc}</td>`;
         const td = el("td");
         if (isOwnerUser()) {  // borrar proyecto: solo el owner
           const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444";
@@ -2765,7 +2793,7 @@
       <span class="caret">${isOpen ? "▾" : "▸"}</span>
       ${statusDot}
       <div class="user-meta">
-        <div class="user-name">${cap(u.username)}</div>
+        <div class="user-name">${esc(cap(u.username))}</div>
         <div class="user-sub muted">id ${u.id} · ${u.activity_points} pts</div>
       </div>
       <span class="badge rank">${rankLabel(u.rank)}</span>`;
@@ -3312,7 +3340,7 @@
         rows.forEach(e => {
           const tr = el("tr");
           const when = fmtDateTime(e.timestamp);
-          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge">${e.action}</span></td><td class="mono">${e.target || "—"}</td><td class="muted" style="font-size:12px">${e.detail ? JSON.stringify(e.detail) : ""}</td>`;
+          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${esc(e.username)}</td><td><span class="badge">${esc(e.action)}</span></td><td class="mono">${e.target ? esc(e.target) : "—"}</td><td class="muted" style="font-size:12px">${e.detail ? esc(JSON.stringify(e.detail)) : ""}</td>`;
           tb.append(tr);
         });
       };
@@ -3484,7 +3512,7 @@
           devs.forEach(d => {
             const tr = el("tr");
             const last = fmtDateTime(d.last_seen_at);
-            tr.innerHTML = `<td>${d.label || "—"}<div class="muted" style="font-size:11px">${(d.user_agent || "").slice(0,80)}</div></td><td class="mono">${d.last_ip || "?"}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
+            tr.innerHTML = `<td>${d.label ? esc(d.label) : "—"}<div class="muted" style="font-size:11px">${esc((d.user_agent || "").slice(0,80))}</div></td><td class="mono">${esc(d.last_ip || "?")}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
             const td = el("td");
             const rev = el("button", "btn ghost sm", "Revocar");
             rev.onclick = async () => { if (confirm("¿Revocar este dispositivo? La próxima sesión desde él contará como nueva.")) { try { await api(`/security/devices/${encodeURIComponent(d.device_id)}`, { method: "DELETE" }); toast("Dispositivo revocado"); loadSecurity(); } catch (e) { toast(e.message, true); } } };

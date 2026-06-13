@@ -13,7 +13,7 @@
     :root {
       --bg: #020617; --panel: #0f172a; --panel-2: #0b1120;
       --border: #1e293b; --border-2: #334155;
-      --text: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
+      --text: #e2e8f0; --fg: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
       --accent: #f97316; --accent-2: #ef4444; --accent-3: #fb923c;
       --accent-soft: rgba(249, 115, 22, .14); --accent-line: rgba(249, 115, 22, .45);
       --ok: #22c55e; --warn: #f59e0b; --crit: #ef4444;
@@ -56,6 +56,8 @@
     input, select { width: 100%; padding: 11px 13px; background: var(--panel-2); color: var(--text);
       border: 1px solid var(--border-2); border-radius: 10px; font-size: 14px; outline: none; }
     input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    /* El popup nativo de <option> sale blanco por defecto: lo forzamos al tema oscuro. */
+    select option, select optgroup { background: var(--panel-2); color: var(--text); }
     .btn { border: 1px solid var(--accent-line); background: var(--fire); color: #fff; font-weight: 600;
       padding: 11px 16px; border-radius: 10px; width: 100%; margin-top: 20px; font-size: 14px;
       box-shadow: 0 8px 24px rgba(239,68,68,.3); }
@@ -294,7 +296,7 @@
       align-items: center; padding: 8px 4px; gap: 12px;
     }
     .paginator > div:last-child { display: flex; justify-content: flex-end; }
-    .paginator select { background: rgba(255,255,255,0.04); color: var(--fg);
+    .paginator select { background: var(--panel-2); color: var(--text);
       border: 1px solid var(--border-2); border-radius: 6px; padding: 4px 8px; }
     .paginator .row { gap: 8px; align-items: center; }
     /* ===== Permisos: tabs internas + acordeón de usuarios ===== */
@@ -552,16 +554,16 @@
         <div><h1>PHOENIX</h1><div class="sub">Light · <span id="build-tag" title="versión · build (commit). Si no coincide con el repo, recarga con Ctrl+F5"></span></div></div>
       </div>
       <nav id="nav">
-        <a data-view="inicio" class="active"><span class="ico">◎</span> Inicio</a>
-        <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">▦</span> Cuadros</a>
+        <a data-view="inicio" class="active"><span class="ico">🗺️</span> Inicio</a>
+        <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">🗄️</span> Cuadros</a>
         <a data-view="luminarias" data-perm="cabinet:read"><span class="ico">💡</span> Luminarias</a>
-        <a data-view="topologia" data-perm="cabinet:read"><span class="ico">⌗</span> Topología</a>
-        <a data-view="control" data-perm="cabinet:control"><span class="ico">⏻</span> Control</a>
-        <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">⚠</span> Alarmas</a>
-        <a data-view="auditoria" data-perm="audit:read"><span class="ico">❑</span> Auditoría</a>
-        <a data-view="seguridad" data-perm="user:manage"><span class="ico">⛨</span> Seguridad</a>
+        <a data-view="topologia" data-perm="cabinet:read"><span class="ico">🔗</span> Topología</a>
+        <a data-view="control" data-perm="cabinet:control"><span class="ico">🎛️</span> Control</a>
+        <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">🚨</span> Alarmas</a>
+        <a data-view="auditoria" data-perm="audit:read"><span class="ico">📋</span> Auditoría</a>
+        <a data-view="seguridad" data-perm="user:manage"><span class="ico">🛡️</span> Seguridad</a>
         <a data-view="proyectos" data-perm="user:manage"><span class="ico">🏙️</span> Proyectos</a>
-        <a data-view="permisos" data-perm="user:manage"><span class="ico">⚿</span> Permisos</a>
+        <a data-view="permisos" data-perm="user:manage"><span class="ico">🔑</span> Permisos</a>
       </nav>
       <div class="spacer"></div>
       <div class="userbox-mini muted">Kumiho Group · Phoenix</div>

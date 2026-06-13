@@ -20,7 +20,7 @@ class Circuit(Base):
     number: Mapped[int] = mapped_column(Integer, default=1)
     name: Mapped[str] = mapped_column(String(120), default="")
     color: Mapped[str] = mapped_column(String(9), default="#38bdf8")
-    phase: Mapped[str] = mapped_column(String(8), default="III")  # L1/L2/L3/III
+    phase: Mapped[str] = mapped_column(String(8), default="L1")  # L1/L2/L3
     # Nominal power the alarm engine compares against (sum of luminarias on
     # this circuit, in W). 0 = "no comprobación" (legacy circuits without a
     # nominal configured stay silent so we don't spam false alarms).

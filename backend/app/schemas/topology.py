@@ -6,7 +6,7 @@ class CircuitCreate(BaseModel):
     number: int = 1
     name: str = ""
     color: str = "#38bdf8"
-    phase: str = "III"
+    phase: str = "L1"
     expected_power_w: float = Field(0.0, ge=0)
 
 

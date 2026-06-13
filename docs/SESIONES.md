@@ -50,7 +50,24 @@ Formato de cada entrada:
   - API: `POST /cabinets/{id}/mode`; `/dim` pasa el cuadro a manual; emergencia
     fija manual. 9 tests nuevos (132 verdes).
   - UI: selector de 3 modos en Control + perfil de calle en la ficha del CM.
+- **Hecho (cont.)** · Pulido de topología + auditoría completa del programa
+  - Fase de circuito: quitada "III" (solo L1/L2/L3) + migración de los viejos.
+  - Nombre de circuito sin duplicar (`circuitLabel`); seed con nombre vacío.
+  - Iconos del menú a emoji; fondo blanco del paginador (`--fg` no existía).
+  - Fix dimming manual "volvía al % anterior": `try_publish` best-effort
+    (registra el comando aunque no haya broker; antes 503).
+  - **Auditoría completa** (2 agentes): botones/CRUD todos OK; correctness OK.
+    Hallazgo P0 = **XSS sistémico** → añadido `esc()` + `cellHtml` y escapados
+    ~16 sitios (nombres de CM/circuito/luminaria/proyecto, User-Agent, audit…).
+  - 2 bugs funcionales: ficha de luminaria mostraba "en línea" con CM caído;
+    valor 0 salía como "—".
 - **Pendiente para la próxima**
+  - Repasar XSS restante de baja prioridad (la auditoría citó ~200 innerHTML;
+    cubiertos los de datos controlados por usuario/atacante. El helper `esc()`
+    ya está para el resto).
+  - Limpieza menor: tabla legacy `loadUsers`/vistas huérfanas `usuarios`+`rangos`
+    (solo por deep-link; "Permisos" las reemplaza). Default de select legacy a
+    "visualizador" (línea ~2398).
   - **CSP estricta** (CSP-B): reconocimiento ya hecho (sin `eval`/handlers
     inline; recursos externos mapeados: unpkg, cdnjs, Google Fonts, tiles
     carto/OSM/ArcGIS, Nominatim). Falta escribir la cabecera en

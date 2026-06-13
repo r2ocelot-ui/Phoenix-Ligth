@@ -43,6 +43,7 @@ def init_db() -> None:
     _migrate_legacy_ranks()
     _migrate_legacy_admin()
     _migrate_user_projects()
+    _migrate_circuit_phases()
 
 
 def reconcile_legacy_admin(db) -> str:
@@ -109,6 +110,24 @@ def _migrate_user_projects() -> None:
         if changed:
             db.commit()
             logger.info("Multi-proyecto: inicializado project_ids en %d usuario(s)", changed)
+
+
+def _migrate_circuit_phases() -> None:
+    """Convierte circuitos con fase trifásica heredada ("III") o vacía a una
+    fase concreta L1/L2/L3, repartida por número de circuito. El capitán pidió
+    ver L1/L2/L3, no las 'tres barras' (III). Idempotente."""
+    from app.models.circuit import Circuit
+    valid = {"L1", "L2", "L3"}
+    phases = ("L1", "L2", "L3")
+    with SessionLocal() as db:
+        changed = 0
+        for c in db.query(Circuit).all():
+            if (c.phase or "") not in valid:
+                c.phase = phases[(c.number - 1) % 3]
+                changed += 1
+        if changed:
+            db.commit()
+            logger.info("Migradas %d fase(s) de circuito heredadas (III/vacía) → L1/L2/L3", changed)
 
 
 def _migrate_legacy_ranks() -> None:

@@ -117,6 +117,14 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **Perfil de calle** por CM (arteria / residencial / paso) | 🧪 | Topología → ficha del CM → "Perfil de calle (modo IA)". Define el suelo de seguridad de la IA |
 | Hotfix: `NameError: logger` en el arranque (TZ auto) | 🧪 | Arrancar con display_timezone=auto ya no revienta |
 | Fix: `/cabinets/{id}/snapshot` llamaba a `_merged(db)` sin scope | 🧪 | Endpoint corregido (pasa el scope del actor) |
+| Fix: dimming manual "volvía al % anterior" sin broker MQTT | 🧪 | `try_publish` best-effort: el comando se registra aunque no haya broker (antes daba 503) |
+| Fase de circuito: quitada "III"; selector solo L1/L2/L3 + migración | 🧪 | Crear/editar circuito; circuitos viejos con "III" pasan a L1/L2/L3 por número al arrancar |
+| Fix: nombre de circuito duplicado ("Circuito 1 · Circuito 1") | 🧪 | Helper `circuitLabel`; seed deja el nombre vacío (opcional) |
+| **Iconos del menú** unificados a emoji (como Hydra) | 🧪 | Sidebar: 🗺️🗄️💡🔗🎛️🚨📋🛡️🏙️🔑 (antes símbolos que salían como cajas) |
+| Fix: fondo blanco del selector "10/25 por página" (`--fg` no existía) | 🧪 | Definida `--fg`; `<option>` tematizados oscuros en todos los selects |
+| **🔒 XSS: escape de datos en innerHTML** (`esc()` + `cellHtml`) | 🧪 | Nombres de CM/circuito/luminaria, User-Agent, auditoría, etc. ya no inyectan HTML. Quita el agujero P0 que detectó la auditoría |
+| Fix: ficha de luminaria mostraba "en línea" con CM caído (`_online`) | 🧪 | Abierta desde Luminarias usa `online` de /topology |
+| Fix: en la ficha, un campo con valor 0 mostraba "—" | 🧪 | `cell()` distingue 0 de vacío |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

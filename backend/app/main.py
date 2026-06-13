@@ -62,6 +62,19 @@ async def lifespan(_: FastAPI):
         if settings.demo_mode:
             seed_demo_admin(db, settings.demo_admin_username, settings.demo_admin_password)
             seed_demo_cabinets(db)
+        # Zona horaria de display: "auto" → deducir de la ubicación de los
+        # cuadros (Canarias vs península); si no, usar la configurada.
+        from app.core import tz as _tz
+        if settings.display_timezone == "auto":
+            from sqlalchemy import func as _f
+            from app.models.cabinet import Cabinet
+            row = db.query(_f.avg(Cabinet.latitude), _f.avg(Cabinet.longitude)).first()
+            lat, lon = (row or (None, None))
+            _tz.set_display_tz(_tz.tz_from_coords(lat, lon))
+            logger.info("Zona horaria de display (auto) → %s (centro lat=%s lon=%s)",
+                        _tz.display_tz(), lat, lon)
+        else:
+            _tz.set_display_tz(settings.display_timezone)
     await bus.start()
     yield
     await bus.stop()

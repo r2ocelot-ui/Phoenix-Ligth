@@ -17,6 +17,12 @@
   function cap(s) { return (s && s.length) ? s[0].toUpperCase() + s.slice(1) : (s || ""); }
   // Nombre visible de un rango ("owner" → "Phoenix", "admin_proyecto" → "Director").
   function rankLabel(id) { const r = (state.ranksCatalog || []).find(x => x.id === id); return r ? r.label : id; }
+  // Formato de fechas/horas en la zona horaria del DESPLIEGUE (no la del
+  // navegador). state.tz lo fija /auth/info (Europe/Madrid, Atlantic/Canary…).
+  function _tzOpts(extra) { return Object.assign({ timeZone: state.tz || "Europe/Madrid" }, extra || {}); }
+  function fmtDateTime(x) { try { return new Date(x).toLocaleString("es-ES", _tzOpts()); } catch (e) { return ""; } }
+  function fmtTime(x) { try { return new Date(x).toLocaleTimeString("es-ES", _tzOpts()); } catch (e) { return ""; } }
+  function fmtDate(x) { try { return new Date(x).toLocaleDateString("es-ES", _tzOpts()); } catch (e) { return ""; } }
   function toast(msg, isErr) { const t = $("#toast"); t.textContent = msg; t.className = "toast show" + (isErr ? " err" : ""); setTimeout(() => t.className = "toast", 3200); }
   function netMsg(e) {
     return /failed to fetch|networkerror|load failed/i.test(e?.message || "")
@@ -655,7 +661,7 @@
       const tick = el("div", "dock-tick " + (ev.severity === "critical" ? "bad" : ev.severity || ""));
       const msg = el("div", "dock-msg");
       msg.innerHTML = `<div>${ev.label}</div>${ev.sub ? `<div class="muted">${ev.sub}</div>` : ""}`;
-      const time = el("div", "dock-time", new Date(ev.timestamp).toLocaleTimeString());
+      const time = el("div", "dock-time", fmtTime(ev.timestamp));
       row.append(tick, msg, time);
       body.append(row);
     });
@@ -1679,7 +1685,7 @@
         const tb = el("tbody");
         devices.forEach(d => {
           const tr = el("tr");
-          const last = d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : "nunca";
+          const last = d.last_seen_at ? fmtDateTime(d.last_seen_at) : "nunca";
           tr.innerHTML = `<td class="mono">${d.serial}</td><td class="mono">${d.imei || "—"}</td><td>${d.model || "—"}</td><td>${d.firmware || "—"}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
           const td = el("td");
           if (canEdit) {
@@ -2723,7 +2729,7 @@
     };
     left.append(sel);
     const right = el("div");
-    right.innerHTML = `<div class="muted" style="font-size:11px">Email · creado</div><div style="font-size:13px">${u.email || "—"} · <span class="mono muted">${new Date(u.created_at).toLocaleDateString()}</span></div>`;
+    right.innerHTML = `<div class="muted" style="font-size:11px">Email · creado</div><div style="font-size:13px">${u.email || "—"} · <span class="mono muted">${fmtDate(u.created_at)}</span></div>`;
     top.append(left, right);
     wrap.append(top);
 
@@ -2989,7 +2995,7 @@
       const aLab = el("div", "muted"); aLab.style.fontSize = "11px"; aLab.textContent = "Último acceso"; audit.append(aLab);
       const aVal = el("div"); aVal.style.fontSize = "13px";
       aVal.textContent = u.last_login_at
-        ? `${new Date(u.last_login_at).toLocaleString()} · IP ${u.last_login_ip || "—"}`
+        ? `${fmtDateTime(u.last_login_at)} · IP ${u.last_login_ip || "—"}`
         : "nunca";
       audit.append(aVal); box.append(audit);
 
@@ -3229,7 +3235,7 @@
         tb.innerHTML = "";
         rows.forEach(e => {
           const tr = el("tr");
-          const when = new Date(e.timestamp).toLocaleString();
+          const when = fmtDateTime(e.timestamp);
           tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge">${e.action}</span></td><td class="mono">${e.target || "—"}</td><td class="muted" style="font-size:12px">${e.detail ? JSON.stringify(e.detail) : ""}</td>`;
           tb.append(tr);
         });
@@ -3361,7 +3367,7 @@
           const bb = el("tbody");
           bans.forEach(b => {
             const tr = el("tr");
-            const exp = b.expires_at ? new Date(b.expires_at).toLocaleString() : "permanente";
+            const exp = b.expires_at ? fmtDateTime(b.expires_at) : "permanente";
             tr.innerHTML = `<td class="mono">${b.ip}</td><td class="muted" style="font-size:12px">${b.reason || ""}</td><td>${b.banned_by}</td><td class="muted mono" style="font-size:12px">${exp}</td>`;
             const td = el("td");
             const rm = el("button", "btn ghost sm", "Quitar");
@@ -3401,7 +3407,7 @@
           const db = el("tbody");
           devs.forEach(d => {
             const tr = el("tr");
-            const last = new Date(d.last_seen_at).toLocaleString();
+            const last = fmtDateTime(d.last_seen_at);
             tr.innerHTML = `<td>${d.label || "—"}<div class="muted" style="font-size:11px">${(d.user_agent || "").slice(0,80)}</div></td><td class="mono">${d.last_ip || "?"}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
             const td = el("td");
             const rev = el("button", "btn ghost sm", "Revocar");
@@ -3424,7 +3430,7 @@
         tb.innerHTML = "";
         rows.forEach(e => {
           const tr = el("tr");
-          const when = new Date(e.timestamp).toLocaleString();
+          const when = fmtDateTime(e.timestamp);
           const cls = SEC_BADGE[e.action] || "";
           const label = SEC_LABEL[e.action] || e.action;
           const det = e.detail ? Object.entries(e.detail).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ") : "";

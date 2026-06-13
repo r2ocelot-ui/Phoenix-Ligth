@@ -1252,3 +1252,25 @@ def test_info_and_health_expose_version_build(client):
     assert info["timezone"]  # zona horaria del despliegue para el reloj del panel
     health = client.get("/health").json()
     assert health["version"] == info["version"] and health["build"] == info["build"]
+
+
+def test_display_tz_auto_detects_canarias():
+    """La zona de display 'auto' distingue Canarias (oeste de -10°) de la
+    península por la longitud de los cuadros."""
+    from app.core import tz
+    assert tz.resolve_from_longitude(-3.7) == "Europe/Madrid"     # Madrid
+    assert tz.resolve_from_longitude(2.6) == "Europe/Madrid"      # Barcelona / Baleares
+    assert tz.resolve_from_longitude(-15.4) == "Atlantic/Canary"  # Las Palmas
+    assert tz.resolve_from_longitude(-16.6) == "Atlantic/Canary"  # Tenerife
+    assert tz.resolve_from_longitude(None) == "Europe/Madrid"     # sin datos → por defecto
+
+
+def test_tz_from_coords_detects_real_timezone_worldwide():
+    """Detección REAL de zona por coordenadas (timezonefinder), no solo España."""
+    pytest.importorskip("timezonefinder")
+    from app.core import tz
+    assert tz.tz_from_coords(40.4168, -3.7038) == "Europe/Madrid"      # Madrid
+    assert tz.tz_from_coords(28.12, -15.43) == "Atlantic/Canary"       # Las Palmas
+    assert tz.tz_from_coords(40.71, -74.0) == "America/New_York"       # NYC
+    assert tz.tz_from_coords(19.43, -99.13) == "America/Mexico_City"   # CDMX
+    assert tz.tz_from_coords(None, None) == "Europe/Madrid"            # sin datos → default

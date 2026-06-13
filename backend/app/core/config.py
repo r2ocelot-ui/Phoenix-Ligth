@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     # punta/valle son en hora CIVIL local, no en la del servidor (que suele
     # ir en UTC). Sin esto, en un server UTC los tramos salían 2 h corridos.
     tariff_timezone: str = "Europe/Madrid"
+    # Zona horaria de DISPLAY (reloj y tiempos del panel). "auto" la deduce de
+    # la ubicación de los cuadros (Canarias vs península). Distinta de la de
+    # tarifa: el reloj es hora local, la tarifa es peninsular por ley.
+    display_timezone: str = "auto"
     # Topes de dimming por periodo (consciente del coste), configurables para
     # encajar el contrato real. Los TRAMOS horarios siguen en services/tariff.py
     # (pendiente: hacerlos configurables por proyecto).

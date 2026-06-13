@@ -84,7 +84,7 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | WebSocket `/ws` valida usuario + permiso + scope | 🧪 | Desactivar un usuario → su WS se cierra; un user de Madrid solo ve sus cuadros en el snapshot |
 | Guard de producción del `jwt_secret` | 🧪 | Arrancar con `PHOENIX_DEMO_MODE=false` y `jwt_secret` por defecto → revienta el arranque |
 | `tools/make_release.py` (paquete limpio estilo Hydra) | 🧪 | `python3 tools/make_release.py` → `dist/phoenix-cliente-<fecha>.zip` sin `.git/.venv/.db/tests` |
-| `services/sun.py` + endpoint `/cabinets/{id}/sun` | 🧪 | Sunrise/sunset astronómico OFFLINE para sanity-check de la fotocélula |
+| `services/sun.py` + endpoint `/cabinets/{id}/sun` | 🔵 | **Verificado 13-jun**: `/sun` de CAB-001 da amanecer 04:45 UTC (06:45 Madrid) — correcto, offline |
 | Tarifa por tramos → dimming por coste (`services/tariff.py` + `/tariff`) | 🧪 | `GET /tariff/now` y `/schedule`; recorta dimming en punta sin bajar del mínimo de seguridad |
 | **V1.R1.P1** · Bug TZ de la tarifa corregido (`tariff_timezone` + `zoneinfo`) | 🧪 | UTC→hora local; en un server UTC los tramos ya NO salen 2 h corridos |
 | Encendido automático astronómico, **sin fotocélula** (`/cabinets/{id}/auto-level`) | 🧪 | `sun.py` decide ON/OFF + perfil + tope de tarifa. De día→0, de noche→nivel |

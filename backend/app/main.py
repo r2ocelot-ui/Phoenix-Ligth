@@ -22,6 +22,7 @@ from app.services import ip_guard, role_store
 from app.services.seed import seed_demo_admin, seed_demo_cabinets
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("phoenix")
 
 
 DEFAULT_JWT_SECRET = "dev-secret-change-me"

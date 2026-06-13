@@ -2355,7 +2355,23 @@
     const lat = el("input"); lat.placeholder = "Latitud (opcional)"; lat.value = cab?.latitude ?? prefill?.latitude ?? "";
     const lon = el("input"); lon.placeholder = "Longitud (opcional)"; lon.value = cab?.longitude ?? prefill?.longitude ?? "";
     const coords = el("div", "row"); coords.style.gap = "8px"; coords.append(lat, lon);
-    form.append(code, name, number, zone, colorWrap, coords);
+    // Ciudad / proyecto — solo el owner asigna (un director hereda el suyo).
+    // Nuevo CM: preselecciona la ciudad activa del topbar. Editar: la del CM.
+    let projSel = null;
+    if (isOwnerUser()) {
+      projSel = el("select");
+      const none = el("option", null, "— Global (sin ciudad) —"); none.value = ""; projSel.append(none);
+      const curPid = editing ? (cab?.project_id ?? null) : (state.activeProject ?? null);
+      (state.projects || []).forEach(p => {
+        const o = el("option", null, p.name); o.value = String(p.id);
+        if (curPid === p.id) o.selected = true; projSel.append(o);
+      });
+      const pwrap = el("div"); pwrap.innerHTML = `<div class="muted" style="font-size:11px;margin-bottom:4px">Ciudad / proyecto</div>`;
+      pwrap.append(projSel);
+      form.append(code, name, number, zone, colorWrap, coords, pwrap);
+    } else {
+      form.append(code, name, number, zone, colorWrap, coords);
+    }
     card.append(form);
 
     const actions = el("div", "perm-actions");
@@ -2367,6 +2383,7 @@
         latitude: lat.value ? parseFloat(lat.value) : null,
         longitude: lon.value ? parseFloat(lon.value) : null,
       };
+      if (projSel) payload.project_id = projSel.value ? parseInt(projSel.value, 10) : null;
       try {
         if (editing) {
           await api(`/cabinets/registry/${encodeURIComponent(cab.code)}`, { method: "PATCH", body: JSON.stringify(payload) });

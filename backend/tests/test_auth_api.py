@@ -1222,3 +1222,25 @@ def test_list_projects_returns_all_assigned_in_multi_project(client):
     ing = _token(client, "ing")
     codes = {p["code"] for p in client.get("/api/v1/projects", headers=_auth(ing)).json()}
     assert codes == {"benidorm", "finestrat"}      # AHORA ve las dos
+
+
+def test_owner_assigns_cabinet_to_project_director_cannot_move(client):
+    """El fallo del 13: los CM nacían 'globales' y los veían todos. Ahora el
+    owner puede asignar un CM a una ciudad (y un director NO puede moverlo)."""
+    own, madrid_id, bcn_id = _setup_two_projects(client)
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.cabinet import Cabinet
+    db = next(_app.dependency_overrides[get_db]())
+    db.add(Cabinet(code="CAB-GLOBAL", name="G")); db.commit()   # sin proyecto
+    # Owner lo mueve a Madrid.
+    r = client.patch("/api/v1/cabinets/registry/CAB-GLOBAL",
+                     json={"project_id": madrid_id}, headers=_auth(own))
+    assert r.status_code == 200 and r.json()["project_id"] == madrid_id
+    # Un director de Madrid NO puede cambiar el proyecto de un cuadro.
+    client.post("/api/v1/users", json={"username": "dir", "password": "secret123", "rank": "admin_proyecto"}, headers=_auth(own))
+    dir_id = _id_of(client, own, "dir")
+    client.post("/api/v1/projects/assign-user", json={"user_id": dir_id, "project_ids": [madrid_id]}, headers=_auth(own))
+    d = _token(client, "dir")
+    assert client.patch("/api/v1/cabinets/registry/CAB-MAD",
+                        json={"project_id": bcn_id}, headers=_auth(d)).status_code == 403

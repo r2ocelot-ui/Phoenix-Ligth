@@ -174,7 +174,12 @@ def update_cabinet(
     cabinet = db.query(Cabinet).filter(Cabinet.code == code).first()
     if not cabinet:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Cabinet not found")
+    tenancy.ensure_visible(cabinet, actor)  # no editar cuadros fuera de tu scope
     data = body.model_dump(exclude_unset=True)
+    # Mover un cuadro de ciudad/proyecto es cosa del owner (gestiona proyectos).
+    if "project_id" in data and not tenancy.is_global(actor):
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Solo el owner puede cambiar el proyecto de un cuadro")
     for key, value in data.items():
         setattr(cabinet, key, value)
     db.commit()

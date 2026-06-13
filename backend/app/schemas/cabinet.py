@@ -19,6 +19,7 @@ class CabinetUpdate(BaseModel):
     zone: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    project_id: int | None = None  # mover el cuadro a una ciudad/proyecto
 
 
 class CabinetRead(BaseModel):

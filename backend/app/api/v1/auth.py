@@ -444,6 +444,7 @@ def info() -> dict:
         "app": settings.app_name,
         "version": APP_VERSION,
         "build": BUILD_ID,
+        "timezone": settings.tariff_timezone,  # hora local del despliegue (reloj del panel)
         "demo_mode": settings.demo_mode,
         "session_idle_minutes": settings.session_idle_minutes,
     }

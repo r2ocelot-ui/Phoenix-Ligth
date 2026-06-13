@@ -3,7 +3,7 @@
   const API = "/api/v1";
   const LIVE_VIEWS = ["inicio", "cuadros", "alarmas", "control"];
   const STATUS_COLOR = { ok: "#22c55e", warning: "#f59e0b", critical: "#ef4444" };
-  const state = { token: localStorage.getItem("ph_token") || null, me: null, view: "inicio", cabinets: [], mapMode: "estado", tileStyle: localStorage.getItem("ph_tile") || "oscuro", idleMinutes: 10 };
+  const state = { token: localStorage.getItem("ph_token") || null, me: null, view: "inicio", cabinets: [], mapMode: "estado", tileStyle: localStorage.getItem("ph_tile") || "oscuro", idleMinutes: 10, tz: "Europe/Madrid" };
 
   function emblemAll() {
     const tpl = document.getElementById("phoenix-svg").content;
@@ -529,8 +529,9 @@
       const t = $("#clock-time"), d = $("#clock-date");
       if (!t || !d) return;
       const now = new Date();
-      t.textContent = now.toLocaleTimeString("es-ES");
-      d.textContent = now.toLocaleDateString("es-ES", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+      const tz = state.tz || "Europe/Madrid";  // hora local del despliegue, no la del navegador
+      t.textContent = now.toLocaleTimeString("es-ES", { timeZone: tz });
+      d.textContent = now.toLocaleDateString("es-ES", { timeZone: tz, weekday: "short", day: "2-digit", month: "short", year: "numeric" });
     };
     tick(); window._clockTimer = setInterval(tick, 1000);
   }
@@ -3442,6 +3443,7 @@
     try {
       const r = await fetch(API + "/auth/info"); const d = await r.json();
       if (d.session_idle_minutes) state.idleMinutes = d.session_idle_minutes;
+      if (d.timezone) state.tz = d.timezone;  // zona horaria del despliegue (reloj en hora local)
       // Versión/build: para saber de un vistazo si estás en la última.
       const tag = [d.version ? `v${d.version}` : "", d.build ? `build ${d.build}` : ""].filter(Boolean).join(" · ");
       const bt = $("#build-tag"); if (bt) bt.textContent = tag;

@@ -1249,5 +1249,6 @@ def test_owner_assigns_cabinet_to_project_director_cannot_move(client):
 def test_info_and_health_expose_version_build(client):
     info = client.get("/api/v1/auth/info").json()
     assert "version" in info and "build" in info and info["build"]
+    assert info["timezone"]  # zona horaria del despliegue para el reloj del panel
     health = client.get("/health").json()
     assert health["version"] == info["version"] and health["build"] == info["build"]

@@ -45,7 +45,7 @@ async def emergency_all_on(
             await bus.publish(f"phoenix/cabinets/{cid}/cmd/dim", {"level": 100})
         except RuntimeError:
             pass  # broker no conectado; el estado comandado igual se registra
-        bus.record_command(cid, relay="on", dim=100)
+        bus.record_command(cid, relay="on", dim=100, manual=True)
         affected.append(cid)
     bus.notify()
     user.activity_points += 5
@@ -97,7 +97,7 @@ async def set_relay(
         await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/relay", cmd.model_dump())
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
-    bus.record_command(cabinet_id, relay=cmd.state)
+    bus.record_command(cabinet_id, relay=cmd.state, manual=True)
     bus.notify()
     _credit_and_audit(db, user, "cabinet.relay", cabinet_id, {"state": cmd.state})
     return {"sent": True, "cabinet_id": cabinet_id, "state": cmd.state}
@@ -115,7 +115,23 @@ async def set_dim(
         await bus.publish(f"phoenix/cabinets/{cabinet_id}/cmd/dim", cmd.model_dump())
     except RuntimeError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc))
-    bus.record_command(cabinet_id, dim=cmd.level)
+    bus.record_command(cabinet_id, dim=cmd.level, manual=True)
     bus.notify()
     _credit_and_audit(db, user, "cabinet.dim", cabinet_id, {"level": cmd.level})
     return {"sent": True, "cabinet_id": cabinet_id, "level": cmd.level}
+
+
+@router.post("/{cabinet_id}/auto")
+async def set_auto(
+    cabinet_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
+) -> dict:
+    """Devuelve el cuadro al programa automático de dimming (horario + lux).
+    Tras un ajuste manual el programador deja de tocar el cuadro; este endpoint
+    libera ese bloqueo para que vuelva a regularse solo."""
+    _authorize_cabinet(db, cabinet_id, user)
+    bus.set_auto(cabinet_id)
+    bus.notify()
+    _credit_and_audit(db, user, "cabinet.auto", cabinet_id, {})
+    return {"ok": True, "cabinet_id": cabinet_id, "mode": "auto"}

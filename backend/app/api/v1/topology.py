@@ -37,6 +37,23 @@ router = APIRouter(tags=["topology"])
 PHASE_COLORS = {"L1": "#ef4444", "L2": "#f59e0b", "L3": "#38bdf8"}
 
 
+def _recompute_circuit_power(db: Session, circuit_id: int | None) -> None:
+    """Recalcula la potencia nominal del circuito = suma de las luminarias que
+    cuelgan de él. Mantiene Circuit.expected_power_w al día (motor de alarmas y
+    listados) para que nadie tenga que teclear el nominal a mano. Sin luminarias
+    → 0 → sin comprobación de carga."""
+    if not circuit_id:
+        return
+    circuit = db.get(Circuit, circuit_id)
+    if not circuit:
+        return
+    total = sum(
+        (p.power_w or 0.0)
+        for p in db.query(LightPoint).filter(LightPoint.circuit_id == circuit_id).all()
+    )
+    circuit.expected_power_w = float(total)
+
+
 @router.get("/topology")
 def get_topology(
     db: Session = Depends(get_db),
@@ -47,6 +64,14 @@ def get_topology(
     live = {c["cabinet_id"]: c for c in bus.snapshot()}
     circuits = db.query(Circuit).all()
     points = db.query(LightPoint).all()
+
+    # Nominal por circuito = suma automática de las luminarias que cuelgan de él.
+    power_by_circuit: dict[int, float] = {}
+    for p in points:
+        if p.circuit_id is not None:
+            power_by_circuit[p.circuit_id] = (
+                power_by_circuit.get(p.circuit_id, 0.0) + (p.power_w or 0.0)
+            )
 
     cabinets = []
     for cab in db.query(Cabinet).order_by(Cabinet.number, Cabinet.code).all():
@@ -66,7 +91,7 @@ def get_topology(
                 "circuits": [
                     {"id": c.id, "number": c.number, "name": c.name,
                      "color": c.color, "phase": c.phase,
-                     "expected_power_w": c.expected_power_w or 0.0}
+                     "expected_power_w": power_by_circuit.get(c.id, 0.0)}
                     for c in circuits
                     if c.cabinet_code == cab.code
                 ],
@@ -137,6 +162,11 @@ def create_circuit(
     db.add(circuit)
     db.commit()
     db.refresh(circuit)
+    # El nominal se calcula solo (suma de luminarias); un circuito nuevo aún no
+    # tiene ninguna → 0.
+    _recompute_circuit_power(db, circuit.id)
+    db.commit()
+    db.refresh(circuit)
     audit_log.record(
         db, username=actor.username, action="circuit.create",
         target=f"{body.cabinet_code}/C{body.number}", detail=body.model_dump(),
@@ -173,8 +203,13 @@ def update_circuit(
             target=str(circuit_id), detail={"from": old_code, "to": new_code, "lights": moved_lights},
         )
 
+    # El nominal es automático: ignoramos cualquier valor manual que llegue en
+    # el body y lo recalculamos desde las luminarias del circuito.
+    data.pop("expected_power_w", None)
     for key, value in data.items():
         setattr(circuit, key, value)
+    db.commit()
+    _recompute_circuit_power(db, circuit.id)
     db.commit()
     db.refresh(circuit)
     if not new_code:
@@ -273,6 +308,8 @@ def create_lightpoint(
     db.add(point)
     db.commit()
     db.refresh(point)
+    _recompute_circuit_power(db, point.circuit_id)
+    db.commit()
     audit_log.record(
         db, username=actor.username, action="lightpoint.create",
         target=f"{body.cabinet_code}/F{body.number}", detail=body.model_dump(),
@@ -290,10 +327,17 @@ def update_lightpoint(
     point = db.get(LightPoint, point_id)
     if not point:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Light point not found")
+    old_circuit_id = point.circuit_id
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(point, key, value)
     db.commit()
     db.refresh(point)
+    # Si cambió la potencia o el circuito, recalculo el nominal de ambos
+    # circuitos afectados (origen y destino).
+    _recompute_circuit_power(db, point.circuit_id)
+    if old_circuit_id != point.circuit_id:
+        _recompute_circuit_power(db, old_circuit_id)
+    db.commit()
     audit_log.record(db, username=actor.username, action="lightpoint.update", target=str(point_id))
     return point
 
@@ -307,7 +351,10 @@ def delete_lightpoint(
     point = db.get(LightPoint, point_id)
     if not point:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Light point not found")
+    circuit_id = point.circuit_id
     db.delete(point)
+    db.commit()
+    _recompute_circuit_power(db, circuit_id)
     db.commit()
     audit_log.record(db, username=actor.username, action="lightpoint.delete", target=str(point_id))
     return {"deleted": True}

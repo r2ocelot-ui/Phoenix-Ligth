@@ -86,7 +86,8 @@ def seed_demo_cabinets(db: Session) -> None:
         for ci in range(2):
             circuit = Circuit(
                 cabinet_code=code, number=ci + 1, name=f"Circuito {ci + 1}",
-                color=_CIRCUIT_COLORS[ci % len(_CIRCUIT_COLORS)], phase="III",
+                color=_CIRCUIT_COLORS[ci % len(_CIRCUIT_COLORS)],
+                phase=_PHASES[ci % len(_PHASES)],
                 # Half the points hang off each circuit; nominal is the sum
                 # of their power. Demo loop simulates departures from this.
                 expected_power_w=sum(
@@ -106,7 +107,7 @@ def seed_demo_cabinets(db: Session) -> None:
             circuit = circuits[k % len(circuits)]
             db.add(LightPoint(
                 cabinet_code=code, circuit_id=circuit.id, number=k + 1,
-                label=f"Farola {number}.{k + 1}", phase=_PHASES[k % 3],
+                label=f"Farola {k + 1:02d}", phase=_PHASES[k % 3],
                 latitude=plat, longitude=plon, power_w=100 + k * 5,
             ))
     db.commit()

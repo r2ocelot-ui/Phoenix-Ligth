@@ -107,6 +107,11 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **Etiqueta de versión/build** en panel (sidebar + login) | 🧪 | `Light · vX · build <hash>`; sale del commit. Si no cuadra, recarga Ctrl+F5 |
 | **Hora local** en todo el panel + detección real de zona por ubicación (timezonefinder) | 🧪 | Reloj y tiempos en hora del despliegue; "auto" detecta Canarias/península/mundo |
 | **Proyectos** como sección propia del menú | 🧪 | Menú → Proyectos (solo Director/Phoenix). Owner gestiona; Director ve sus ciudades en solo lectura |
+| **V1.R1.P2** · Dimming manual no se pisaba con el programa horario | 🧪 | Control → mueve el slider y aplica; el cuadro queda "modo manual" y el programador no lo toca hasta darle "↻ Volver a automático" |
+| Nominal del circuito **auto-suma** las luminarias (read-only) | 🧪 | Topología → Editar circuito → "Nominal (auto)" se actualiza al añadir/editar/borrar luminarias |
+| Etiqueta de farola → "Farola 01" (2 dígitos, sin el prefijo del CM) | 🧪 | Ficha de luminaria; nuevo seed usa el formato corto |
+| Fix: Luminarias en blanco con "Todos los cuadros" seleccionado | 🧪 | Menú → Luminarias: ahora muestra todas; el filtro estaba descartando todo por bug de `<option>` sin value |
+| Seed: fases concretas (L1/L2) por circuito en lugar de "III" | 🧪 | Topología → Editar circuito: fase por defecto es L1; selector lista L1/L2/L3/III |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

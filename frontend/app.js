@@ -705,7 +705,12 @@
       drawTopology();
       return;
     }
-    if (LIVE_VIEWS.includes(state.view)) render();
+    if (LIVE_VIEWS.includes(state.view)) {
+      // No re-renderizar el control mientras el operario arrastra el slider:
+      // reconstruir el panel lo reiniciaría a mitad de gesto.
+      if (state.view === "control" && window._dimDragging) return;
+      render();
+    }
     else if (state.view === "mapa") drawTopology();
   }
 
@@ -1360,14 +1365,41 @@
     const onBtn = el("button", "btn sm", "Encender"); onBtn.onclick = () => relay(cur.cabinet_id, "on");
     const offBtn = el("button", "btn sm ghost", "Apagar"); offBtn.onclick = () => relay(cur.cabinet_id, "off");
     relayRow.append(onBtn, offBtn); p.append(relayRow);
+
+    // Modo: manual (manda el operario) vs automático (programa horario + lux).
+    // Mientras esté en manual, el programador NO pisa el nivel del cuadro.
+    const isManual = !!cur.state?.manual;
+    const modeRow = el("div", "row between"); modeRow.style.marginTop = "12px"; modeRow.style.alignItems = "center";
+    const modeBadge = el("span", "badge " + (isManual ? "WARNING" : "ok"));
+    modeBadge.textContent = isManual ? "Modo manual" : "Modo automático";
+    modeRow.append(modeBadge);
+    if (isManual) {
+      const autoBtn = el("button", "btn ghost sm", "↻ Volver a automático");
+      autoBtn.onclick = () => autoCmd(cur.cabinet_id);
+      modeRow.append(autoBtn);
+    }
+    p.append(modeRow);
+    const modeHint = el("div", "muted"); modeHint.style.fontSize = "11px"; modeHint.style.marginTop = "4px";
+    modeHint.textContent = isManual
+      ? "El programador horario no tocará este cuadro hasta que vuelvas a automático."
+      : "El nivel lo fija el programa horario / sensor de luz. Al ajustar el dimming pasará a manual.";
+    p.append(modeHint);
+
     const dim = cur.state?.dim ?? 100;
     p.append(el("label", null, `Regulación (dimming) · <span class="mono" id="dimv">${dim}%</span>`));
     const rng = el("input"); rng.type = "range"; rng.min = 0; rng.max = 100; rng.value = dim; rng.style.setProperty("--p", dim + "%");
-    rng.oninput = () => { $("#dimv").textContent = rng.value + "%"; rng.style.setProperty("--p", rng.value + "%"); };
+    // Marco "arrastrando" para que el refresco en vivo no reinicie el slider
+    // a mitad de gesto (la sensación de "hace lo que quiere").
+    rng.onpointerdown = () => { window._dimDragging = true; };
+    rng.oninput = () => { window._dimDragging = true; $("#dimv").textContent = rng.value + "%"; rng.style.setProperty("--p", rng.value + "%"); };
     p.append(rng);
-    const send = el("button", "btn", "Aplicar dimming"); send.onclick = () => dimCmd(cur.cabinet_id, parseInt(rng.value, 10));
+    const send = el("button", "btn", "Aplicar dimming"); send.onclick = () => { window._dimDragging = false; dimCmd(cur.cabinet_id, parseInt(rng.value, 10)); };
     p.append(send);
     c.append(p);
+  }
+  async function autoCmd(id) {
+    try { await api(`/cabinets/${id}/auto`, { method: "POST" }); toast(`${id}: modo automático`); refreshLive(); }
+    catch (e) { toast(e.message, true); }
   }
   async function relay(id, st) {
     try { await api(`/cabinets/${id}/relay`, { method: "POST", body: JSON.stringify({ state: st }) }); toast(`${id}: ${st === "on" ? "encendido" : "apagado"}`); }
@@ -1424,7 +1456,9 @@
       const bar = el("div", "row"); bar.style.marginBottom = "12px"; bar.style.gap = "10px"; bar.style.flexWrap = "wrap";
       const search = el("input"); search.placeholder = "Buscar por calle, CM, fabricante, modelo, nº…"; search.style.flex = "1"; search.style.minWidth = "240px";
       const cmFilter = el("select"); cmFilter.style.minWidth = "180px";
-      cmFilter.append(el("option", null, "Todos los cuadros"));
+      // OJO: un <option> sin value devuelve su texto en .value, no "". Hay que
+      // fijar value="" para que el filtro "Todos los cuadros" no descarte todo.
+      const allCmOpt = el("option", null, "Todos los cuadros"); allCmOpt.value = ""; cmFilter.append(allCmOpt);
       tp.cabinets.forEach(cab => { const o = el("option", null, `CM${cab.number} · ${cab.name || cab.code}`); o.value = cab.code; cmFilter.append(o); });
       const counter = el("span", "muted"); counter.style.fontSize = "12px"; counter.style.alignSelf = "center";
       bar.append(search, cmFilter, counter);
@@ -1807,14 +1841,18 @@
     const form = el("div"); form.style.display = "grid"; form.style.gap = "10px";
     const number = el("input"); number.type = "number"; number.placeholder = "Número de circuito"; number.value = circ?.number ?? (cab.circuits.length + 1);
     const name = el("input"); name.placeholder = "Nombre (opcional)"; name.value = circ?.name || "";
-    const phase = el("select"); ["III", "L1", "L2", "L3"].forEach(p => { const o = el("option", null, p); o.value = p; if ((circ?.phase || "III") === p) o.selected = true; phase.append(o); });
+    const phase = el("select"); ["L1", "L2", "L3", "III"].forEach(p => { const o = el("option", null, p); o.value = p; if ((circ?.phase || "L1") === p) o.selected = true; phase.append(o); });
     const phaseWrap = el("div", "row"); phaseWrap.style.gap = "8px"; phaseWrap.style.alignItems = "center"; phaseWrap.append(el("span", "muted", "Fase"), phase);
     const color = el("input"); color.type = "color"; color.value = circ?.color || "#38bdf8";
     const colorWrap = el("div", "row"); colorWrap.style.gap = "8px"; colorWrap.style.alignItems = "center"; colorWrap.append(el("span", "muted", "Color"), color);
-    const power = el("input"); power.type = "number"; power.placeholder = "Potencia nominal esperada (W)"; power.value = circ?.expected_power_w ?? 0;
+    // Nominal AUTOMÁTICO: suma de las luminarias del circuito. Read-only — el
+    // backend lo recalcula solo; ya no se teclea a mano.
+    const ptSum = circ ? (cab.points || []).filter(pt => pt.circuit_id === circ.id).reduce((a, pt) => a + (pt.power_w || 0), 0) : 0;
+    const power = el("input"); power.type = "number"; power.value = Math.round(ptSum); power.disabled = true; power.style.opacity = ".7";
+    const powerWrap = el("div", "row"); powerWrap.style.gap = "8px"; powerWrap.style.alignItems = "center"; powerWrap.append(el("span", "muted", "Nominal (auto)"), power, el("span", "muted", "W"));
     const powerHint = el("div", "muted"); powerHint.style.fontSize = "11px";
-    powerHint.textContent = "Suma de las luminarias del circuito. Sirve para detectar carga caída / sobrecarga (0 = sin comprobación).";
-    form.append(number, name, phaseWrap, colorWrap, power, powerHint);
+    powerHint.textContent = "Se calcula solo sumando las luminarias del circuito. Sirve para detectar carga caída / sobrecarga (sin luminarias = sin comprobación).";
+    form.append(number, name, phaseWrap, colorWrap, powerWrap, powerHint);
     card.append(form);
 
     const actions = el("div", "perm-actions");
@@ -1823,7 +1861,7 @@
       const payload = {
         number: parseInt(number.value, 10) || 1, name: name.value.trim(),
         phase: phase.value, color: color.value,
-        expected_power_w: parseFloat(power.value) || 0,
+        // expected_power_w ya no se envía: lo calcula el backend desde las luminarias.
       };
       try {
         if (editing) {
@@ -1851,10 +1889,11 @@
     const modal = el("div", "modal"); const card = el("div", "modal-card"); card.style.maxWidth = "460px";
     const phaseColor = (window._topoCache?.phase_colors || {})[pt.phase] || "#64748b";
     const head = el("div", "row between");
-    head.innerHTML = `<h3 style="margin:0">💡 Farola ${cab.number}.${pt.number}</h3>`;
+    const farolaName = `Farola ${String(pt.number).padStart(2, "0")}`;
+    head.innerHTML = `<h3 style="margin:0">💡 ${farolaName}</h3>`;
     const closeX = el("button", "btn ghost sm", "✕"); closeX.onclick = () => modal.remove();
     head.append(closeX); card.append(head);
-    if (pt.label) card.append(el("div", "muted", pt.label));
+    if (pt.label && pt.label !== farolaName) card.append(el("div", "muted", pt.label));
 
     card.style.maxWidth = "560px"; card.style.maxHeight = "85vh"; card.style.overflowY = "auto";
     const cmColor = cab.color || "#f97316";

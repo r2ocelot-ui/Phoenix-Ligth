@@ -62,13 +62,29 @@ class MQTTBus:
         await self._client.publish(topic, json.dumps(payload), qos=1)
 
     def record_command(
-        self, cabinet_id: str, *, relay: str | None = None, dim: int | None = None
+        self, cabinet_id: str, *, relay: str | None = None,
+        dim: int | None = None, manual: bool = False,
     ) -> None:
-        state = self.cabinet_state.setdefault(cabinet_id, {"relay": "on", "dim": 100})
+        state = self.cabinet_state.setdefault(
+            cabinet_id, {"relay": "on", "dim": 100, "manual": False}
+        )
         if relay is not None:
             state["relay"] = relay
         if dim is not None:
             state["dim"] = dim
+        # Un comando del operario marca el cuadro como "manual": el programador
+        # horario (_dimming_loop) deja de pisarlo hasta que se vuelva a "auto".
+        if manual:
+            state["manual"] = True
+
+    def set_auto(self, cabinet_id: str) -> bool:
+        """Devuelve el cuadro al programa automático de dimming. El siguiente
+        ciclo de _dimming_loop volverá a fijar el nivel según horario/lux."""
+        state = self.cabinet_state.get(cabinet_id)
+        if not state:
+            return False
+        state["manual"] = False
+        return True
 
     def _is_expected_on(self, cabinet_id: str) -> bool:
         state = self.cabinet_state.get(cabinet_id)
@@ -120,7 +136,7 @@ class MQTTBus:
                     "online": online,
                     "status": status,
                     "telemetry": self.last_telemetry.get(cid),
-                    "state": self.cabinet_state.get(cid, {"relay": "on", "dim": 100}),
+                    "state": self.cabinet_state.get(cid, {"relay": "on", "dim": 100, "manual": False}),
                     "alarms": alarms,
                 }
             )
@@ -153,16 +169,19 @@ class MQTTBus:
         self.notify()
 
     def _cabinet_expected_power(self, cabinet_id: str) -> float:
-        """Sum of expected_power_w across this cabinet's circuits, scaled by
-        the commanded dim level (so a 1200 W cabinet ordered at 60 % dimming
-        legitimately consumes ~720 W and won't trip CIRCUIT_LOAD_DROP)."""
+        """Suma automática de la potencia nominal de las luminarias del cuadro,
+        escalada por el nivel de dimming comandado (así un cuadro de 1200 W
+        ordenado al 60 % consume ~720 W legítimamente y no dispara
+        CIRCUIT_LOAD_DROP). Sin luminarias registradas → 0 → sin comprobación."""
         try:
             from app.core.database import SessionLocal
-            from app.models.circuit import Circuit
+            from app.models.lightpoint import LightPoint
             with SessionLocal() as db:
                 total = sum(
-                    (c.expected_power_w or 0)
-                    for c in db.query(Circuit).filter(Circuit.cabinet_code == cabinet_id).all()
+                    (p.power_w or 0)
+                    for p in db.query(LightPoint).filter(
+                        LightPoint.cabinet_code == cabinet_id
+                    ).all()
                 )
         except Exception:
             return 0.0
@@ -271,6 +290,9 @@ class MQTTBus:
             await asyncio.sleep(settings.dimming_interval_s)
             now = datetime.now().time()
             for cabinet_id in list(self._known_cabinets):
+                state = self.cabinet_state.get(cabinet_id)
+                if state and state.get("manual"):
+                    continue  # el operario tomó control manual; no lo pisamos
                 lux = self.last_lux.get(cabinet_id)
                 level = dimming_controller.resolve_level(now, ambient_lux=lux)
                 self.record_command(cabinet_id, dim=level)

@@ -58,6 +58,16 @@
     input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
     /* El popup nativo de <option> sale blanco por defecto: lo forzamos al tema oscuro. */
     select option, select optgroup { background: var(--panel-2); color: var(--text); }
+    /* Icono de ayuda (?) con tooltip — estilo Hydra, sin frases ocupando sitio. */
+    .help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
+      border-radius: 50%; border: 1px solid var(--border-2); color: var(--muted); font-size: 11px; font-weight: 700;
+      line-height: 1; cursor: help; position: relative; user-select: none; vertical-align: middle; margin-left: 6px; }
+    .help:hover, .help:focus { color: var(--text); border-color: var(--accent); outline: none; }
+    .help[data-tip]:hover::after, .help[data-tip]:focus::after {
+      content: attr(data-tip); position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%);
+      background: var(--panel); color: var(--text); border: 1px solid var(--border-2); border-radius: 8px;
+      padding: 8px 10px; width: max-content; max-width: 260px; font-size: 12px; font-weight: 400; line-height: 1.4;
+      white-space: normal; text-align: left; box-shadow: 0 8px 24px rgba(0,0,0,.45); z-index: 1000; pointer-events: none; }
     .btn { border: 1px solid var(--accent-line); background: var(--fire); color: #fff; font-weight: 600;
       padding: 11px 16px; border-radius: 10px; width: 100%; margin-top: 20px; font-size: 14px;
       box-shadow: 0 8px 24px rgba(239,68,68,.3); }
@@ -554,16 +564,19 @@
         <div><h1>PHOENIX</h1><div class="sub">Light · <span id="build-tag" title="versión · build (commit). Si no coincide con el repo, recarga con Ctrl+F5"></span></div></div>
       </div>
       <nav id="nav">
+        <!-- Operación (día a día): ver y actuar -->
         <a data-view="inicio" class="active"><span class="ico">🗺️</span> Inicio</a>
         <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">🗄️</span> Cuadros</a>
-        <a data-view="luminarias" data-perm="cabinet:read"><span class="ico">💡</span> Luminarias</a>
-        <a data-view="topologia" data-perm="cabinet:read"><span class="ico">🔗</span> Topología</a>
-        <a data-view="control" data-perm="cabinet:control"><span class="ico">🎛️</span> Control</a>
         <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">🚨</span> Alarmas</a>
-        <a data-view="auditoria" data-perm="audit:read"><span class="ico">📋</span> Auditoría</a>
-        <a data-view="seguridad" data-perm="user:manage"><span class="ico">🛡️</span> Seguridad</a>
+        <a data-view="control" data-perm="cabinet:control"><span class="ico">🎛️</span> Control</a>
+        <!-- Infraestructura / inventario -->
+        <a data-view="topologia" data-perm="cabinet:read"><span class="ico">🔗</span> Topología</a>
+        <a data-view="luminarias" data-perm="cabinet:read"><span class="ico">💡</span> Luminarias</a>
+        <!-- Gestión / administración -->
         <a data-view="proyectos" data-perm="user:manage"><span class="ico">🏙️</span> Proyectos</a>
         <a data-view="permisos" data-perm="user:manage"><span class="ico">🔑</span> Permisos</a>
+        <a data-view="seguridad" data-perm="user:manage"><span class="ico">🛡️</span> Seguridad</a>
+        <a data-view="auditoria" data-perm="audit:read"><span class="ico">📋</span> Auditoría</a>
       </nav>
       <div class="spacer"></div>
       <div class="userbox-mini muted">Kumiho Group · Phoenix</div>

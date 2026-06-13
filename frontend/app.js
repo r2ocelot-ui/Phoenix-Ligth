@@ -15,6 +15,14 @@
   // esto, un nombre de cuadro/luminaria o un User-Agent con HTML ejecutaría JS
   // (XSS almacenado). Úsalo SIEMPRE con datos no controlados por nosotros.
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+  // Icono de ayuda (?) estilo Hydra: al pasar el ratón (o enfocar con teclado)
+  // muestra una explicación, así no hace falta una frase larga ocupando sitio.
+  // El texto va en data-tip (atributo, no innerHTML → sin riesgo de inyección).
+  function helpIcon(tip) {
+    const s = el("span", "help"); s.textContent = "?";
+    s.setAttribute("data-tip", tip); s.setAttribute("tabindex", "0"); s.setAttribute("aria-label", tip);
+    return s;
+  }
   function has(perm) { const p = state.me?.permissions || []; return p.includes("*") || p.includes(perm); }
   // Capitaliza la primera letra para mostrar (ej. "pepe" → "Pepe"). El valor
   // guardado en BD no cambia; el login es case-insensitive.
@@ -839,9 +847,10 @@
     state.addCmMode = false; state.addLightMode = false; state.editPositions = false;
     state.editMode = false; state.deleteMode = false;
     const hint = el("span", "muted"); hint.id = "map-tool-hint"; hint.style.fontSize = "12px";
-    hint.textContent = "Pulsa una herramienta y luego el punto del mapa";
-    const btns = el("div", "row"); btns.style.gap = "6px"; btns.style.flexWrap = "wrap";
-    btns.append(addCm, addLight, move, edit, del);
+    hint.textContent = "";  // en reposo no ocupa sitio; el "?" explica cómo se usa
+    const btns = el("div", "row"); btns.style.gap = "6px"; btns.style.flexWrap = "wrap"; btns.style.alignItems = "center";
+    btns.append(addCm, addLight, move, edit, del,
+      helpIcon("Pulsa una herramienta (➕ CM, ➕ Luminaria, ✥ Mover, ✏ Editar, 🗑 Eliminar) y después el punto del mapa. Vuelve a pulsarla para cancelar."));
     wrap.append(btns, hint);
     return wrap;
   }
@@ -867,7 +876,7 @@
     const b = state.editBtn;
     if (b) { b.classList.toggle("ghost", !state.editMode); b.textContent = state.editMode ? "✕ Cancelar" : "✏ Editar"; }
     const host = document.getElementById("map"); if (host) host.style.cursor = state.editMode ? "pointer" : "";
-    setToolHint(state.editMode ? "✏ Pulsa un cuadro o luminaria para editarlo" : "Pulsa una herramienta y luego el punto del mapa");
+    setToolHint(state.editMode ? "✏ Pulsa un cuadro o luminaria para editarlo" : "");
   }
   function toggleDeleteMode() {
     clearMapModes("delete");
@@ -875,7 +884,7 @@
     const b = state.deleteBtn;
     if (b) { b.classList.toggle("ghost", !state.deleteMode); b.textContent = state.deleteMode ? "✕ Cancelar" : "🗑 Eliminar"; }
     const host = document.getElementById("map"); if (host) host.style.cursor = state.deleteMode ? "not-allowed" : "";
-    setToolHint(state.deleteMode ? "🗑 Pulsa un cuadro o luminaria para eliminarlo" : "Pulsa una herramienta y luego el punto del mapa");
+    setToolHint(state.deleteMode ? "🗑 Pulsa un cuadro o luminaria para eliminarlo" : "");
   }
 
   function toggleAddCmMode() {
@@ -1385,7 +1394,10 @@
     // Modo de regulación: Manual / Programa / IA (por cuadro).
     const mode = cur.dimming_mode || "schedule";
     const hasGeo = cur.latitude != null && cur.longitude != null;
-    p.append(el("label", null, "Modo de regulación"));
+    const modeLabel = el("label");
+    modeLabel.append(document.createTextNode("Modo de regulación"),
+      helpIcon("Manual: tú fijas el nivel y el programador no lo toca. Programa: horario astronómico + sensor de luz. IA: adaptativo (sol + tarifa + lux + perfil de calle) con suelo de seguridad."));
+    p.append(modeLabel);
     const modeRow = el("div", "row"); modeRow.style.gap = "6px"; modeRow.style.flexWrap = "wrap";
     DIM_MODES.forEach(([id, lbl]) => {
       const active = id === mode;
@@ -1396,8 +1408,7 @@
     });
     p.append(modeRow);
     const modeHint = el("div", "muted"); modeHint.style.fontSize = "11px"; modeHint.style.marginTop = "4px";
-    const desc = (DIM_MODES.find(m => m[0] === mode) || [, , ""])[2];
-    modeHint.textContent = desc + (mode === "ai" ? ` · perfil de calle: ${PROFILE_LABELS[cur.street_profile || "residential"]}` : "");
+    modeHint.textContent = mode === "ai" ? `Perfil de calle: ${PROFILE_LABELS[cur.street_profile || "residential"]}` : "";
     p.append(modeHint);
 
     p.append(el("label", null, "Encendido / Apagado"));
@@ -1816,8 +1827,10 @@
       const o = el("option", null, lbl); o.value = v;
       if ((cab?.street_profile || "residential") === v) o.selected = true; profile.append(o);
     });
-    const profWrap = el("div"); profWrap.innerHTML = `<div class="muted" style="font-size:11px;margin-bottom:4px">Perfil de calle (modo IA)</div>`;
-    profWrap.append(profile);
+    const profLabel = el("div", "muted"); profLabel.style.cssText = "font-size:11px;margin-bottom:4px";
+    profLabel.append(document.createTextNode("Perfil de calle (modo IA)"),
+      helpIcon("Suelo de seguridad del modo IA: vía principal mantiene alto; residencial baja agresivo de madrugada; paso de peatones / glorieta nunca baja del mínimo."));
+    const profWrap = el("div"); profWrap.append(profLabel, profile);
     // Ciudad / proyecto — solo el owner asigna (un director hereda el suyo).
     // Nuevo CM: preselecciona la ciudad activa del topbar. Editar: la del CM.
     let projSel = null;
@@ -1889,10 +1902,10 @@
     // backend lo recalcula solo; ya no se teclea a mano.
     const ptSum = circ ? (cab.points || []).filter(pt => pt.circuit_id === circ.id).reduce((a, pt) => a + (pt.power_w || 0), 0) : 0;
     const power = el("input"); power.type = "number"; power.value = Math.round(ptSum); power.disabled = true; power.style.opacity = ".7";
-    const powerWrap = el("div", "row"); powerWrap.style.gap = "8px"; powerWrap.style.alignItems = "center"; powerWrap.append(el("span", "muted", "Nominal (auto)"), power, el("span", "muted", "W"));
-    const powerHint = el("div", "muted"); powerHint.style.fontSize = "11px";
-    powerHint.textContent = "Se calcula solo sumando las luminarias del circuito. Sirve para detectar carga caída / sobrecarga (sin luminarias = sin comprobación).";
-    form.append(number, name, phaseWrap, colorWrap, powerWrap, powerHint);
+    const powerWrap = el("div", "row"); powerWrap.style.gap = "8px"; powerWrap.style.alignItems = "center";
+    powerWrap.append(el("span", "muted", "Nominal (auto)"), power, el("span", "muted", "W"),
+      helpIcon("Se calcula solo sumando las luminarias del circuito. Sirve para detectar carga caída / sobrecarga. Sin luminarias = sin comprobación."));
+    form.append(number, name, phaseWrap, colorWrap, powerWrap);
     card.append(form);
 
     const actions = el("div", "perm-actions");
@@ -2416,7 +2429,7 @@
         const pin = el("input"); pin.type = "password"; pin.inputMode = "numeric"; pin.maxLength = 8; pin.placeholder = "PIN (4-8 dígitos, opcional)";
         const rk = el("select");
         const allowed = (state.ranksCatalog || []).filter(r => r.id !== "owner");
-        allowed.forEach(r => { const o = el("option", null, r.label); o.value = r.id; if (r.id === "novato") o.selected = true; rk.append(o); });
+        allowed.forEach(r => { const o = el("option", null, r.label); o.value = r.id; if (r.id === "visualizador") o.selected = true; rk.append(o); });
         const hint = el("div", "muted"); hint.style.fontSize = "12px";
         const updateHint = () => { const r = allowed.find(x => x.id === rk.value); hint.textContent = r ? r.description : ""; };
         rk.onchange = updateHint; updateHint();

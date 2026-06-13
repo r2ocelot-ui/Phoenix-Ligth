@@ -31,6 +31,19 @@ def _detect_build() -> str:
             return out.stdout.strip()
     except Exception:  # noqa: BLE001 — sin git: caemos al fallback
         pass
+    # 3) Leer .git/HEAD a mano (no necesita el binario ``git``). Cubre el
+    # caso típico de Windows donde git no está en el PATH del proceso de
+    # Python aunque el repo sí esté presente.
+    try:
+        head = (_ROOT / ".git" / "HEAD").read_text(encoding="utf-8").strip()
+        if head.startswith("ref:"):
+            ref_path = _ROOT / ".git" / head.split(":", 1)[1].strip()
+            if ref_path.exists():
+                return ref_path.read_text(encoding="utf-8").strip()[:7]
+        elif head:
+            return head[:7]  # detached HEAD: hash directo en HEAD
+    except Exception:  # noqa: BLE001
+        pass
     return "dev"
 
 

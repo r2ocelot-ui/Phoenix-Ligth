@@ -751,6 +751,7 @@
     usuarios: ["Usuarios", "Cuentas, rangos y permisos"],
     rangos: ["Rangos", "Define qué puede hacer cada rango"],
     permisos: ["Permisos", "Usuarios, rangos y permisos efectivos"],
+    proyectos: ["Proyectos", "Ciudades / contratos · aislamiento por proyecto"],
     auditoria: ["Auditoría", "Historial de acciones"],
     seguridad: ["Seguridad", "Inicios de sesión, bloqueos y desbloqueos"],
   };
@@ -765,6 +766,7 @@
     if (view === "usuarios") loadUsers();
     if (view === "rangos") loadRoles();
     if (view === "permisos") loadPermisos();
+    if (view === "proyectos") loadProyectos();
     if (view === "auditoria") loadAudit();
     if (view === "seguridad") loadSecurity();
   }
@@ -2560,10 +2562,9 @@
     const c = $("#content"); c.innerHTML = "";
     state.permisosTab = state.permisosTab || "usuarios";
 
-    // Pestaña Proyectos solo para Phoenix (owner): gestiona las ciudades.
+    // Proyectos ya es una sección propia del menú (no una pestaña aquí).
     const tabDefs = [["usuarios", "Usuarios"], ["rangos", "Rangos"]];
-    if (isOwnerUser()) tabDefs.push(["proyectos", "Proyectos"]);
-    if (state.permisosTab === "proyectos" && !isOwnerUser()) state.permisosTab = "usuarios";
+    if (state.permisosTab === "proyectos") state.permisosTab = "usuarios";
 
     const tabs = el("div", "tabs");
     tabDefs.forEach(([k, lbl]) => {
@@ -2577,13 +2578,18 @@
     c.append(body);
 
     if (state.permisosTab === "usuarios") await renderPermisosUsuarios(body);
-    else if (state.permisosTab === "proyectos") await renderPermisosProyectos(body);
     else await renderPermisosRangos(body);
   }
 
-  // Gestión de proyectos/ciudades (solo Phoenix/owner). Crear, listar, ver
-  // cuántos usuarios/cuadros tiene y borrar (si está vacío).
-  async function renderPermisosProyectos(body) {
+  // Sección "Proyectos" del menú (solo Director/Phoenix por el data-perm).
+  // El owner gestiona (crear/borrar/asignar); un director ve sus ciudades
+  // en solo lectura (el backend ya exige owner para crear/borrar).
+  async function loadProyectos() {
+    const c = $("#content"); c.innerHTML = "";
+    await renderProyectos(c);
+  }
+
+  async function renderProyectos(body) {
     try {
       const [projects, users, regs] = await Promise.all([
         api("/projects"),
@@ -2622,10 +2628,11 @@
       const add = el("button", "btn sm", "Crear");
       add.onclick = async () => {
         if (!code.value.trim() || !name.value.trim()) { toast("Falta código o nombre.", true); return; }
-        try { await api("/projects", { method: "POST", body: JSON.stringify({ code: code.value.trim(), name: name.value.trim() }) }); toast("Proyecto creado"); loadProjectsForChip(); loadPermisos(); }
+        try { await api("/projects", { method: "POST", body: JSON.stringify({ code: code.value.trim(), name: name.value.trim() }) }); toast("Proyecto creado"); loadProjectsForChip(); loadProyectos(); }
         catch (e) { toast(e.message, true); }
       };
-      row.append(code, name, add); cp.append(row); body.append(cp);
+      row.append(code, name, add); cp.append(row);
+      if (isOwnerUser()) body.append(cp);  // crear proyecto: solo el owner
 
       // Lista de proyectos.
       const panel = el("div", "panel");
@@ -2637,14 +2644,17 @@
         const tr = el("tr");
         tr.innerHTML = `<td class="mono">${p.id}</td><td class="mono">${p.code}</td><td>${p.name}</td><td class="mono">${nu}</td><td class="mono">${nc}</td>`;
         const td = el("td");
-        const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444";
-        del.onclick = async () => {
-          if (nu || nc) { toast(`No se puede borrar: ${nu} usuarios y ${nc} cuadros lo usan.`, true); return; }
-          if (!confirm(`¿Borrar el proyecto "${p.name}"?`)) return;
-          try { await api(`/projects/${p.id}`, { method: "DELETE" }); toast("Proyecto borrado"); loadProjectsForChip(); loadPermisos(); }
-          catch (e) { toast(e.message, true); }
-        };
-        td.append(del); tr.append(td); tb.append(tr);
+        if (isOwnerUser()) {  // borrar proyecto: solo el owner
+          const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444";
+          del.onclick = async () => {
+            if (nu || nc) { toast(`No se puede borrar: ${nu} usuarios y ${nc} cuadros lo usan.`, true); return; }
+            if (!confirm(`¿Borrar el proyecto "${p.name}"?`)) return;
+            try { await api(`/projects/${p.id}`, { method: "DELETE" }); toast("Proyecto borrado"); loadProjectsForChip(); loadProyectos(); }
+            catch (e) { toast(e.message, true); }
+          };
+          td.append(del);
+        }
+        tr.append(td); tb.append(tr);
       });
       if (!projects.length) tb.append(el("tr", null, `<td colspan="6" class="muted" style="text-align:center;padding:12px">Sin proyectos. Crea el primero arriba.</td>`));
       t.append(tb); panel.append(t); body.append(panel);

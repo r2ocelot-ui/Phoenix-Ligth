@@ -105,6 +105,8 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Fix: `/projects` devuelve TODAS las ciudades del usuario (multi-proyecto) | 🧪 | Un director con varias ciudades las ve todas en el selector |
 | Fix: **asignar CM a ciudad/proyecto** (antes los CM globales los veían todos) | 🧪 | Editar CM → selector "Ciudad / proyecto"; nuevo CM hereda la ciudad activa |
 | **Etiqueta de versión/build** en panel (sidebar + login) | 🧪 | `Light · vX · build <hash>`; sale del commit. Si no cuadra, recarga Ctrl+F5 |
+| **Hora local** en todo el panel + detección real de zona por ubicación (timezonefinder) | 🧪 | Reloj y tiempos en hora del despliegue; "auto" detecta Canarias/península/mundo |
+| **Proyectos** como sección propia del menú | 🧪 | Menú → Proyectos (solo Director/Phoenix). Owner gestiona; Director ve sus ciudades en solo lectura |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

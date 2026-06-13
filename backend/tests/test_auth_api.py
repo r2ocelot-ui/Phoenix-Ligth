@@ -1244,3 +1244,10 @@ def test_owner_assigns_cabinet_to_project_director_cannot_move(client):
     d = _token(client, "dir")
     assert client.patch("/api/v1/cabinets/registry/CAB-MAD",
                         json={"project_id": bcn_id}, headers=_auth(d)).status_code == 403
+
+
+def test_info_and_health_expose_version_build(client):
+    info = client.get("/api/v1/auth/info").json()
+    assert "version" in info and "build" in info and info["build"]
+    health = client.get("/health").json()
+    assert health["version"] == info["version"] and health["build"] == info["build"]

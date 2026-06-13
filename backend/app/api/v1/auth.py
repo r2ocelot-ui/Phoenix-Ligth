@@ -439,8 +439,11 @@ def unlock(
 def info() -> dict:
     """Public hint for the login screen. Demo credentials are only revealed
     while demo mode is on (turn it off in production)."""
+    from app.core.version import APP_VERSION, BUILD_ID
     data = {
         "app": settings.app_name,
+        "version": APP_VERSION,
+        "build": BUILD_ID,
         "demo_mode": settings.demo_mode,
         "session_idle_minutes": settings.session_idle_minutes,
     }

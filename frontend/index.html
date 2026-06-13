@@ -540,7 +540,7 @@
       </div>
       <div class="err" id="login-err"></div>
       <div id="demo-hint" class="muted" style="margin-top:14px;font-size:12px;text-align:center"></div>
-      <div class="muted" style="margin-top:10px;font-size:10px;text-align:center;letter-spacing:1px">PHOENIX LIGHT · R1</div>
+      <div class="muted" id="login-build" style="margin-top:10px;font-size:10px;text-align:center;letter-spacing:1px">PHOENIX LIGHT · R1</div>
     </div>
   </section>
 
@@ -549,7 +549,7 @@
     <aside>
       <div class="brand">
         <div class="emblem"></div>
-        <div><h1>PHOENIX</h1><div class="sub">Light</div></div>
+        <div><h1>PHOENIX</h1><div class="sub">Light · <span id="build-tag" title="versión · build (commit). Si no coincide con el repo, recarga con Ctrl+F5"></span></div></div>
       </div>
       <nav id="nav">
         <a data-view="inicio" class="active"><span class="ico">◎</span> Inicio</a>
@@ -4061,6 +4061,10 @@
     try {
       const r = await fetch(API + "/auth/info"); const d = await r.json();
       if (d.session_idle_minutes) state.idleMinutes = d.session_idle_minutes;
+      // Versión/build: para saber de un vistazo si estás en la última.
+      const tag = [d.version ? `v${d.version}` : "", d.build ? `build ${d.build}` : ""].filter(Boolean).join(" · ");
+      const bt = $("#build-tag"); if (bt) bt.textContent = tag;
+      const lb = $("#login-build"); if (lb && tag) lb.textContent = `PHOENIX LIGHT · ${tag}`;
       if (d.demo_mode && d.demo_username) {
         if (!$("#li-user").value) $("#li-user").value = d.demo_username;
         if (!$("#li-pass").value) $("#li-pass").value = d.demo_password || "";

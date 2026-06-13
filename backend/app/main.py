@@ -137,7 +137,9 @@ app.include_router(realtime.router, prefix=settings.api_v1_prefix)
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": settings.app_name}
+    from app.core.version import APP_VERSION, BUILD_ID
+    return {"status": "ok", "service": settings.app_name,
+            "version": APP_VERSION, "build": BUILD_ID}
 
 
 # Serve the Phoenix Light web panel (single-page app) if present.

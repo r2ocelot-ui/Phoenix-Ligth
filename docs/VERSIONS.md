@@ -102,6 +102,9 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Migración admin id 1 → phoenix (conserva id) + multi-proyecto desde project_id | 🧪 | Reiniciar backend: admin viejo pasa a phoenix con su id |
 | **Admin resetea/quita contraseña, PIN y patrón** + **regenera claves 2FA** (sin desactivar el 2FA) | 🧪 | Permisos → desplegar usuario → botones; solo sobre rangos **estrictamente inferiores** |
 | 🔒 Fix de escalado: resetear credenciales ahora exige rango inferior | 🧪 | Antes un admin_proyecto podía resetear la contraseña del owner |
+| Fix: `/projects` devuelve TODAS las ciudades del usuario (multi-proyecto) | 🧪 | Un director con varias ciudades las ve todas en el selector |
+| Fix: **asignar CM a ciudad/proyecto** (antes los CM globales los veían todos) | 🧪 | Editar CM → selector "Ciudad / proyecto"; nuevo CM hereda la ciudad activa |
+| **Etiqueta de versión/build** en panel (sidebar + login) | 🧪 | `Light · vX · build <hash>`; sale del commit. Si no cuadra, recarga Ctrl+F5 |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

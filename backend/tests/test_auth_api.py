@@ -1200,3 +1200,25 @@ def test_admin_regen_totp_recovery(client):
     codes = r.json()["recovery_codes"]
     assert isinstance(codes, list) and len(codes) > 0
     assert client.get(f"/api/v1/users/{cid}", headers=_auth(boss)).json()["totp_recovery_remaining"] == len(codes)
+
+
+def test_list_projects_returns_all_assigned_in_multi_project(client):
+    """Bug del 11: list_projects usaba project_id único, así que un usuario
+    con varias ciudades solo veía la principal en el selector de topbar."""
+    from app.core.database import get_db
+    from app.main import app as _app
+    from app.models.project import Project
+    db = next(_app.dependency_overrides[get_db]())
+    p1 = Project(code="benidorm", name="Benidorm")
+    p2 = Project(code="finestrat", name="Finestrat")
+    db.add_all([p1, p2]); db.commit()
+    db.refresh(p1); db.refresh(p2)
+    _register(client, "owner"); own = _token(client, "owner")
+    _create_user(client, own, "ing", rank="ingeniero")
+    iid = _id_of(client, own, "ing")
+    client.post("/api/v1/projects/assign-user",
+                json={"user_id": iid, "project_ids": [p1.id, p2.id]},
+                headers=_auth(own))
+    ing = _token(client, "ing")
+    codes = {p["code"] for p in client.get("/api/v1/projects", headers=_auth(ing)).json()}
+    assert codes == {"benidorm", "finestrat"}      # AHORA ve las dos

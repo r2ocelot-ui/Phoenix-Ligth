@@ -29,11 +29,13 @@ def list_projects(
     actor: User = Depends(get_current_user),
 ):
     q = db.query(Project).order_by(Project.id)
-    if not tenancy.is_global(actor):
-        if actor.project_id is None:
-            return []
-        return q.filter(Project.id == actor.project_id).all()
-    return q.all()
+    if tenancy.is_global(actor):
+        return q.all()
+    # Multi-proyecto: devuelve TODOS los proyectos asignados al usuario.
+    ids = tenancy.scoped_project_ids(actor) or set()
+    if not ids:
+        return []
+    return q.filter(Project.id.in_(ids)).all()
 
 
 @router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)

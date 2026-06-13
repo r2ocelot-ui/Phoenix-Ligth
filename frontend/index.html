@@ -2961,12 +2961,12 @@
         if (has("user:manage")) {
           const sel = el("select"); sel.style.width = "150px";
           (state.ranksCatalog || []).forEach(r => { const o = el("option", null, r.label); o.value = r.id; o.title = r.description; if (r.id === u.rank) o.selected = true; sel.append(o); });
-          sel.onchange = async () => { try { await api(`/users/${u.id}/rank`, { method: "POST", body: JSON.stringify({ rank: sel.value }) }); toast(`${u.username} → ${sel.value}`); loadUsers(); } catch (e) { toast(e.message, true); } };
+          sel.onchange = async () => { try { await api(`/users/${u.id}/rank`, { method: "POST", body: JSON.stringify({ rank: sel.value }) }); toast(`${cap(u.username)} → ${rankLabel(sel.value)}`); loadUsers(); } catch (e) { toast(e.message, true); } };
           td.append(sel);
           const pb = el("button", "btn sm ghost", "Clave");
           pb.style.marginLeft = "8px";
           pb.onclick = async () => {
-            const np = prompt(`Nueva contraseña para ${u.username} (mín. 6):`);
+            const np = prompt(`Nueva contraseña para ${cap(u.username)} (mín. 6):`);
             if (!np) return;
             try { await api(`/users/${u.id}/password`, { method: "POST", body: JSON.stringify({ password: np }) }); toast("Contraseña actualizada"); }
             catch (e) { toast(e.message, true); }
@@ -3319,7 +3319,7 @@
       if (r.id === u.rank) o.selected = true; sel.append(o);
     });
     sel.onchange = async () => {
-      try { await api(`/users/${u.id}/rank`, { method: "POST", body: JSON.stringify({ rank: sel.value }) }); toast(`${u.username} → ${sel.value}`); loadPermisos(); }
+      try { await api(`/users/${u.id}/rank`, { method: "POST", body: JSON.stringify({ rank: sel.value }) }); toast(`${cap(u.username)} → ${rankLabel(sel.value)}`); loadPermisos(); }
       catch (e) { toast(e.message, true); sel.value = u.rank; }
     };
     left.append(sel);

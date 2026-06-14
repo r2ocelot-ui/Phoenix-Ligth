@@ -125,6 +125,10 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **🔒 XSS: escape de datos en innerHTML** (`esc()` + `cellHtml`) | 🧪 | Nombres de CM/circuito/luminaria, User-Agent, auditoría, etc. ya no inyectan HTML. Quita el agujero P0 que detectó la auditoría |
 | Fix: ficha de luminaria mostraba "en línea" con CM caído (`_online`) | 🧪 | Abierta desde Luminarias usa `online` de /topology |
 | Fix: en la ficha, un campo con valor 0 mostraba "—" | 🧪 | `cell()` distingue 0 de vacío |
+| **🔒 CSP estricta** (script-src sin `'unsafe-inline'`) + lista de orígenes | 🧪 | Cabecera `Content-Security-Policy` en cada respuesta; `object-src 'none'`, `frame-ancestors 'self'`. Test de regresión |
+| **Iconos de ayuda (?)** estilo Hydra (componente reutilizable) | 🧪 | `helpIcon(tip)` — tooltip CSS, sin frases ocupando sitio. Aplicado en herramientas del mapa, modo del Control, perfil de calle y Nominal del circuito |
+| **Menú reordenado** por uso (Operación → Infraestructura → Administración) | 🧪 | Inicio · Cuadros · Alarmas · Control · Topología · Luminarias · Proyectos · Permisos · Seguridad · Auditoría |
+| Fix menor: default del select legacy a "visualizador" (era "novato") | 🧪 | Alta de usuario por la tabla legacy ya no cae al 1er rango del catálogo |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

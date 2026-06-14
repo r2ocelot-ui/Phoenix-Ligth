@@ -17,6 +17,37 @@ Formato de cada entrada:
 
 ---
 
+## 2026-06-14 · CSP estricta + iconos de ayuda + menú reordenado
+
+- **Hecho**
+  - **CSP estricta** (script-src sin `'unsafe-inline'`, lista cerrada de
+    orígenes para script/style/font/img/connect). Cabecera servida en cada
+    respuesta del backend, validada con TestClient. Test de regresión
+    `test_security_headers_present`.
+  - **Iconos de ayuda (?)** estilo Hydra: componente `helpIcon(tip)` con
+    tooltip CSS (texto en `data-tip`, sin innerHTML). Aplicado a herramientas
+    del mapa, modo del Control, perfil de calle del CM y Nominal del circuito.
+  - **Menú reordenado** por uso: Operación (Inicio/Cuadros/Alarmas/Control) →
+    Infraestructura (Topología/Luminarias) → Administración (Proyectos/
+    Permisos/Seguridad/Auditoría).
+  - Fix menor: select de rango legacy por defecto a "visualizador" (era
+    "novato", alias que ya no está en el catálogo de rangos).
+- **Decisiones**
+  - CSP: `script-src` estricto (vector real del XSS); `style-src` queda con
+    `'unsafe-inline'` porque el panel tiene ~226 `style="..."` y meterlo en
+    estricto sin refactor masivo rompería el render sin ganar mucho. Lo dejo
+    como pulido a futuro.
+- **Pendiente para la próxima**
+  - Limpiar progresivamente `style="..."` → clases CSS para poder endurecer
+    `style-src` en una segunda vuelta.
+  - Resto del bloque "🤖 yo solo" del backlog: tramos de tarifa por proyecto,
+    rematar XSS de baja prioridad, dar las llaves al auto-dimming/IA, multi-
+    proyecto FASE 2 (jerarquía zona→ciudad), fases lunares offline.
+  - Resto del bloque 🤝 (JWT→cookie, ticket WS, Argon2id, cifrar
+    `totp_secret`, datos legales) — todos marcados ⏸️ "contigo delante".
+
+---
+
 ## 2026-06-13 · Bugs de control/topología + modo IA del dimming + memoria de proyecto
 
 - **Hecho**
@@ -68,6 +99,13 @@ Formato de cada entrada:
   - Limpieza menor: tabla legacy `loadUsers`/vistas huérfanas `usuarios`+`rangos`
     (solo por deep-link; "Permisos" las reemplaza). Default de select legacy a
     "visualizador" (línea ~2398).
+  - (HECHO 14-jun) **CSP estricta**: cabecera Content-Security-Policy en
+    `main.py::_security_headers`. `script-src` estricto (solo 'self' + unpkg +
+    cdnjs) → blinda XSS. `style-src` con 'unsafe-inline' por los 226 `style=`
+    del panel (pulido futuro). Test de regresión que vigila que no se cuele
+    'unsafe-inline' en script-src.
+  - (HECHO 14-jun) Iconos de ayuda (?) estilo Hydra (`helpIcon`) y menú
+    reordenado por uso.
   - **CSP estricta** (CSP-B): reconocimiento ya hecho (sin `eval`/handlers
     inline; recursos externos mapeados: unpkg, cdnjs, Google Fonts, tiles
     carto/OSM/ArcGIS, Nominatim). Falta escribir la cabecera en

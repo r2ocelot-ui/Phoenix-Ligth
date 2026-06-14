@@ -46,6 +46,23 @@ def test_cabinets_requires_auth(client):
     assert client.get("/api/v1/cabinets").status_code == 401
 
 
+def test_security_headers_present(client):
+    """La CSP estricta debe llegar en cada respuesta junto al resto de
+    cabeceras de seguridad. Si alguna se pierde por un cambio del middleware,
+    se nota aquí antes de salir a producción."""
+    r = client.get("/health")
+    assert r.status_code == 200
+    csp = r.headers.get("content-security-policy", "")
+    assert "default-src 'self'" in csp
+    assert "object-src 'none'" in csp
+    assert "frame-ancestors 'self'" in csp
+    # script-src no puede ser 'unsafe-inline' (eso anula la defensa anti-XSS).
+    assert "'unsafe-inline'" not in csp.split("script-src", 1)[1].split(";", 1)[0]
+    assert r.headers.get("x-content-type-options") == "nosniff"
+    assert r.headers.get("x-frame-options") == "SAMEORIGIN"
+    assert r.headers.get("referrer-policy") == "no-referrer"
+
+
 def test_cabinets_empty_then_snapshot(client):
     token = _token(client)
     headers = {"Authorization": f"Bearer {token}"}

@@ -118,15 +118,39 @@ app.add_middleware(
 )
 
 
+# Content Security Policy: el frontend YA no tiene <script> inline (el JS vive
+# en app.js), así que script-src puede ir estricto y bloquear cualquier
+# inyección. Recursos por origen (Leaflet desde unpkg, QR para 2FA desde
+# cdnjs, fuentes desde Google, tiles desde CARTO/OSM/ArcGIS, geocoder
+# Nominatim). style-src queda con 'unsafe-inline' porque el panel usa
+# style="..." y CSS inyectado por JS en cientos de sitios — meterlo en
+# strict ahora rompe el render sin ganar mucho frente al XSS (el vector real
+# es script, no style). Eso queda como pulido a futuro.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' https://unpkg.com https://cdnjs.cloudflare.com; "
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org "
+    "https://server.arcgisonline.com https://unpkg.com; "
+    "connect-src 'self' ws: wss: https://nominatim.openstreetmap.org; "
+    "frame-ancestors 'self'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "object-src 'none'"
+)
+
+
 @app.middleware("http")
 async def _security_headers(request, call_next):
-    """Cabeceras de seguridad seguras (no rompen el render). La CSP estricta
-    se deja pendiente porque hoy el frontend usa JS inline; iría tras
-    externalizar el script."""
+    """Cabeceras de seguridad seguras (no rompen el render). CSP estricta para
+    script-src (bloquea XSS reflejado/almacenado) y permisiva para style-src
+    por el uso histórico de `style="..."` en el panel."""
     response = await call_next(request)
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("Referrer-Policy", "no-referrer")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Content-Security-Policy", _CSP)
     return response
 
 

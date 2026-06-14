@@ -1301,6 +1301,19 @@
   function renderCuadros(c) {
     c.innerHTML = "";
     if (!state.cabinets.length) { c.append(el("div", "empty", "No hay cuadros reportando todavía.")); return; }
+    // Barra superior con exportar CSV (atajo para informes de operación).
+    const bar = el("div", "row between"); bar.style.marginBottom = "12px";
+    bar.append(el("span", "muted", `${state.cabinets.length} cuadros · ${state.cabinets.filter(x => x.online).length} en línea`));
+    const csv = el("button", "btn ghost sm", "⬇ CSV"); csv.title = "Descargar estado de los cuadros (Excel)";
+    csv.onclick = () => downloadCSV("cuadros.csv",
+      ["Código", "Nombre", "Zona", "Online", "Estado", "Modo", "Dim%", "V (V)", "I (A)", "P (W)", "cos φ"],
+      state.cabinets.map(x => { const t = x.telemetry || {}; return [
+        x.cabinet_id, x.name || "", x.zone || "", x.online ? "sí" : "no",
+        x.online ? (x.status || "ok") : "offline",
+        x.dimming_mode || "schedule", x.state?.dim ?? "",
+        t.voltage_v ?? "", t.current_a ?? "", t.active_power_w ?? "", t.power_factor ?? "",
+      ]; }));
+    bar.append(csv); c.append(bar);
     const grid = el("div", "grid cards");
     state.cabinets.forEach(cab => {
       const t = cab.telemetry || {};

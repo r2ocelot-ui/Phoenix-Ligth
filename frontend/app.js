@@ -37,6 +37,16 @@
   function safeColor(c, fallback) {
     return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(c || "") ? c : (fallback || "#64748b");
   }
+  // Descarga client-side de un CSV (para informes/Excel). BOM para que Excel
+  // abra bien los acentos. Sin backend ni tocar auth.
+  function downloadCSV(filename, headers, rows) {
+    const cell = (s) => `"${String(s == null ? "" : s).replace(/"/g, '""')}"`;
+    const lines = [headers.map(cell).join(",")].concat(rows.map(r => r.map(cell).join(",")));
+    const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = el("a"); a.href = URL.createObjectURL(blob); a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  }
   function has(perm) { const p = state.me?.permissions || []; return p.includes("*") || p.includes(perm); }
   // Capitaliza la primera letra para mostrar (ej. "pepe" → "Pepe"). El valor
   // guardado en BD no cambia; el login es case-insensitive.
@@ -1560,7 +1570,11 @@
       const allCmOpt = el("option", null, "Todos los cuadros"); allCmOpt.value = ""; cmFilter.append(allCmOpt);
       tp.cabinets.forEach(cab => { const o = el("option", null, `CM${cab.number} · ${cab.name || cab.code}`); o.value = cab.code; cmFilter.append(o); });
       const counter = el("span", "muted"); counter.style.fontSize = "12px"; counter.style.alignSelf = "center";
-      bar.append(search, cmFilter, counter);
+      const csvBtn = el("button", "btn ghost sm", "⬇ CSV"); csvBtn.title = "Descargar todo el inventario de luminarias a CSV (Excel)";
+      csvBtn.onclick = () => downloadCSV("luminarias.csv",
+        ["Nº", "Calle", "Nº calle", "Localidad", "Provincia", "CP", "CM", "Circuito", "Fase", "Fabricante", "Modelo", "W", "Inventario", "Tecnología"],
+        rows.map(({ pt, cab, circ }) => [pt.number, pt.street, pt.street_number, pt.locality, pt.province, pt.postal_code, cab.code, circ ? circ.number : "", pt.phase, pt.manufacturer, pt.model, pt.power_w, pt.inventory_code, pt.technology]));
+      bar.append(search, cmFilter, counter, csvBtn);
       c.append(bar);
 
       const panel = el("div", "panel");
@@ -3436,6 +3450,13 @@
     const c = $("#content"); c.innerHTML = "";
     try {
       const entries = await api("/audit?limit=500");
+      const bar = el("div", "row between"); bar.style.marginBottom = "10px";
+      bar.append(el("span", "muted", `${entries.length} eventos`));
+      const csvBtn = el("button", "btn ghost sm", "⬇ CSV"); csvBtn.title = "Descargar el registro de auditoría a CSV";
+      csvBtn.onclick = () => downloadCSV("auditoria.csv",
+        ["Fecha/hora", "Usuario", "Acción", "Objetivo", "Detalle"],
+        entries.map(e => [fmtDateTime(e.timestamp), e.username, actionLabel(e.action), e.target || "", e.detail ? JSON.stringify(e.detail) : ""]));
+      bar.append(csvBtn); c.append(bar);
       const p = el("div", "panel");
       const tb = el("tbody");
       const t = el("table");

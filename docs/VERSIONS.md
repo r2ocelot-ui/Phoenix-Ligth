@@ -132,7 +132,8 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **Topes de tarifa POR PROYECTO** (P1/P2/P3 + floor) | 🧪 | `GET/PUT /projects/{id}/tariff` (owner edita, director lee). `NULL = usa global`. Motor IA y `cost_aware_level` aceptan `caps` por proyecto |
 | **UI de tarifa por proyecto** (botón "💶 Tarifa" en Proyectos) | 🧪 | Modal con los 4 topes; placeholder = valor global, vacío = "usar global". Owner edita, resto lee. Cada campo con su `?` |
 | **Toggle "recortar por tarifa" por proyecto** (None/Sí/No) | 🧪 | Una avenida noble se puede marcar "No recortar nunca por precio". El modo IA respeta `use_tariff` por proyecto |
-| **Región/comunidad por proyecto** + asignar zonas enteras (N:N) | 🧪 | Etiqueta `región` por ciudad; en Permisos las casillas se agrupan por región y se marca una comunidad entera de golpe (SICE: C.Valenciana+Murcia). No toca el aislamiento (sigue por `project_id`) |
+| **Región/comunidad por proyecto** + asignar zonas enteras (N:N) | 🧪 | Etiqueta `región` por ciudad; en Permisos las casillas se agrupan por región y se marca una comunidad entera de golpe (SICE: C.Valenciana+Murcia). No toca el aislamiento (sigue por `project_id`). **Texto libre → vale para cualquier país (UE/mundo)** |
+| **Exportar CSV** (Luminarias + Auditoría) | 🧪 | Botón "⬇ CSV" → descarga client-side con BOM (Excel abre acentos bien). Sin backend ni auth en URL |
 | **Alarmas en español** (tipo + severidad + mensajes del motor) | 🧪 | Menú → Alarmas: `ALARM_LABELS`/`SEVERITY_LABELS`; las 5 alarmas eléctricas del backend traducidas |
 | **Auditoría en español** (códigos de acción → texto) | 🧪 | `ACTION_LABELS` traduce `cabinet.create`→"Cuadro creado", etc. Código crudo en el `title` al pasar el ratón |
 | Fix: el reloj usa la zona horaria desde el **primer render** (`await loadInfo`) | 🧪 | En Canarias ya no parpadea un instante en hora de Madrid al entrar |

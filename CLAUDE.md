@@ -22,6 +22,7 @@ Backend FastAPI + MQTT; panel web de una sola página.
 | `docs/ROADMAP.md` | Índice por prioridad (hecho ✅ arriba, pendiente abajo) |
 | `docs/DECISIONS.md` | El **porqué** de cada decisión, por temas, con fecha |
 | `docs/SESIONES.md` | **Bitácora por día/sesión** — qué se hizo cada jornada |
+| `docs/PRUEBAS-NAVEGADOR.md` | Recetas F12 → Console para probar endpoints sin clicar |
 | `docs/SMARTCITY-BUS.md` | Visión V2 del bus compartido del ecosistema |
 | `docs/HYDRA-SECURITY-NOTES.md` | Notas de seguridad para la sesión de Hydra |
 | `LICENSE` / `docs/EULA.md` | Licencia Ed25519 + EULA (datos legales pendientes) |

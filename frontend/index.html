@@ -4,6 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Phoenix Light · Alumbrado Público Inteligente</title>
+  <!-- Favicon: usa static/phoenix-icon.png si está; si no, el navegador no muestra nada (inocuo). -->
+  <link rel="icon" type="image/png" href="static/phoenix-icon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -39,6 +41,9 @@
       border: 1px solid var(--accent-line); box-shadow: 0 0 22px rgba(239,68,68,.35); flex: none; }
     .emblem svg { width: 26px; height: 26px; animation: flick 2.4s ease-in-out infinite; }
     .emblem.big { width: 84px; height: 84px; } .emblem.big svg { width: 52px; height: 52px; }
+    /* Logo PNG dentro del chip (cuando existe static/phoenix-icon.png). */
+    .emblem-img { width: 32px; height: 32px; object-fit: contain; }
+    .emblem.big .emblem-img { width: 62px; height: 62px; }
     @keyframes flick {
       0%,100% { filter: drop-shadow(0 0 4px rgba(249,115,22,.8)); transform: scale(1); }
       50% { filter: drop-shadow(0 0 10px rgba(239,68,68,1)); transform: scale(1.06); }

@@ -20,6 +20,9 @@ Formato de cada entrada:
 ## 2026-06-14 · CSP estricta + iconos de ayuda + menú reordenado
 
 - **Hecho**
+  - **Hueco de logo PNG**: `emblemAll()` carga `frontend/static/phoenix-icon.png`
+    (menú + login + favicon) y cae al emblema SVG si no existe. Decidido el
+    **fénix rojo simple** para uso interno. Falta que el capitán suba el PNG.
   - **CSP estricta** (script-src sin `'unsafe-inline'`, lista cerrada de
     orígenes para script/style/font/img/connect). Cabecera servida en cada
     respuesta del backend, validada con TestClient. Test de regresión

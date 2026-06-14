@@ -7,7 +7,15 @@
 
   function emblemAll() {
     const tpl = document.getElementById("phoenix-svg").content;
-    document.querySelectorAll(".emblem").forEach(e => { if (!e.childElementCount) e.appendChild(tpl.cloneNode(true)); });
+    document.querySelectorAll(".emblem").forEach(e => {
+      if (e.childElementCount) return;
+      // Intenta el logo PNG (frontend/static/phoenix-icon.png). Si aún no está,
+      // cae al emblema SVG de llama. Sin handlers inline → respeta la CSP.
+      const img = document.createElement("img");
+      img.src = "static/phoenix-icon.png"; img.alt = "Phoenix"; img.className = "emblem-img";
+      img.addEventListener("error", () => { img.remove(); if (!e.childElementCount) e.appendChild(tpl.cloneNode(true)); });
+      e.appendChild(img);
+    });
   }
   function $(s) { return document.querySelector(s); }
   function el(tag, cls, html) { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; }

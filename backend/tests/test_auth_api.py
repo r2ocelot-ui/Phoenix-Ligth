@@ -1274,3 +1274,42 @@ def test_tz_from_coords_detects_real_timezone_worldwide():
     assert tz.tz_from_coords(40.71, -74.0) == "America/New_York"       # NYC
     assert tz.tz_from_coords(19.43, -99.13) == "America/Mexico_City"   # CDMX
     assert tz.tz_from_coords(None, None) == "Europe/Madrid"            # sin datos → default
+
+
+def test_project_tariff_caps_endpoints(client):
+    """Tramos de tarifa por proyecto: el owner los ajusta y se reflejan en
+    /tariff. Un usuario no-owner no puede tocar los topes (403)."""
+    _register(client, "owner"); own = _token(client, "owner")
+    p = client.post("/api/v1/projects", json={"code": "barna", "name": "Barcelona"},
+                    headers=_auth(own)).json()
+    # Por defecto, todos los topes NULL → "effective" igual a los defaults.
+    g = client.get(f"/api/v1/projects/{p['id']}/tariff", headers=_auth(own)).json()
+    assert g["project"]["tariff_cap_punta"] is None
+    assert g["effective"]["tariff_cap_punta"] == g["defaults"]["tariff_cap_punta"]
+    # Actualiza solo punta y floor.
+    r = client.put(f"/api/v1/projects/{p['id']}/tariff",
+                   json={"tariff_cap_punta": 60, "tariff_floor_level": 30},
+                   headers=_auth(own))
+    assert r.status_code == 200
+    g2 = client.get(f"/api/v1/projects/{p['id']}/tariff", headers=_auth(own)).json()
+    assert g2["project"]["tariff_cap_punta"] == 60
+    assert g2["effective"]["tariff_cap_punta"] == 60       # sustituye al global
+    assert g2["effective"]["tariff_floor_level"] == 30
+    assert g2["project"]["tariff_cap_llano"] is None        # los demás siguen NULL
+    # Validación: fuera de 0..100 → 422.
+    bad = client.put(f"/api/v1/projects/{p['id']}/tariff",
+                     json={"tariff_cap_punta": 150}, headers=_auth(own))
+    assert bad.status_code == 422
+    # Un director (no-owner) no puede tocarlo: 403.
+    client.post("/api/v1/users",
+                json={"username": "dir", "password": "secret123", "rank": "admin_proyecto"},
+                headers=_auth(own))
+    client.post("/api/v1/projects/assign-user",
+                json={"user_id": 2, "project_ids": [p["id"]]}, headers=_auth(own))
+    dir_tok = _token(client, "dir")
+    blocked = client.put(f"/api/v1/projects/{p['id']}/tariff",
+                         json={"tariff_cap_punta": 50}, headers=_auth(dir_tok))
+    assert blocked.status_code == 403
+    # Pero SÍ puede leer los suyos.
+    assert client.get(f"/api/v1/projects/{p['id']}/tariff",
+                      headers=_auth(dir_tok)).status_code == 200

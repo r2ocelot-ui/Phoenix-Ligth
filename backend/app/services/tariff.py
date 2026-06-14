@@ -37,15 +37,18 @@ PERIOD_LABELS: dict[str, str] = {"P1": "Punta", "P2": "Llano", "P3": "Valle"}
 LEVEL_CAP: dict[str, int] = {"P1": 75, "P2": 90, "P3": 100}
 
 
-def level_cap(period: str) -> int:
-    """Tope de dimming del periodo, leído de settings (configurable por
-    contrato); cae a los valores por defecto si el periodo es desconocido."""
-    caps = {
+def level_cap(period: str, caps: dict[str, int] | None = None) -> int:
+    """Tope de dimming del periodo. ``caps`` (opcional) permite sobreescribir
+    los topes globales por proyecto/contrato — pasa solo los periodos
+    presentes; los demás caen a settings y, en último término, a LEVEL_CAP."""
+    if caps and period in caps and caps[period] is not None:
+        return int(caps[period])
+    global_caps = {
         "P1": settings.tariff_cap_punta,
         "P2": settings.tariff_cap_llano,
         "P3": settings.tariff_cap_valle,
     }
-    return caps.get(period, LEVEL_CAP.get(period, 100))
+    return global_caps.get(period, LEVEL_CAP.get(period, 100))
 
 
 def _tz() -> ZoneInfo:
@@ -74,15 +77,20 @@ def current_period(when: datetime) -> str:
     return table[when.hour]
 
 
-def cost_aware_level(base_level: int, when: datetime, *, floor: int) -> int:
+def cost_aware_level(
+    base_level: int, when: datetime, *, floor: int, caps: dict[str, int] | None = None,
+) -> int:
     """Ajusta un nivel de dimming base según la tarifa, con red de seguridad.
 
     - Si la luz va apagada (``base_level <= 0``) se queda apagada: la tarifa
       nunca enciende el alumbrado.
     - Si va encendida, se recorta al tope del periodo pero **nunca por
       debajo de ``floor``** (mínimo de seguridad vial).
+
+    ``caps`` (opcional) permite usar topes por proyecto/contrato; sin él se
+    aplican los globales de settings.
     """
     if base_level <= 0:
         return 0
-    cap = level_cap(current_period(when))
+    cap = level_cap(current_period(when), caps)
     return max(min(base_level, cap), floor)

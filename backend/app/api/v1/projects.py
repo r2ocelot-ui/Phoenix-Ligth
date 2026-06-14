@@ -11,7 +11,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.project import Project
 from app.models.user import User
-from app.schemas.project import ProjectAssignUser, ProjectCreate, ProjectRead
+from app.core.config import settings
+from app.schemas.project import (
+    ProjectAssignUser, ProjectCreate, ProjectRead, ProjectTariffUpdate,
+)
 from app.services import audit_log, ranks, tenancy
 from app.services.auth import get_current_user, require_permission
 
@@ -116,6 +119,70 @@ def assign_user(
                      target=user.username, detail={"from": old, "to": ids})
     return {"ok": True, "user_id": user.id, "project_ids": user.project_ids,
             "project_id": user.project_id}
+
+
+@router.get("/{project_id}/tariff")
+def get_project_tariff(
+    project_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
+) -> dict:
+    """Topes de tarifa del proyecto + los efectivos (sustituyendo NULL por el
+    global). La UI puede pintar el valor actual y marcar "personalizado" cuando
+    el campo del proyecto no es NULL."""
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proyecto no encontrado")
+    # Director/operador solo ve los proyectos a los que pertenece.
+    if not tenancy.is_global(actor):
+        scoped = tenancy.scoped_project_ids(actor) or set()
+        if project_id not in scoped:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Proyecto fuera de tu ámbito")
+    return {
+        "project_id": project.id,
+        "project": {
+            "tariff_cap_punta": project.tariff_cap_punta,
+            "tariff_cap_llano": project.tariff_cap_llano,
+            "tariff_cap_valle": project.tariff_cap_valle,
+            "tariff_floor_level": project.tariff_floor_level,
+        },
+        "effective": {
+            "tariff_cap_punta": project.tariff_cap_punta if project.tariff_cap_punta is not None else settings.tariff_cap_punta,
+            "tariff_cap_llano": project.tariff_cap_llano if project.tariff_cap_llano is not None else settings.tariff_cap_llano,
+            "tariff_cap_valle": project.tariff_cap_valle if project.tariff_cap_valle is not None else settings.tariff_cap_valle,
+            "tariff_floor_level": project.tariff_floor_level if project.tariff_floor_level is not None else settings.tariff_floor_level,
+        },
+        "defaults": {
+            "tariff_cap_punta": settings.tariff_cap_punta,
+            "tariff_cap_llano": settings.tariff_cap_llano,
+            "tariff_cap_valle": settings.tariff_cap_valle,
+            "tariff_floor_level": settings.tariff_floor_level,
+        },
+    }
+
+
+@router.put("/{project_id}/tariff")
+def set_project_tariff(
+    project_id: int,
+    body: ProjectTariffUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+) -> dict:
+    """Actualiza los topes de tarifa del proyecto. Solo owner: los topes
+    afectan al gasto del cliente y al confort, decisión de cabeza de proyecto."""
+    _require_owner(actor)
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proyecto no encontrado")
+    data = body.model_dump(exclude_unset=True)
+    old = {k: getattr(project, k) for k in data}
+    for key, value in data.items():
+        setattr(project, key, value)
+    db.commit()
+    db.refresh(project)
+    audit_log.record(db, username=actor.username, action="project.tariff_update",
+                     target=project.code, detail={"from": old, "to": data})
+    return {"ok": True, "project_id": project.id, **data}
 
 
 @router.post("/{project_id}/assign-cabinet/{cabinet_code}")

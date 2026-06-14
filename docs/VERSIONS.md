@@ -129,6 +129,7 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **Iconos de ayuda (?)** estilo Hydra (componente reutilizable) | 🧪 | `helpIcon(tip)` — tooltip CSS, sin frases ocupando sitio. Aplicado en herramientas del mapa, modo del Control, perfil de calle y Nominal del circuito |
 | **Menú reordenado** por uso (Operación → Infraestructura → Administración) | 🧪 | Inicio · Cuadros · Alarmas · Control · Topología · Luminarias · Proyectos · Permisos · Seguridad · Auditoría |
 | Fix menor: default del select legacy a "visualizador" (era "novato") | 🧪 | Alta de usuario por la tabla legacy ya no cae al 1er rango del catálogo |
+| **Topes de tarifa POR PROYECTO** (P1/P2/P3 + floor) — backend | 🧪 | `GET/PUT /projects/{id}/tariff` (owner edita, director lee). `NULL = usa global`. Motor IA y `cost_aware_level` aceptan `caps` por proyecto. 4 tests nuevos. Falta UI |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)
@@ -149,7 +150,8 @@ y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 | Token del WebSocket fuera de la URL | acaba en logs → ticket efímero. **⏸️ contigo delante**: toca el login del WS, hay que probarlo en navegador |
 | Completar datos legales `LICENSE`/`EULA` | Angel Eduardo ✓ · Kumiho ✓; **faltan contacto, localidad de jurisdicción y forma jurídica** (S.L.…) — los pones tú |
 | Licencia: modo de enforcement (suave/intermedio/duro) | **decidido: suave por ahora**; al activar, preferible **intermedio** (periodo de gracia). Cambiarlo es trivial |
-| Tarifa: **TRAMOS** configurables por proyecto | topes ✓ (hechos hoy); falta que el horario punta/valle sea por proyecto (hoy 2.0TD fijo) |
+| Tarifa por proyecto: **UI** para editar topes | backend hecho (`GET/PUT /projects/{id}/tariff`); falta ficha en la sección Proyectos para editar |
+| Tarifa: horario por proyecto (no solo topes) | hoy 2.0TD fijo; los topes ya son por proyecto. Pendiente que las franjas P1/P2/P3 también lo sean |
 | MQTT en producción: aplicar `infra/mosquitto.prod.conf` | el ejemplo endurecido ✓; falta desplegarlo con certs reales (no toca al demo) |
 | Pegar `docs/HYDRA-SECURITY-NOTES.md` en la sesión de Hydra | y aplicar su checklist allí |
 | ESIOS/REE — precio kWh en tiempo real | dimming por coste real (detalle en *Integraciones*) |

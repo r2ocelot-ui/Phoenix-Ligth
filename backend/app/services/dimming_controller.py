@@ -40,15 +40,18 @@ def resolve_level(now: time, ambient_lux: float | None = None) -> int:
 
 
 def resolve_level_cost_aware(
-    now: time, when: datetime, ambient_lux: float | None = None, *, floor: int
+    now: time, when: datetime, ambient_lux: float | None = None, *,
+    floor: int, caps: dict[str, int] | None = None,
 ) -> int:
     """Como ``resolve_level`` pero aplicando el tope por tarifa eléctrica.
 
     ``when`` es el datetime (hora local) que decide el tramo tarifario.
     El alumbrado apagado sigue apagado; encendido, se recorta en horas
-    caras pero nunca por debajo de ``floor`` (mínimo de seguridad)."""
+    caras pero nunca por debajo de ``floor`` (mínimo de seguridad).
+
+    ``caps`` permite usar topes por proyecto/contrato (P1/P2/P3)."""
     base = resolve_level(now, ambient_lux)
-    return tariff.cost_aware_level(base, when, floor=floor)
+    return tariff.cost_aware_level(base, when, floor=floor, caps=caps)
 
 
 # Nivel al que se enciende si astronómicamente es de noche pero el perfil
@@ -58,7 +61,7 @@ NIGHT_DEFAULT_LEVEL = 100
 
 def resolve_auto_level(
     when: datetime, latitude: float, longitude: float, *, floor: int,
-    use_tariff: bool = True,
+    use_tariff: bool = True, caps: dict[str, int] | None = None,
 ) -> int:
     """Nivel de dimming decidido por el SOL (`sun.py`), SIN fotocélula.
 
@@ -80,7 +83,7 @@ def resolve_auto_level(
     if base <= 0:
         base = NIGHT_DEFAULT_LEVEL
     if use_tariff:
-        return tariff.cost_aware_level(base, when, floor=floor)
+        return tariff.cost_aware_level(base, when, floor=floor, caps=caps)
     return max(base, floor)
 
 
@@ -107,6 +110,7 @@ def resolve_ai_level(
     when: datetime, latitude: float, longitude: float, *,
     street_profile: str = "residential", ambient_lux: float | None = None,
     floor: int | None = None, use_tariff: bool = True,
+    caps: dict[str, int] | None = None,
 ) -> int:
     """Dimming **adaptativo por reglas** (modo "IA"), 100 % offline y auditable.
 
@@ -144,8 +148,8 @@ def resolve_ai_level(
     if ambient_lux is not None and ambient_lux < LUX_THRESHOLD_ON:
         level = max(level, night_base)
 
-    # 5) Tarifa: recorte por coste con suelo de seguridad.
+    # 5) Tarifa: recorte por coste con suelo de seguridad (topes por proyecto si vienen).
     if use_tariff:
-        level = tariff.cost_aware_level(level, when, floor=eff_floor)
+        level = tariff.cost_aware_level(level, when, floor=eff_floor, caps=caps)
 
     return max(min(level, 100), eff_floor)

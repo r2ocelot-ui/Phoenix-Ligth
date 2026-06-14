@@ -139,6 +139,32 @@ def test_ai_crossing_never_below_safety_floor():
     assert lvl >= dc.STREET_FLOOR["crossing"] == 50
 
 
+def test_cost_aware_uses_project_caps():
+    """Topes por proyecto: una ciudad con un contrato más agresivo recorta a 60
+    en punta sin afectar a otra que usa los globales (75)."""
+    punta = MONDAY.replace(hour=12)
+    caps = {"P1": 60, "P2": 90, "P3": 100}
+    assert tariff.cost_aware_level(100, punta, floor=40, caps=caps) == 60
+    # Sin caps, sigue al global (75 por defecto).
+    assert tariff.cost_aware_level(100, punta, floor=40) == 75
+
+
+def test_cost_aware_caps_partial():
+    """Solo se sustituye el tramo que viene en caps; los demás caen al global."""
+    valle = MONDAY.replace(hour=3)  # P3
+    caps_p1 = {"P1": 50}  # solo cambia punta
+    assert tariff.cost_aware_level(100, valle, floor=40, caps=caps_p1) == 100
+
+
+def test_ai_respects_project_caps():
+    """Modo IA con topes propios del proyecto: arteria a 100 en punta cae a 60
+    (en vez de a 75 con los globales)."""
+    evening = datetime(2026, 1, 15, 20, 0, tzinfo=MADRID)
+    caps = {"P1": 60, "P2": 90, "P3": 100}
+    assert dc.resolve_ai_level(evening, MADRID_LAT, MADRID_LON,
+                               street_profile="arterial", caps=caps) == 60
+
+
 def test_ai_low_lux_boosts_to_night_base():
     """Si el sensor ve oscuro de verdad (nublado) en noche profunda, sube a la
     base nocturna del perfil para mantener visibilidad."""

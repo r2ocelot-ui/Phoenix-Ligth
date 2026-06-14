@@ -281,19 +281,35 @@ class MQTTBus:
 
     def _load_dimming_configs(self) -> dict[str, dict]:
         """Lee de la BD el modo y los datos de regulación de cada cuadro. Es
-        barato (SQLite) y se llama una vez por ciclo del programador."""
+        barato (SQLite) y se llama una vez por ciclo del programador. Incluye
+        los topes/floor de tarifa del proyecto al que pertenece el cuadro,
+        para que la IA aplique los del contrato real y no los globales."""
         try:
             from app.core.database import SessionLocal
             from app.models.cabinet import Cabinet
+            from app.models.project import Project
             with SessionLocal() as db:
-                return {
-                    c.code: {
+                projects = {p.id: p for p in db.query(Project).all()}
+                out = {}
+                for c in db.query(Cabinet).all():
+                    proj = projects.get(c.project_id) if c.project_id else None
+                    caps = None
+                    if proj and any(v is not None for v in (
+                        proj.tariff_cap_punta, proj.tariff_cap_llano, proj.tariff_cap_valle,
+                    )):
+                        caps = {
+                            "P1": proj.tariff_cap_punta,
+                            "P2": proj.tariff_cap_llano,
+                            "P3": proj.tariff_cap_valle,
+                        }
+                    floor = proj.tariff_floor_level if proj and proj.tariff_floor_level is not None else None
+                    out[c.code] = {
                         "mode": c.dimming_mode or "schedule",
                         "lat": c.latitude, "lon": c.longitude,
                         "profile": c.street_profile or "residential",
+                        "caps": caps, "floor": floor,
                     }
-                    for c in db.query(Cabinet).all()
-                }
+                return out
         except Exception:
             return {}
 
@@ -304,10 +320,13 @@ class MQTTBus:
         cfg = cfg or {}
         lat, lon = cfg.get("lat"), cfg.get("lon")
         if mode == "ai" and lat is not None and lon is not None:
+            floor = cfg.get("floor")
+            if floor is None:
+                floor = settings.tariff_floor_level
             return dimming_controller.resolve_ai_level(
                 tariff.now_local(), lat, lon,
                 street_profile=cfg.get("profile", "residential"),
-                ambient_lux=lux, floor=settings.tariff_floor_level,
+                ambient_lux=lux, floor=floor, caps=cfg.get("caps"),
             )
         return dimming_controller.resolve_level(datetime.now().time(), ambient_lux=lux)
 
@@ -318,8 +337,25 @@ class MQTTBus:
         mode = cabinet.dimming_mode or "schedule"
         if mode == "manual":
             return None
+        # Si el cuadro pertenece a un proyecto con topes propios, los usamos.
+        caps, floor = None, None
+        if cabinet.project_id:
+            try:
+                from app.core.database import SessionLocal
+                from app.models.project import Project
+                with SessionLocal() as db:
+                    proj = db.get(Project, cabinet.project_id)
+                if proj:
+                    if any(v is not None for v in (
+                        proj.tariff_cap_punta, proj.tariff_cap_llano, proj.tariff_cap_valle,
+                    )):
+                        caps = {"P1": proj.tariff_cap_punta, "P2": proj.tariff_cap_llano, "P3": proj.tariff_cap_valle}
+                    floor = proj.tariff_floor_level
+            except Exception:
+                pass
         cfg = {"lat": cabinet.latitude, "lon": cabinet.longitude,
-               "profile": cabinet.street_profile or "residential"}
+               "profile": cabinet.street_profile or "residential",
+               "caps": caps, "floor": floor}
         level = self._auto_level_for(cabinet.code, cfg, mode)
         self.record_command(cabinet.code, dim=level)
         await self._safe_publish(

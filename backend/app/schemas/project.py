@@ -9,6 +9,23 @@ class ProjectRead(BaseModel):
     code: str
     name: str
     created_at: datetime
+    # Topes de dimming por tramo tarifario propios del proyecto (NULL → usa
+    # el default global de settings). Expuestos para que la UI distinga
+    # "personalizado" de "por defecto".
+    tariff_cap_punta: int | None = None
+    tariff_cap_llano: int | None = None
+    tariff_cap_valle: int | None = None
+    tariff_floor_level: int | None = None
+
+
+class ProjectTariffUpdate(BaseModel):
+    """Topes de tarifa por proyecto. Cada campo es opcional; ``None`` = "usa el
+    global". Solo `0–100` (0 = apaga en ese tramo). El alumbrado nunca se apaga
+    por tarifa: el floor protege el dimming, no el on/off."""
+    tariff_cap_punta: int | None = Field(default=None, ge=0, le=100)
+    tariff_cap_llano: int | None = Field(default=None, ge=0, le=100)
+    tariff_cap_valle: int | None = Field(default=None, ge=0, le=100)
+    tariff_floor_level: int | None = Field(default=None, ge=0, le=100)
 
 
 class ProjectCreate(BaseModel):

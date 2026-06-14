@@ -37,12 +37,21 @@ Formato de cada entrada:
     `'unsafe-inline'` porque el panel tiene ~226 `style="..."` y meterlo en
     estricto sin refactor masivo rompería el render sin ganar mucho. Lo dejo
     como pulido a futuro.
+  - (HECHO 14-jun) **Topes de tarifa por proyecto** — backend completo:
+    4 columnas opcionales en `Project`, helpers que aceptan `caps={P1,P2,P3}`,
+    endpoint `GET/PUT /projects/{id}/tariff`. Auto-migración verificada (los
+    proyectos viejos quedan con NULL → usan los globales). 4 tests nuevos.
+    **Pendiente UI**: ficha de tarifa en Proyectos, con `helpIcon` y la
+    distinción "personalizado/global".
 - **Pendiente para la próxima**
+  - **UI de la tarifa por proyecto** (backend ya está): formulario con los 4
+    topes en Proyectos → al editar un proyecto.
   - Limpiar progresivamente `style="..."` → clases CSS para poder endurecer
     `style-src` en una segunda vuelta.
-  - Resto del bloque "🤖 yo solo" del backlog: tramos de tarifa por proyecto,
-    rematar XSS de baja prioridad, dar las llaves al auto-dimming/IA, multi-
-    proyecto FASE 2 (jerarquía zona→ciudad), fases lunares offline.
+  - Resto del bloque "🤖 yo solo" del backlog: horarios P1/P2/P3 por proyecto
+    (no solo topes), rematar XSS de baja prioridad, dar las llaves al
+    auto-dimming/IA, multi-proyecto FASE 2 (jerarquía zona→ciudad), fases
+    lunares offline.
   - Resto del bloque 🤝 (JWT→cookie, ticket WS, Argon2id, cifrar
     `totp_secret`, datos legales) — todos marcados ⏸️ "contigo delante".
 

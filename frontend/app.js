@@ -354,7 +354,7 @@
     if (state.me?.has_totp) {
       const left = state.me?.totp_recovery_remaining ?? 0;
       card.innerHTML = `<h3>2FA activado ✅</h3><p class="desc">Tu cuenta pide un código de la app al iniciar sesión.</p>
-        <div class="muted" style="font-size:13px">🔑 Claves de recuperación sin usar: <strong>${left}</strong></div>`;
+        <div class="muted fs-13">🔑 Claves de recuperación sin usar: <strong>${left}</strong></div>`;
       const regenBox = el("div"); card.append(regenBox);
       const actions = el("div", "actions");
       const regen = el("button", "btn ghost", "Regenerar claves");
@@ -377,7 +377,7 @@
 
     // --- Activación: QR + clave manual + claves de recuperación + confirmar ---
     card.innerHTML = `<h3>Activar 2FA</h3><p class="desc">Protege tu cuenta con un código que cambia cada 30 s, como en el banco.</p>`;
-    const steps = el("div"); steps.innerHTML = `<div class="muted" style="font-size:13px">Generando clave…</div>`;
+    const steps = el("div"); steps.innerHTML = `<div class="muted fs-13">Generando clave…</div>`;
     card.append(steps, err);
     const actions = el("div", "actions");
     const cancel = el("button", "btn ghost", "Cancelar"); cancel.onclick = () => modal.remove();
@@ -1037,7 +1037,7 @@
     const wrap = el("div", "map-city"); wrap.id = "map-city-overlay";
     wrap.innerHTML = `
       <div id="project-chip" class="project-chip hidden">
-        <span class="muted" style="font-size:11px">Ciudad</span>
+        <span class="muted fs-11">Ciudad</span>
         <span id="project-chip-name">—</span>
         <span id="project-chip-caret" class="caret hidden">▾</span>
       </div>
@@ -1307,7 +1307,7 @@
       const card = el("div", "card");
       const head = el("div", "cab-head");
       head.append(el("div", null, `<div class="id">${esc(cab.cabinet_id)}</div><div class="nm">${esc(cab.name || "")}</div>`),
-        el("div", null, `<span class="dot ${cab.online ? cab.status : 'off'}"></span> <span class="muted" style="font-size:12px">${cab.online ? cab.status : 'offline'}</span>`));
+        el("div", null, `<span class="dot ${cab.online ? cab.status : 'off'}"></span> <span class="muted fs-12">${cab.online ? cab.status : 'offline'}</span>`));
       card.append(head);
       const m = el("div", "metrics");
       m.append(metric("Tensión", fmt(t, "voltage_v", " V")), metric("Corriente", fmt(t, "current_a", " A", 2)),
@@ -1838,7 +1838,7 @@
         <div class="topo-title">
           <span class="topo-dot ${statusCls}"></span>
           <strong>CM${cab.number}</strong>
-          <span class="muted mono" style="font-size:11px">${cab.code}</span>
+          <span class="muted mono fs-11">${cab.code}</span>
         </div>
         <div class="topo-name muted">${cab.name || ""}</div>
       </div>
@@ -1895,7 +1895,7 @@
     // el resto son datos del usuario y se escapan.
     rows.forEach(([k, v, cls, isHtml]) => {
       const cell = el("div");
-      cell.innerHTML = `<div class="muted" style="font-size:11px">${k}</div><div class="${cls || ""}" style="font-size:14px">${isHtml ? v : esc(v)}</div>`;
+      cell.innerHTML = `<div class="muted fs-11">${k}</div><div class="${cls || ""}" style="font-size:14px">${isHtml ? v : esc(v)}</div>`;
       grid.append(cell);
     });
     body.append(grid);
@@ -1984,7 +1984,7 @@
         devices.forEach(d => {
           const tr = el("tr");
           const last = d.last_seen_at ? fmtDateTime(d.last_seen_at) : "nunca";
-          tr.innerHTML = `<td class="mono">${esc(d.serial)}</td><td class="mono">${d.imei ? esc(d.imei) : "—"}</td><td>${d.model ? esc(d.model) : "—"}</td><td>${d.firmware ? esc(d.firmware) : "—"}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
+          tr.innerHTML = `<td class="mono">${esc(d.serial)}</td><td class="mono">${d.imei ? esc(d.imei) : "—"}</td><td>${d.model ? esc(d.model) : "—"}</td><td>${d.firmware ? esc(d.firmware) : "—"}</td><td class="muted mono fs-12">${last}</td>`;
           const td = el("td");
           if (canEdit) {
             const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444";
@@ -2187,7 +2187,7 @@
       else vd.textContent = v;
       d.append(kd, vd); return d;
     };
-    const cellHtml = (k, html) => { const d = el("div"); d.innerHTML = `<div class="muted" style="font-size:11px">${esc(k)}</div><div style="font-size:14px">${html || "<span class='muted'>—</span>"}</div>`; return d; };
+    const cellHtml = (k, html) => { const d = el("div"); d.innerHTML = `<div class="muted fs-11">${esc(k)}</div><div style="font-size:14px">${html || "<span class='muted'>—</span>"}</div>`; return d; };
     const has = (k) => pt[k] != null && pt[k] !== "" && pt[k] !== 0;
 
     // === 🔌 Eléctrico Phoenix (lo primero — qué desconectar) ===
@@ -2237,7 +2237,7 @@
       cell("CP", pt.postal_code),
       cell("Vía", pt.street),
       cell("Número", pt.street_number),
-      cellHtml("Posición", pt.latitude != null ? `<span class="mono" style="font-size:12px">${pt.latitude.toFixed(5)}, ${pt.longitude.toFixed(5)}</span>` : ""),
+      cellHtml("Posición", pt.latitude != null ? `<span class="mono fs-12">${pt.latitude.toFixed(5)}, ${pt.longitude.toFixed(5)}</span>` : ""),
     );
     card.append(addr);
     if (has("notes")) card.append(cell("Observaciones", pt.notes));
@@ -2666,7 +2666,7 @@
       // ---- Columna izquierda: lista de rangos ----
       const aside = el("div", "roles-list");
       const head = el("div", "roles-list-head");
-      head.innerHTML = `<strong>Rangos</strong><span class="muted" style="font-size:11px">${roles.length} en catálogo</span>`;
+      head.innerHTML = `<strong>Rangos</strong><span class="muted fs-11">${roles.length} en catálogo</span>`;
       aside.append(head);
       sorted.forEach(r => {
         const item = el("div", "role-item" + (r.id === state.selectedRole ? " active" : ""));
@@ -2677,7 +2677,7 @@
             <div class="role-name">${r.label}</div>
             <div class="role-sub muted">nivel ${r.level} · ${r.is_owner ? "protegido" : (r.is_builtin ? "por defecto" : "custom")}</div>
           </div>
-          <span class="muted mono" style="font-size:11px">${(r.permissions || []).length}</span>`;
+          <span class="muted mono fs-11">${(r.permissions || []).length}</span>`;
         item.onclick = () => { state.selectedRole = r.id; loadRoles(); };
         aside.append(item);
       });
@@ -2721,7 +2721,7 @@
     head.innerHTML = `
       <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap">
         <h3 style="margin:0; font-size:18px">${role.label}</h3>
-        <span class="muted mono" style="font-size:11px">id ${role.id} · nivel ${role.level}</span>
+        <span class="muted mono fs-11">id ${role.id} · nivel ${role.level}</span>
       </div>
       <div class="muted" style="font-size:12px; margin-top:4px">${role.description || ""}</div>
       <div style="margin-top:6px">${badges.join(" ")}</div>`;
@@ -2740,7 +2740,7 @@
         const cb = el("input"); cb.type = "checkbox"; cb.checked = role.permissions.includes(p.id); cb.disabled = locked;
         checkboxes[p.id] = cb;
         const txt = el("div");
-        txt.innerHTML = `<div class="perm-label">${p.label} <span class="mono muted" style="font-size:11px">${p.id}</span></div><div class="muted" style="font-size:11px">${p.description}</div>`;
+        txt.innerHTML = `<div class="perm-label">${p.label} <span class="mono muted fs-11">${p.id}</span></div><div class="muted fs-11">${p.description}</div>`;
         row.append(cb, txt); list.append(row);
       });
     }
@@ -3017,7 +3017,7 @@
 
       // Botón crear usuario (toggle inline).
       const tools = el("div", "row between"); tools.style.marginBottom = "10px";
-      tools.innerHTML = `<div class="muted" style="font-size:12px">${users.length} usuario(s) en este alcance · pulsa una fila para ver permisos.</div>`;
+      tools.innerHTML = `<div class="muted fs-12">${users.length} usuario(s) en este alcance · pulsa una fila para ver permisos.</div>`;
       const addBtn = el("button", "btn sm", "+ Crear usuario");
       tools.append(addBtn);
       body.append(tools);
@@ -3053,7 +3053,7 @@
     row.append(head);
     if (isOpen) {
       const detail = el("div", "user-detail");
-      detail.innerHTML = `<div class="muted" style="font-size:12px">Cargando…</div>`;
+      detail.innerHTML = `<div class="muted fs-12">Cargando…</div>`;
       row.append(detail);
       fetchUserDetail(u.id).then(d => {
         detail.innerHTML = "";
@@ -3073,7 +3073,7 @@
     // Línea 1: rango con selector y email.
     const top = el("div", "user-detail-row");
     const left = el("div");
-    left.innerHTML = `<div class="muted" style="font-size:11px">Rango</div>`;
+    left.innerHTML = `<div class="muted fs-11">Rango</div>`;
     const sel = el("select"); sel.style.minWidth = "160px";
     (state.ranksCatalog || []).forEach(r => {
       const o = el("option", null, r.label); o.value = r.id; o.title = r.description || "";
@@ -3085,7 +3085,7 @@
     };
     left.append(sel);
     const right = el("div");
-    right.innerHTML = `<div class="muted" style="font-size:11px">Email · creado</div><div style="font-size:13px">${u.email || "—"} · <span class="mono muted">${fmtDate(u.created_at)}</span></div>`;
+    right.innerHTML = `<div class="muted fs-11">Email · creado</div><div style="font-size:13px">${u.email || "—"} · <span class="mono muted">${fmtDate(u.created_at)}</span></div>`;
     top.append(left, right);
     wrap.append(top);
 
@@ -3094,7 +3094,7 @@
     // con Benidorm + Terra Mítica + Finestrat). Aplica a CUALQUIER rango.
     if (isOwnerUser()) {
       const projRow = el("div"); projRow.style.marginTop = "10px";
-      projRow.innerHTML = `<div class="muted" style="font-size:11px">Proyectos / ciudades <span style="opacity:.7">(marca las que cubre)</span></div>`;
+      projRow.innerHTML = `<div class="muted fs-11">Proyectos / ciudades <span style="opacity:.7">(marca las que cubre)</span></div>`;
       const projects = state.projects || [];
       const current = new Set((u.project_ids && u.project_ids.length) ? u.project_ids : (u.project_id ? [u.project_id] : []));
       const box = el("div"); box.style.display = "flex"; box.style.flexDirection = "column"; box.style.gap = "8px"; box.style.marginTop = "6px";
@@ -3136,12 +3136,12 @@
     // Línea de seguridad: credenciales (sin revelar nunca) + estado 2FA.
     const sec = el("div", "user-detail-row"); sec.style.marginTop = "10px";
     const credCell = el("div");
-    credCell.innerHTML = `<div class="muted" style="font-size:11px">Credenciales configuradas</div>`
+    credCell.innerHTML = `<div class="muted fs-11">Credenciales configuradas</div>`
       + `<div style="font-size:13px">Contraseña ✅`
       + ` · PIN ${u.has_pin ? "✅" : "—"} · Patrón ${u.has_pattern ? "✅" : "—"}</div>`
       + `<div class="muted" style="font-size:11px;margin-top:2px">Las credenciales se guardan cifradas y nunca son legibles, ni para el admin.</div>`;
     const totpCell = el("div");
-    totpCell.innerHTML = `<div class="muted" style="font-size:11px">2FA (Google Authenticator)</div>`
+    totpCell.innerHTML = `<div class="muted fs-11">2FA (Google Authenticator)</div>`
       + `<div style="font-size:13px">${u.has_totp ? `✅ activo · 🔑 ${u.totp_recovery_remaining ?? 0} claves de recuperación` : "— sin activar"}</div>`;
     sec.append(credCell, totpCell);
     wrap.append(sec);
@@ -3489,7 +3489,7 @@
       const wrap = el("div", "roles-layout");
       const aside = el("div", "roles-list");
       const head = el("div", "roles-list-head");
-      head.innerHTML = `<strong>Rangos</strong><span class="muted" style="font-size:11px">${roles.length} en catálogo</span>`;
+      head.innerHTML = `<strong>Rangos</strong><span class="muted fs-11">${roles.length} en catálogo</span>`;
       aside.append(head);
       sorted.forEach(r => {
         const item = el("div", "role-item" + (r.id === state.selectedRole ? " active" : ""));
@@ -3500,7 +3500,7 @@
             <div class="role-name">${r.label}</div>
             <div class="role-sub muted">nivel ${r.level} · ${r.is_owner ? "protegido" : (r.is_builtin ? "por defecto" : "custom")}</div>
           </div>
-          <span class="muted mono" style="font-size:11px">${(r.permissions || []).length}</span>`;
+          <span class="muted mono fs-11">${(r.permissions || []).length}</span>`;
         item.onclick = () => { state.selectedRole = r.id; loadPermisos(); };
         aside.append(item);
       });
@@ -3540,7 +3540,7 @@
     head.innerHTML = `
       <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap">
         <h3 style="margin:0; font-size:16px">${role.label}</h3>
-        <span class="muted mono" style="font-size:11px">${role.id} · nivel ${role.level}</span>
+        <span class="muted mono fs-11">${role.id} · nivel ${role.level}</span>
         ${badges.join(" ")}
       </div>
       <div class="muted" style="font-size:12px; margin-top:3px">${role.description || ""}</div>`;
@@ -3614,7 +3614,7 @@
         rows.forEach(e => {
           const tr = el("tr");
           const when = fmtDateTime(e.timestamp);
-          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${esc(e.username)}</td><td><span class="badge" title="${esc(e.action)}">${esc(actionLabel(e.action))}</span></td><td class="mono">${e.target ? esc(e.target) : "—"}</td><td class="muted" style="font-size:12px">${e.detail ? esc(JSON.stringify(e.detail)) : ""}</td>`;
+          tr.innerHTML = `<td class="muted mono fs-12">${when}</td><td>${esc(e.username)}</td><td><span class="badge" title="${esc(e.action)}">${esc(actionLabel(e.action))}</span></td><td class="mono">${e.target ? esc(e.target) : "—"}</td><td class="muted fs-12">${e.detail ? esc(JSON.stringify(e.detail)) : ""}</td>`;
           tb.append(tr);
         });
       };
@@ -3716,7 +3716,7 @@
         try {
           const siege = await api("/security/siege");
           const head = el("div", "row between");
-          const desc = el("div"); desc.innerHTML = `<strong>Modo siege</strong> <span class="muted" style="font-size:12px">· cuando está activo, solo IPs whitelisted pueden entrar</span>`;
+          const desc = el("div"); desc.innerHTML = `<strong>Modo siege</strong> <span class="muted fs-12">· cuando está activo, solo IPs whitelisted pueden entrar</span>`;
           const btn = el("button", "btn " + (siege.on ? "" : "ghost") + " sm", siege.on ? "⛨ Activo — desactivar" : "Activar modo siege");
           btn.onclick = async () => {
             if (siege.on || confirm("ATENCIÓN: el modo siege bloquea TODAS las IPs no whitelisted. Asegúrate de añadir tu IP primero. ¿Continuar?")) {
@@ -3746,7 +3746,7 @@
           bans.forEach(b => {
             const tr = el("tr");
             const exp = b.expires_at ? fmtDateTime(b.expires_at) : "permanente";
-            tr.innerHTML = `<td class="mono">${esc(b.ip)}</td><td class="muted" style="font-size:12px">${esc(b.reason || "")}</td><td>${esc(b.banned_by)}</td><td class="muted mono" style="font-size:12px">${exp}</td>`;
+            tr.innerHTML = `<td class="mono">${esc(b.ip)}</td><td class="muted fs-12">${esc(b.reason || "")}</td><td>${esc(b.banned_by)}</td><td class="muted mono fs-12">${exp}</td>`;
             const td = el("td");
             const rm = el("button", "btn ghost sm", "Quitar");
             rm.onclick = async () => { try { await api(`/security/bans/${encodeURIComponent(b.ip)}`, { method: "DELETE" }); toast("Ban quitado"); loadSecurity(); } catch (e) { toast(e.message, true); } };
@@ -3786,7 +3786,7 @@
           devs.forEach(d => {
             const tr = el("tr");
             const last = fmtDateTime(d.last_seen_at);
-            tr.innerHTML = `<td>${d.label ? esc(d.label) : "—"}<div class="muted" style="font-size:11px">${esc((d.user_agent || "").slice(0,80))}</div></td><td class="mono">${esc(d.last_ip || "?")}</td><td class="muted mono" style="font-size:12px">${last}</td>`;
+            tr.innerHTML = `<td>${d.label ? esc(d.label) : "—"}<div class="muted fs-11">${esc((d.user_agent || "").slice(0,80))}</div></td><td class="mono">${esc(d.last_ip || "?")}</td><td class="muted mono fs-12">${last}</td>`;
             const td = el("td");
             const rev = el("button", "btn ghost sm", "Revocar");
             rev.onclick = async () => { if (confirm("¿Revocar este dispositivo? La próxima sesión desde él contará como nueva.")) { try { await api(`/security/devices/${encodeURIComponent(d.device_id)}`, { method: "DELETE" }); toast("Dispositivo revocado"); loadSecurity(); } catch (e) { toast(e.message, true); } } };
@@ -3812,7 +3812,7 @@
           const cls = SEC_BADGE[e.action] || "";
           const label = SEC_LABEL[e.action] || e.action;
           const det = e.detail ? Object.entries(e.detail).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ") : "";
-          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${esc(e.username)}</td><td><span class="badge ${esc(cls)}">${esc(label)}</span></td><td class="muted" style="font-size:12px">${esc(det)}</td>`;
+          tr.innerHTML = `<td class="muted mono fs-12">${when}</td><td>${esc(e.username)}</td><td><span class="badge ${esc(cls)}">${esc(label)}</span></td><td class="muted fs-12">${esc(det)}</td>`;
           tb.append(tr);
         });
       };

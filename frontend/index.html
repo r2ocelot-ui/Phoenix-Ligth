@@ -36,14 +36,15 @@
     .muted { color: var(--muted); }
 
     /* ===== Emblema Phoenix con llama animada ===== */
-    .emblem { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+    .emblem { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center;
       background: radial-gradient(circle at 50% 35%, #2a1206, #0b0502);
       border: 1px solid var(--accent-line); box-shadow: 0 0 22px rgba(239,68,68,.35); flex: none; }
-    .emblem svg { width: 26px; height: 26px; animation: flick 2.4s ease-in-out infinite; }
-    .emblem.big { width: 84px; height: 84px; } .emblem.big svg { width: 52px; height: 52px; }
-    /* Logo PNG dentro del chip (cuando existe static/phoenix-icon.png). */
-    .emblem-img { width: 32px; height: 32px; object-fit: contain; }
-    .emblem.big .emblem-img { width: 62px; height: 62px; }
+    .emblem svg { width: 32px; height: 32px; animation: flick 2.4s ease-in-out infinite; }
+    .emblem.big { width: 92px; height: 92px; box-shadow: 0 0 34px rgba(239,68,68,.45); } .emblem.big svg { width: 64px; height: 64px; }
+    /* Logo PNG dentro del chip (cuando existe static/phoenix-icon.png). Llena
+       más el círculo para que se vea detallado y llame la atención. */
+    .emblem-img { width: 44px; height: 44px; object-fit: contain; }
+    .emblem.big .emblem-img { width: 82px; height: 82px; }
     @keyframes flick {
       0%,100% { filter: drop-shadow(0 0 4px rgba(249,115,22,.8)); transform: scale(1); }
       50% { filter: drop-shadow(0 0 10px rgba(239,68,68,1)); transform: scale(1.06); }
@@ -524,7 +525,7 @@
   <section id="login">
     <div class="login-card">
       <div class="brand">
-        <div class="emblem"></div>
+        <div class="emblem big"></div>
         <div><h1>PHOENIX</h1><div class="sub">Light · Division</div></div>
       </div>
       <p class="tag">Telegestión y eficiencia de alumbrado público.<br/>Accede con tu cuenta para operar la red.</p>

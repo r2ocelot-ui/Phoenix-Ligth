@@ -37,6 +37,12 @@ Formato de cada entrada:
     `'unsafe-inline'` porque el panel tiene ~226 `style="..."` y meterlo en
     estricto sin refactor masivo rompería el render sin ganar mucho. Lo dejo
     como pulido a futuro.
+  - (HECHO 14-jun) **Saneador de color** `safeColor()` + aplicado a las 6
+    interpolaciones de color con datos del backend (tablas, popup de mapa,
+    pines `divIcon`, cabecera del modal del CM). Defensa en profundidad
+    sobre la CSP.
+  - (HECHO 14-jun) Limpieza: `loadUsers()` (la tabla huérfana de Usuarios) se
+    sustituye por una redirección a la sección "Permisos". 80 líneas menos.
   - (HECHO 14-jun) **Topes de tarifa por proyecto** — backend completo:
     4 columnas opcionales en `Project`, helpers que aceptan `caps={P1,P2,P3}`,
     endpoint `GET/PUT /projects/{id}/tariff`. Auto-migración verificada (los

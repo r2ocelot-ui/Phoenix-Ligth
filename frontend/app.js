@@ -23,6 +23,12 @@
     s.setAttribute("data-tip", tip); s.setAttribute("tabindex", "0"); s.setAttribute("aria-label", tip);
     return s;
   }
+  // Sanea un color hex (#rgb / #rrggbb / #rrggbbaa) antes de inyectarlo en
+  // `style="background:${c}"`. Sin esto, un valor malicioso podría romper el
+  // atributo; con la CSP estricta ya no ejecuta scripts, pero blindamos.
+  function safeColor(c, fallback) {
+    return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(c || "") ? c : (fallback || "#64748b");
+  }
   function has(perm) { const p = state.me?.permissions || []; return p.includes("*") || p.includes(perm); }
   // Capitaliza la primera letra para mostrar (ej. "pepe" → "Pepe"). El valor
   // guardado en BD no cambia; el login es case-insensitive.
@@ -566,7 +572,6 @@
     renderProjectChip();
     // Re-fetch para que las listas reflejen el nuevo scope.
     refreshLive();
-    if (state.view === "usuarios") loadUsers();
   }
   function scopeQuery(path) {
     // Helper: anexa ?project_id=X cuando el owner haya activado un proyecto.
@@ -1207,14 +1212,14 @@
   function cmDivIcon(num, col) {
     return L.divIcon({
       className: "pin-wrap",
-      html: `<div class="cm-pin" style="background:${col}">CM${num}</div>`,
+      html: `<div class="cm-pin" style="background:${safeColor(col, "#f97316")}">CM${Number(num) || 0}</div>`,
       iconSize: [30, 30], iconAnchor: [15, 15],
     });
   }
   function ptDivIcon(num, col) {
     return L.divIcon({
       className: "pin-wrap",
-      html: `<div class="pt-pin" style="background:${col}"></div><div class="pt-num">${num}</div>`,
+      html: `<div class="pt-pin" style="background:${safeColor(col, "#38bdf8")}"></div><div class="pt-num">${Number(num) || 0}</div>`,
       iconSize: [14, 14], iconAnchor: [7, 7],
     });
   }
@@ -1524,7 +1529,7 @@
             const phaseCol = (tp.phase_colors || {})[pt.phase] || "#64748b";
             tr.innerHTML = `<td class="mono">${pt.number}</td>`
               + `<td>${pt.street ? esc(pt.street) : "<span class='muted'>—</span>"}${pt.street_number ? " " + esc(pt.street_number) : ""}</td>`
-              + `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${cab.color};margin-right:5px"></span>CM${cab.number}</td>`
+              + `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${safeColor(cab.color, "#f97316")};margin-right:5px"></span>CM${cab.number}</td>`
               + `<td>${circ ? "C" + circ.number : "—"}</td>`
               + `<td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${phaseCol};margin-right:5px"></span>${pt.phase}</td>`
               + `<td>${pt.manufacturer ? esc(pt.manufacturer) : "—"}</td><td>${pt.model ? esc(pt.model) : "—"}</td><td class="mono">${(pt.power_w || 0).toFixed(0)}</td>`;
@@ -1635,7 +1640,7 @@
     state.topoTab = state.topoTab || "cuadro";
 
     const head = el("div", "row between");
-    head.innerHTML = `<h3 style="margin:0"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${cab.color};margin-right:8px"></span>CM${cab.number} · ${esc(cab.name || cab.code)}</h3>`;
+    head.innerHTML = `<h3 style="margin:0"><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${safeColor(cab.color, "#f97316")};margin-right:8px"></span>CM${cab.number} · ${esc(cab.name || cab.code)}</h3>`;
     const closeX = el("button", "btn ghost sm", "✕"); closeX.onclick = () => modal.remove();
     head.append(closeX);
     card.append(head);
@@ -1665,7 +1670,7 @@
       ["Nombre", cab.name || "—"],
       ["Número (CM)", cab.number],
       ["Zona", cab.zone || "—"],
-      ["Color", `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${cab.color};margin-right:6px"></span><span class="mono">${esc(cab.color)}</span>`, "", true],
+      ["Color", `<span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${safeColor(cab.color, "#f97316")};margin-right:6px"></span><span class="mono">${esc(cab.color)}</span>`, "", true],
       ["Coordenadas", cab.latitude != null ? `${cab.latitude.toFixed(5)}, ${cab.longitude.toFixed(5)}` : "sin ubicar", "", true],
     ];
     // isHtml=true en las filas cuyo valor es marcado nuestro (color/coords);
@@ -1696,7 +1701,7 @@
       const list = cab.points.filter(pt => pt.circuit_id === ci.id);
       const tr = el("tr");
       tr.innerHTML = `<td class="mono">${ci.number}</td><td>${ci.name ? esc(ci.name) : "—"}</td>`
-        + `<td><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${ci.color};margin-right:6px"></span><span class="mono">${ci.color}</span></td>`
+        + `<td><span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${safeColor(ci.color, "#38bdf8")};margin-right:6px"></span><span class="mono">${esc(ci.color)}</span></td>`
         + `<td>${ci.phase}</td><td class="mono">${(ci.expected_power_w || 0).toFixed(0)} W</td><td class="mono">${list.length}</td>`;
       const td = el("td");
       if (canEdit) {
@@ -2411,87 +2416,10 @@
     } catch (e) { toast(e.message, true); }
   }
 
-  // ============================ Usuarios ============================
-  async function loadUsers() {
-    const c = $("#content"); c.innerHTML = "";
-    try {
-      const users = await api(scopeQuery("/users"));
-      // Alta de usuarios (solo admins). No hay auto-registro: el admin da el acceso.
-      if (has("user:manage")) {
-        const cp = el("div", "panel"); cp.style.marginBottom = "14px";
-        cp.append(el("div", null, "<strong>Crear usuario</strong> <span class='muted' style='font-size:12px'>· define las 4 credenciales (PIN/patrón son opcionales, el propio usuario los podrá cambiar al entrar)</span>"));
-        const grid = el("div"); grid.style.display = "grid"; grid.style.gridTemplateColumns = "1fr 1fr"; grid.style.gap = "12px"; grid.style.marginTop = "12px";
-
-        // Columna izquierda: identidad + contraseña + PIN + rango.
-        const left = el("div"); left.style.display = "grid"; left.style.gap = "8px";
-        const u = el("input"); u.placeholder = "usuario";
-        const pw = el("input"); pw.type = "password"; pw.placeholder = "contraseña (mín. 6)";
-        const pin = el("input"); pin.type = "password"; pin.inputMode = "numeric"; pin.maxLength = 8; pin.placeholder = "PIN (4-8 dígitos, opcional)";
-        const rk = el("select");
-        const allowed = (state.ranksCatalog || []).filter(r => r.id !== "owner");
-        allowed.forEach(r => { const o = el("option", null, r.label); o.value = r.id; if (r.id === "visualizador") o.selected = true; rk.append(o); });
-        const hint = el("div", "muted"); hint.style.fontSize = "12px";
-        const updateHint = () => { const r = allowed.find(x => x.id === rk.value); hint.textContent = r ? r.description : ""; };
-        rk.onchange = updateHint; updateHint();
-        left.append(u, pw, pin, rk, hint);
-
-        // Columna derecha: widget de patrón inline.
-        const right = el("div"); right.style.display = "grid"; right.style.justifyItems = "center"; right.style.gap = "6px";
-        right.append(el("div", "muted", "Patrón (opcional)"));
-        let pattern = "";
-        const pad = makePatternPad(seq => { pattern = seq; });
-        right.append(pad);
-        const reset = el("button", "btn ghost sm", "Repetir patrón"); reset.onclick = () => { pad.reset(); pattern = ""; };
-        right.append(reset);
-
-        grid.append(left, right); cp.append(grid);
-
-        const b = el("button", "btn", "Crear usuario"); b.style.marginTop = "12px";
-        b.onclick = async () => {
-          if (!u.value.trim()) { toast("Falta el usuario.", true); return; }
-          if (pw.value.length < 6) { toast("La contraseña debe tener al menos 6 caracteres.", true); return; }
-          if (pin.value && !/^\d{4,8}$/.test(pin.value)) { toast("PIN: 4-8 dígitos.", true); return; }
-          if (pattern && pattern.length < 4) { toast("El patrón debe unir al menos 4 puntos.", true); return; }
-          const body = { username: u.value.trim(), password: pw.value, rank: rk.value };
-          if (pin.value) body.pin = pin.value;
-          if (pattern) body.pattern = pattern;
-          try {
-            await api("/users", { method: "POST", body: JSON.stringify(body) });
-            toast("Usuario creado: " + body.username);
-            u.value = pw.value = pin.value = ""; pad.reset(); pattern = "";
-            loadUsers();
-          } catch (e) { toast(e.message, true); }
-        };
-        cp.append(b); c.append(cp);
-      }
-      const p = el("div", "panel");
-      const t = el("table");
-      t.innerHTML = `<thead><tr><th>ID</th><th>Usuario</th><th>Rango</th><th>Puntos</th><th>Activo</th><th></th></tr></thead>`;
-      const tb = el("tbody");
-      users.forEach(u => {
-        const tr = el("tr");
-        tr.innerHTML = `<td class="mono">${u.id}</td><td>${esc(cap(u.username))}</td><td><span class="badge rank">${esc(rankLabel(u.rank))}</span></td><td class="mono">${u.activity_points}</td><td>${u.is_active ? "sí" : "no"}</td>`;
-        const td = el("td");
-        if (has("user:manage")) {
-          const sel = el("select"); sel.style.width = "150px";
-          (state.ranksCatalog || []).forEach(r => { const o = el("option", null, r.label); o.value = r.id; o.title = r.description; if (r.id === u.rank) o.selected = true; sel.append(o); });
-          sel.onchange = async () => { try { await api(`/users/${u.id}/rank`, { method: "POST", body: JSON.stringify({ rank: sel.value }) }); toast(`${cap(u.username)} → ${rankLabel(sel.value)}`); loadUsers(); } catch (e) { toast(e.message, true); } };
-          td.append(sel);
-          const pb = el("button", "btn sm ghost", "Clave");
-          pb.style.marginLeft = "8px";
-          pb.onclick = async () => {
-            const np = prompt(`Nueva contraseña para ${cap(u.username)} (mín. 6):`);
-            if (!np) return;
-            try { await api(`/users/${u.id}/password`, { method: "POST", body: JSON.stringify({ password: np }) }); toast("Contraseña actualizada"); }
-            catch (e) { toast(e.message, true); }
-          };
-          td.append(pb);
-        }
-        tr.append(td); tb.append(tr);
-      });
-      t.append(tb); p.append(t); c.append(p);
-    } catch (e) { c.append(el("div", "empty", e.message)); }
-  }
+  // La antigua tabla `loadUsers()` (deep-link #usuarios) se sustituyó por la
+  // sección "Permisos" — más completa y con guards de rango. Si alguien aterriza
+  // con un enlace antiguo, lo redirigimos sin perder la navegación.
+  function loadUsers() { go("permisos"); }
 
   // ============================ Auditoría ============================
   // ============================ Rangos / permisos ============================

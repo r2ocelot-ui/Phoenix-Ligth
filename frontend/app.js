@@ -480,6 +480,9 @@
 
   async function boot() {
     state.me = await api("/auth/me");
+    // Carga zona horaria + versión ANTES de pintar nada con horas (si no, el
+    // reloj arranca un instante en Europe/Madrid hasta que /auth/info resuelve).
+    try { await loadInfo(); } catch (e) { /* sin /info: sigue con defaults */ }
     $("#login").classList.add("hidden"); $("#app").classList.remove("hidden");
     $("#ub-user").textContent = cap(state.me.username);
     $("#ub-rank").textContent = rankLabel(state.me.rank);

@@ -492,8 +492,30 @@
   // ====== Modo Emergencia ============
   async function emergencyAllOn() {
     if (!confirm("MODO EMERGENCIA: encender todo y poner dimming al 100%. ¿Continuar?")) return;
-    try { const r = await api("/emergency/all-on", { method: "POST" }); toast(`Emergencia aplicada a ${r.cabinets.length} cuadros`); }
-    catch (e) { toast(e.message, true); }
+    try {
+      const r = await api("/emergency/all-on", { method: "POST" });
+      toast(`Emergencia aplicada a ${r.cabinets.length} cuadros`);
+      await refreshEmergencyStatus(); refreshLive();
+    } catch (e) { toast(e.message, true); }
+  }
+  async function emergencyClear() {
+    if (!confirm("APAGAR EMERGENCIA: cada cuadro vuelve a su modo previo (Manual / Programa / IA). ¿Continuar?")) return;
+    try {
+      const r = await api("/emergency/clear", { method: "POST" });
+      toast(`Restaurados ${r.cabinets.length} cuadros a su modo`);
+      await refreshEmergencyStatus(); refreshLive();
+    } catch (e) { toast(e.message, true); }
+  }
+  // Consulta /emergency/status y muestra el botón correspondiente. Se llama
+  // tras cualquier acción de emergencia y al arrancar la sesión (boot).
+  async function refreshEmergencyStatus() {
+    if (!has("cabinet:control")) return;
+    try {
+      const st = await api("/emergency/status");
+      const on = $("#btn-emergency"), off = $("#btn-emergency-clear");
+      if (st.active) { on && (on.style.display = "none"); off && (off.style.display = ""); }
+      else { off && (off.style.display = "none"); on && (on.style.display = ""); }
+    } catch (e) { /* sin info: deja el estado por defecto del HTML */ }
   }
 
   async function boot() {
@@ -505,6 +527,8 @@
     $("#ub-user").textContent = cap(state.me.username);
     $("#ub-rank").textContent = rankLabel(state.me.rank);
     $("#btn-emergency").style.display = has("cabinet:control") ? "" : "none";
+    // Apagar emergencia: aparece SOLO si hay cuadros en emergencia.
+    refreshEmergencyStatus();
     $("#btn-lock").style.display = (state.me.has_pin || state.me.has_pattern) ? "" : "none";
     document.querySelectorAll("#nav a").forEach(a => {
       const perm = a.dataset.perm; a.style.display = (!perm || has(perm)) ? "" : "none";
@@ -652,6 +676,8 @@
     "auth.totp_disabled": "2FA desactivado", "auth.totp_recovery_regen": "2FA: claves regeneradas",
     "auth.totp_recovery_used": "2FA: código de recuperación usado",
     "emergency.all_on": "Modo emergencia (todo al 100%)",
+    "emergency.clear": "Emergencia apagada (cuadros restaurados)",
+    "project.update": "Proyecto actualizado",
     "cabinet.create": "Cuadro creado", "cabinet.update": "Cuadro actualizado",
     "cabinet.delete": "Cuadro borrado", "cabinet.relay": "Encendido/apagado de cuadro",
     "cabinet.dim": "Regulación (dimming)", "cabinet.mode": "Cambio de modo de regulación",
@@ -3754,6 +3780,7 @@
   $("#btn-logout").onclick = logout;
   $("#btn-lock").onclick = showLockScreen;
   $("#btn-emergency").onclick = emergencyAllOn;
+  $("#btn-emergency-clear").onclick = emergencyClear;
   $("#btn-pin").onclick = showSetPin;
   $("#btn-pattern").onclick = showSetPattern;
   $("#btn-totp").onclick = showSetTotp;

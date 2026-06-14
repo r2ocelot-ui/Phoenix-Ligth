@@ -152,6 +152,54 @@ def test_dim_switches_cabinet_to_manual(client, monkeypatch):
     assert cab["dimming_mode"] == "manual"
 
 
+def test_emergency_remembers_and_restores_mode(client, monkeypatch):
+    """Ciclo de emergencia: /all-on guarda el modo previo y pone manual.
+    /clear restaura ese modo (ai/schedule) y limpia pre_emergency_mode."""
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+    # Dos cuadros con modos distintos para demostrar que cada uno conserva el suyo.
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-E1", "latitude": 40.4, "longitude": -3.7}, headers=headers)
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-E2"}, headers=headers)
+    client.post("/api/v1/cabinets/CAB-E1/mode", json={"mode": "ai"}, headers=headers)
+    client.post("/api/v1/cabinets/CAB-E2/mode", json={"mode": "schedule"}, headers=headers)
+    # Inyecta los cuadros en el bus (la emergencia solo afecta a los "known").
+    mqtt_module.bus._known_cabinets.update({"CAB-E1", "CAB-E2"})
+    # No hay broker en test → mockeamos publish y safe_publish.
+    async def _noop(*a, **k):
+        return None
+    monkeypatch.setattr(mqtt_module.bus, "publish", _noop)
+    monkeypatch.setattr(mqtt_module.bus, "_safe_publish", _noop)
+
+    # /emergency/status: no hay emergencia activa.
+    assert client.get("/api/v1/emergency/status", headers=headers).json()["active"] is False
+
+    # Activar emergencia.
+    r = client.post("/api/v1/emergency/all-on", headers=headers)
+    assert r.status_code == 200
+    affected = set(r.json()["cabinets"])
+    assert {"CAB-E1", "CAB-E2"}.issubset(affected)
+    data = {c["cabinet_id"]: c for c in client.get("/api/v1/cabinets", headers=headers).json()}
+    assert data["CAB-E1"]["dimming_mode"] == "manual"
+    assert data["CAB-E2"]["dimming_mode"] == "manual"
+    assert client.get("/api/v1/emergency/status", headers=headers).json()["active"] is True
+
+    # Activarla de NUEVO no debe pisar el modo previo guardado.
+    client.post("/api/v1/emergency/all-on", headers=headers)
+
+    # Apagar emergencia → cada cuadro vuelve a SU modo previo.
+    r = client.post("/api/v1/emergency/clear", headers=headers)
+    assert r.status_code == 200
+    restored = {c["code"]: c["mode"] for c in r.json()["cabinets"]}
+    assert restored["CAB-E1"] == "ai"
+    assert restored["CAB-E2"] == "schedule"
+    data = {c["cabinet_id"]: c for c in client.get("/api/v1/cabinets", headers=headers).json()}
+    assert data["CAB-E1"]["dimming_mode"] == "ai"
+    assert data["CAB-E2"]["dimming_mode"] == "schedule"
+    # Y status vuelve a "no activa".
+    assert client.get("/api/v1/emergency/status", headers=headers).json()["active"] is False
+    # Idempotente: un /clear de más no rompe nada.
+    assert client.post("/api/v1/emergency/clear", headers=headers).status_code == 200
+
+
 def test_ws_rejects_bad_token(client):
     with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/api/v1/ws?token=bad") as ws:

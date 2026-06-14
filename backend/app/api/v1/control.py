@@ -36,26 +36,34 @@ async def emergency_all_on(
     """Modo emergencia: enciende todo y pone dimming al 100% en cada cuadro
     conocido. Pensado para incidencias (corte de luz, accidente, evento).
 
+    Guarda el modo de cada cuadro en ``pre_emergency_mode`` (solo la primera
+    vez) para que ``/emergency/clear`` pueda devolverlos a su modo previo
+    (Manual / Programa / IA) sin que el operario tenga que reasignarlos uno a uno.
+
     Multi-tenant: solo afecta a los cuadros del proyecto del usuario. Un
     owner sin filtro activo abarca todos."""
     visible = tenancy.cabinet_codes_in_scope(db, user, None)
-    affected = []
-    for cid in sorted(bus._known_cabinets):
-        if visible is not None and cid not in visible:
+    affected: list[str] = []
+    # Cargamos los cuadros del scope para poder preservar su modo previo.
+    cabs = db.query(Cabinet).filter(
+        Cabinet.code.in_(bus._known_cabinets)
+    ).all()
+    for cab in cabs:
+        if visible is not None and cab.code not in visible:
             continue
         try:
-            await bus.publish(f"phoenix/cabinets/{cid}/cmd/relay", {"state": "on"})
-            await bus.publish(f"phoenix/cabinets/{cid}/cmd/dim", {"level": 100})
+            await bus.publish(f"phoenix/cabinets/{cab.code}/cmd/relay", {"state": "on"})
+            await bus.publish(f"phoenix/cabinets/{cab.code}/cmd/dim", {"level": 100})
         except RuntimeError:
             pass  # broker no conectado; el estado comandado igual se registra
-        bus.record_command(cid, relay="on", dim=100)
-        affected.append(cid)
-    # En emergencia los cuadros pasan a manual para que el programador no los
-    # vuelva a regular hasta que el operario los devuelva a su modo.
+        bus.record_command(cab.code, relay="on", dim=100)
+        # Solo la primera entrada en emergencia guarda el modo previo; las
+        # siguientes (re-activaciones) no lo machacan.
+        if cab.pre_emergency_mode is None:
+            cab.pre_emergency_mode = cab.dimming_mode or "schedule"
+        cab.dimming_mode = "manual"
+        affected.append(cab.code)
     if affected:
-        db.query(Cabinet).filter(Cabinet.code.in_(affected)).update(
-            {"dimming_mode": "manual"}, synchronize_session=False
-        )
         db.commit()
     bus.notify()
     user.activity_points += 5
@@ -65,6 +73,58 @@ async def emergency_all_on(
         detail={"cabinets": affected},
     )
     return {"ok": True, "cabinets": affected}
+
+
+@emergency_router.post("/clear")
+async def emergency_clear(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
+) -> dict:
+    """Salida del modo emergencia: devuelve cada cuadro a su modo previo
+    (Manual / Programa / IA), aplica el nivel correspondiente al instante y
+    limpia ``pre_emergency_mode``.
+
+    Multi-tenant: solo restaura los cuadros del scope del operario. Solo toca
+    cuadros que estén marcados como "en emergencia" (``pre_emergency_mode``
+    no nulo); el resto queda como está."""
+    visible = tenancy.cabinet_codes_in_scope(db, user, None)
+    q = db.query(Cabinet).filter(Cabinet.pre_emergency_mode.isnot(None))
+    if visible is not None:
+        q = q.filter(Cabinet.code.in_(visible))
+    cabs = q.all()
+    restored: list[dict] = []
+    for cab in cabs:
+        prev = cab.pre_emergency_mode or "schedule"
+        cab.dimming_mode = prev
+        cab.pre_emergency_mode = None
+        db.add(cab)
+        restored.append({"code": cab.code, "mode": prev})
+    if cabs:
+        db.commit()
+        # Aplica el nivel del modo restaurado YA (sin esperar al programador).
+        for cab in cabs:
+            await bus.apply_level_now(cab)
+    bus.notify()
+    audit_log.record(
+        db, username=user.username, action="emergency.clear",
+        detail={"cabinets": restored},
+    )
+    return {"ok": True, "cabinets": restored}
+
+
+@emergency_router.get("/status")
+def emergency_status(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission(ranks.P_CABINET_READ)),
+) -> dict:
+    """¿Hay cuadros en modo emergencia dentro del scope del usuario? Lo usa la
+    UI para enseñar el botón "Apagar emergencia" cuando proceda."""
+    visible = tenancy.cabinet_codes_in_scope(db, user, None)
+    q = db.query(Cabinet).filter(Cabinet.pre_emergency_mode.isnot(None))
+    if visible is not None:
+        q = q.filter(Cabinet.code.in_(visible))
+    cabs = [c.code for c in q.all()]
+    return {"active": bool(cabs), "cabinets": cabs}
 
 ACTIVITY_PER_COMMAND = 1
 

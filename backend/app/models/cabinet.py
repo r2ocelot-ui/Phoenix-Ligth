@@ -36,6 +36,10 @@ class Cabinet(Base):
     #   "residential" → calle residencial tranquila: bajar agresivo.
     #   "crossing"    → paso de peatones / glorieta: nunca por debajo de X.
     street_profile: Mapped[str] = mapped_column(String(16), default="residential")
+    # Modo de regulación ANTES de entrar en emergencia. NULL = el cuadro no está
+    # en emergencia. Cuando se activa /emergency/all-on se guarda aquí el modo
+    # previo (si aún no había uno) para poder restaurarlo con /emergency/clear.
+    pre_emergency_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

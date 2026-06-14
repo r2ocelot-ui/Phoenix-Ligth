@@ -529,6 +529,7 @@
     $("#btn-emergency").style.display = has("cabinet:control") ? "" : "none";
     // Apagar emergencia: aparece SOLO si hay cuadros en emergencia.
     refreshEmergencyStatus();
+    mountGlobalSearch();
     $("#btn-lock").style.display = (state.me.has_pin || state.me.has_pattern) ? "" : "none";
     document.querySelectorAll("#nav a").forEach(a => {
       const perm = a.dataset.perm; a.style.display = (!perm || has(perm)) ? "" : "none";
@@ -891,6 +892,126 @@
     if (view === "proyectos") loadProyectos();
     if (view === "auditoria") loadAudit();
     if (view === "seguridad") loadSecurity();
+  }
+
+  // ============================ Búsqueda global (Ctrl+K) ============================
+  // Busca en TODO lo cargado en memoria (cuadros, luminarias, circuitos,
+  // calles, proyectos, secciones del menú). Sin peticiones extra — usa los
+  // caches del frontend, así es instantánea.
+  const NAV_TARGETS = [
+    ["inicio", "Inicio (mapa)", "🗺️"], ["cuadros", "Cuadros", "🗄️"],
+    ["alarmas", "Alarmas", "🚨"], ["control", "Control", "🎛️"],
+    ["topologia", "Topología", "🔗"], ["luminarias", "Luminarias", "💡"],
+    ["proyectos", "Proyectos", "🏙️"], ["permisos", "Permisos", "🔑"],
+    ["seguridad", "Seguridad", "🛡️"], ["auditoria", "Auditoría", "📋"],
+  ];
+  function searchGlobal(q) {
+    q = (q || "").trim().toLowerCase();
+    if (q.length < 2) return [];
+    const out = []; const seenStreet = new Set();
+    // Secciones del menú.
+    NAV_TARGETS.forEach(([id, label, ico]) => {
+      const navEl = document.querySelector(`#nav a[data-view="${id}"]`);
+      if (!navEl || navEl.style.display === "none") return;
+      if (label.toLowerCase().includes(q)) out.push({ group: "Secciones", label: `${ico} ${label}`, sub: "Ir a la vista", action: () => go(id) });
+    });
+    // Cuadros (state.cabinets viene de refreshLive).
+    (state.cabinets || []).forEach(cab => {
+      const hay = [cab.cabinet_id, cab.name, cab.zone, "CM" + (cab.number || "")].join(" ").toLowerCase();
+      if (hay.includes(q)) out.push({
+        group: "Cuadros", label: `🗄️ CM${cab.number || ""} · ${cab.name || cab.cabinet_id}`,
+        sub: cab.cabinet_id + (cab.zone ? " · " + cab.zone : ""),
+        action: () => { window._ctrlSel = cab.cabinet_id; go("control"); },
+      });
+    });
+    // Topología (luminarias + circuitos + calles).
+    const tp = window._topoCache;
+    if (tp && tp.cabinets) tp.cabinets.forEach(cab => {
+      (cab.circuits || []).forEach(ci => {
+        const hay = `${circuitLabel(ci)} ${cab.code}`.toLowerCase();
+        if (hay.includes(q)) out.push({ group: "Circuitos", label: `🔗 ${circuitLabel(ci)}`, sub: `${cab.code}`, action: () => go("topologia") });
+      });
+      (cab.points || []).forEach(pt => {
+        const hay = [pt.label, pt.street, pt.street_number, pt.manufacturer, pt.model, pt.locality, pt.inventory_code].filter(Boolean).join(" ").toLowerCase();
+        if (hay.includes(q)) out.push({
+          group: "Luminarias", label: `💡 ${pt.label || "Farola " + String(pt.number).padStart(2, "0")}`,
+          sub: [pt.street, cab.code].filter(Boolean).join(" · "),
+          action: () => openLightDetail(cab, pt),
+        });
+        // Calle como entrada agregada (para "ir a la primera de esa calle").
+        if (pt.street && pt.street.toLowerCase().includes(q)) {
+          const key = (pt.street + "|" + cab.code).toLowerCase();
+          if (!seenStreet.has(key)) {
+            seenStreet.add(key);
+            out.push({ group: "Calles", label: `📍 ${pt.street}`, sub: cab.code, action: () => openLightDetail(cab, pt) });
+          }
+        }
+      });
+    });
+    // Proyectos.
+    (state.projects || []).forEach(p => {
+      const hay = [p.name, p.code, p.region].filter(Boolean).join(" ").toLowerCase();
+      if (hay.includes(q)) out.push({
+        group: "Proyectos", label: `🏙️ ${p.name}`, sub: p.region || p.code,
+        action: () => { state.activeProject = p.id; renderProjectChip(); refreshLive(); go("proyectos"); },
+      });
+    });
+    return out.slice(0, 30);  // tope para no inundar
+  }
+  function renderSearchResults(items, focusIndex) {
+    const box = $("#search-results");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!items.length) { box.innerHTML = `<div class="sr-empty">Sin resultados</div>`; return; }
+    let lastGroup = null;
+    items.forEach((it, i) => {
+      if (it.group !== lastGroup) {
+        const h = el("div", "sr-group"); h.textContent = it.group; box.append(h);
+        lastGroup = it.group;
+      }
+      const r = el("div", "sr-item" + (i === focusIndex ? " active" : ""));
+      const main = el("span"); main.textContent = it.label;
+      const sub = el("span", "sr-sub"); sub.textContent = it.sub || "";
+      r.append(main, sub);
+      r.onclick = () => { it.action(); closeSearch(); };
+      box.append(r);
+    });
+  }
+  function openSearch() { const i = $("#search-input"); if (i) { i.focus(); i.select(); } }
+  function closeSearch() {
+    const i = $("#search-input"); if (i) i.value = "";
+    const r = $("#search-results"); if (r) r.classList.add("hidden");
+    state.searchItems = []; state.searchFocus = -1;
+  }
+  function mountGlobalSearch() {
+    const input = $("#search-input"); if (!input || input._wired) return;
+    input._wired = true;
+    state.searchItems = []; state.searchFocus = -1;
+    input.oninput = () => {
+      state.searchItems = searchGlobal(input.value);
+      state.searchFocus = state.searchItems.length ? 0 : -1;
+      $("#search-results").classList.toggle("hidden", !input.value.trim());
+      renderSearchResults(state.searchItems, state.searchFocus);
+    };
+    input.onkeydown = (e) => {
+      const max = state.searchItems.length - 1;
+      if (e.key === "Escape") { closeSearch(); input.blur(); return; }
+      if (e.key === "ArrowDown" && max >= 0) { state.searchFocus = Math.min(max, state.searchFocus + 1); renderSearchResults(state.searchItems, state.searchFocus); e.preventDefault(); return; }
+      if (e.key === "ArrowUp" && max >= 0) { state.searchFocus = Math.max(0, state.searchFocus - 1); renderSearchResults(state.searchItems, state.searchFocus); e.preventDefault(); return; }
+      if (e.key === "Enter" && state.searchFocus >= 0) { const it = state.searchItems[state.searchFocus]; if (it) { it.action(); closeSearch(); } }
+    };
+    // Click fuera = cerrar resultados.
+    document.addEventListener("click", (e) => {
+      if (!$("#search-wrap").contains(e.target)) $("#search-results").classList.add("hidden");
+    });
+    // Atajos: Ctrl/Cmd+K abre; "/" también si no se está escribiendo en otro input.
+    document.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openSearch(); return; }
+      if (e.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) { e.preventDefault(); openSearch(); }
+    });
+    // Pre-carga el cache de topología en segundo plano para que la búsqueda
+    // funcione sin haber pasado por Topología.
+    if (!window._topoCache) api("/topology").then(tp => { window._topoCache = tp; }).catch(() => {});
   }
 
   // ============================ Render por sección ============================

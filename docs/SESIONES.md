@@ -17,6 +17,34 @@ Formato de cada entrada:
 
 ---
 
+## 2026-06-14 (noche) · Apagar emergencia + Búsqueda global + limpieza styles
+
+Sesión nocturna en modo "Faro solo" mientras el capitán descansa. Backlog 🤖
+del día atacado en orden de valor.
+
+- **Hecho**
+  - **Apagar emergencia** (commit `7ff151d`): nueva columna
+    `Cabinet.pre_emergency_mode` + endpoints `POST /emergency/clear` y
+    `GET /emergency/status`. Restaura cada cuadro a su modo previo (ai/
+    schedule/manual), aplica el nivel YA via `apply_level_now`, idempotente,
+    multi-tenant. Botón verde "✓ Apagar emergencia" en el menú de usuario,
+    visible solo cuando hay emergencia. 1 test nuevo del ciclo completo.
+  - **Búsqueda global (Ctrl+K)** (commit `3f11d87`): campo en el topbar que
+    busca instantáneo en cuadros, luminarias, calles, circuitos, proyectos
+    y secciones. Sin peticiones extra (usa los caches). Flechas + Enter +
+    Esc + "/". Pre-carga `/topology` en segundo plano.
+  - **Limpieza styles inline** (commit `5caa998`): utilitarias `.fs-11/12/13/14`
+    y reemplazadas ~29 ocurrencias de `class="..." style="font-size:NNpx"`.
+    Conservador: no toca los 160 `.style.X = ...` de JS.
+  - **Bonus**: Cuadros gana barra superior con contador y "⬇ CSV"
+    (commit `bb6031a`).
+- **Pendiente para el capitán**
+  - **👁️ Repaso visual** de todo lo nuevo (Ctrl+K, botón verde, exportar CSV).
+  - Lista "🤝 entre los 2" sin cambios (JWT→cookie, ticket WS, Argon2id,
+    cifrar totp_secret, datos legales LICENSE/EULA).
+
+---
+
 ## 2026-06-14 · CSP estricta + iconos de ayuda + menú reordenado
 
 - **Hecho**

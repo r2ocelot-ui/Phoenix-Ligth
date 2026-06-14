@@ -133,7 +133,10 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **UI de tarifa por proyecto** (botón "💶 Tarifa" en Proyectos) | 🧪 | Modal con los 4 topes; placeholder = valor global, vacío = "usar global". Owner edita, resto lee. Cada campo con su `?` |
 | **Toggle "recortar por tarifa" por proyecto** (None/Sí/No) | 🧪 | Una avenida noble se puede marcar "No recortar nunca por precio". El modo IA respeta `use_tariff` por proyecto |
 | **Región/comunidad por proyecto** + asignar zonas enteras (N:N) | 🧪 | Etiqueta `región` por ciudad; en Permisos las casillas se agrupan por región y se marca una comunidad entera de golpe (SICE: C.Valenciana+Murcia). No toca el aislamiento (sigue por `project_id`). **Texto libre → vale para cualquier país (UE/mundo)** |
-| **Exportar CSV** (Luminarias + Auditoría) | 🧪 | Botón "⬇ CSV" → descarga client-side con BOM (Excel abre acentos bien). Sin backend ni auth en URL |
+| **Exportar CSV** (Luminarias + Auditoría + Cuadros) | 🧪 | Botón "⬇ CSV" → descarga client-side con BOM (Excel abre acentos bien). Sin backend ni auth en URL |
+| **Apagar emergencia** (recuerda y restaura el modo previo) | 🧪 | `Cabinet.pre_emergency_mode` + `POST /emergency/clear` + `GET /emergency/status`. Botón verde en el menú de usuario aparece solo si hay emergencia activa. Idempotente. Test cubre el ciclo completo |
+| **Búsqueda global (Ctrl+K)** en el topbar | 🧪 | Busca instantánea sobre cache (sin peticiones extra): cuadros, luminarias, calles, circuitos, proyectos, secciones del menú. Flechas + Enter, "/" también abre |
+| Limpieza: `.fs-11/12/13/14` (utilitarias) — extraídos ~29 styles inline | 🧪 | Reemplaza `class="..." style="font-size:NNpx"` por `class="... fs-NN"`. Mejora de mantenibilidad sin riesgo |
 | **Alarmas en español** (tipo + severidad + mensajes del motor) | 🧪 | Menú → Alarmas: `ALARM_LABELS`/`SEVERITY_LABELS`; las 5 alarmas eléctricas del backend traducidas |
 | **Auditoría en español** (códigos de acción → texto) | 🧪 | `ACTION_LABELS` traduce `cabinet.create`→"Cuadro creado", etc. Código crudo en el `title` al pasar el ratón |
 | Fix: el reloj usa la zona horaria desde el **primer render** (`await loadInfo`) | 🧪 | En Canarias ya no parpadea un instante en hora de Madrid al entrar |

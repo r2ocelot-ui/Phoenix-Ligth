@@ -49,9 +49,12 @@ Formato de cada entrada:
     proyectos viejos quedan con NULL → usan los globales). 4 tests nuevos.
     **Pendiente UI**: ficha de tarifa en Proyectos, con `helpIcon` y la
     distinción "personalizado/global".
+  - (HECHO 14-jun) **UI de tarifa por proyecto**: botón "💶 Tarifa" en la
+    tabla de Proyectos abre un modal con los 4 topes (placeholder muestra el
+    valor global; vacío = "usar global"). Owner edita, resto solo lee.
+  - (HECHO 14-jun) Rematados los últimos XSS de la auditoría: IP bans y
+    eventos de seguridad.
 - **Pendiente para la próxima**
-  - **UI de la tarifa por proyecto** (backend ya está): formulario con los 4
-    topes en Proyectos → al editar un proyecto.
   - Limpiar progresivamente `style="..."` → clases CSS para poder endurecer
     `style-src` en una segunda vuelta.
   - Resto del bloque "🤖 yo solo" del backlog: horarios P1/P2/P3 por proyecto

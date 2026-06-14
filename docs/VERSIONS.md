@@ -150,7 +150,7 @@ y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 | Token del WebSocket fuera de la URL | acaba en logs → ticket efímero. **⏸️ contigo delante**: toca el login del WS, hay que probarlo en navegador |
 | Completar datos legales `LICENSE`/`EULA` | Angel Eduardo ✓ · Kumiho ✓; **faltan contacto, localidad de jurisdicción y forma jurídica** (S.L.…) — los pones tú |
 | Licencia: modo de enforcement (suave/intermedio/duro) | **decidido: suave por ahora**; al activar, preferible **intermedio** (periodo de gracia). Cambiarlo es trivial |
-| Tarifa por proyecto: **UI** para editar topes | backend hecho (`GET/PUT /projects/{id}/tariff`); falta ficha en la sección Proyectos para editar |
+| **UI de tarifa por proyecto** (botón "💶 Tarifa" en Proyectos) | 🧪 | Modal con los 4 topes; placeholder = valor global; vacío = "usar global". Owner edita, resto lee |
 | Tarifa: horario por proyecto (no solo topes) | hoy 2.0TD fijo; los topes ya son por proyecto. Pendiente que las franjas P1/P2/P3 también lo sean |
 | MQTT en producción: aplicar `infra/mosquitto.prod.conf` | el ejemplo endurecido ✓; falta desplegarlo con certs reales (no toca al demo) |
 | Pegar `docs/HYDRA-SECURITY-NOTES.md` en la sesión de Hydra | y aplicar su checklist allí |

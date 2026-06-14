@@ -2679,8 +2679,11 @@
         const tr = el("tr");
         tr.innerHTML = `<td class="mono">${p.id}</td><td class="mono">${esc(p.code)}</td><td>${esc(p.name)}</td><td class="mono">${nu}</td><td class="mono">${nc}</td>`;
         const td = el("td");
+        const tariff = el("button", "btn ghost sm", "💶 Tarifa");
+        tariff.onclick = () => openProjectTariff(p);
+        td.append(tariff);
         if (isOwnerUser()) {  // borrar proyecto: solo el owner
-          const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444";
+          const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444"; del.style.marginLeft = "4px";
           del.onclick = async () => {
             if (nu || nc) { toast(`No se puede borrar: ${nu} usuarios y ${nc} cuadros lo usan.`, true); return; }
             if (!confirm(`¿Borrar el proyecto "${p.name}"?`)) return;
@@ -2694,6 +2697,67 @@
       if (!projects.length) tb.append(el("tr", null, `<td colspan="6" class="muted" style="text-align:center;padding:12px">Sin proyectos. Crea el primero arriba.</td>`));
       t.append(tb); panel.append(t); body.append(panel);
     } catch (e) { body.append(el("div", "empty", e.message)); }
+  }
+
+  // Modal de topes de tarifa por proyecto. Owner edita; el resto sólo lee.
+  // Cada campo vacío = "usar el global"; con valor = personalizado.
+  async function openProjectTariff(project) {
+    let data;
+    try { data = await api(`/projects/${project.id}/tariff`); }
+    catch (e) { toast(e.message, true); return; }
+    const canEdit = isOwnerUser();
+    const modal = el("div", "modal"); const card = el("div", "modal-card");
+    const title = el("h3"); title.style.cssText = "margin:0 0 4px";
+    title.append(document.createTextNode("💶 Tarifa · "), document.createTextNode(project.name));
+    card.append(title);
+    const sub = el("div", "muted"); sub.style.fontSize = "12px"; sub.style.marginBottom = "12px";
+    sub.append(document.createTextNode("Topes de dimming por tramo. Campo vacío = usa el valor global."),
+      helpIcon("Punta (P1): horas caras (10–14 y 18–22). Llano (P2): intermedias. Valle (P3): madrugada y fines de semana. Suelo: mínimo de seguridad — el alumbrado nunca baja de ahí."));
+    card.append(sub);
+
+    const grid = el("div"); grid.style.display = "grid"; grid.style.gridTemplateColumns = "1fr 1fr"; grid.style.gap = "10px";
+    const fields = {};
+    const make = (key, label, hint) => {
+      const w = el("div");
+      const lab = el("div", "muted"); lab.style.cssText = "font-size:11px;margin-bottom:4px";
+      lab.append(document.createTextNode(label), helpIcon(hint));
+      const i = el("input"); i.type = "number"; i.min = 0; i.max = 100;
+      i.value = data.project[key] == null ? "" : data.project[key];
+      i.placeholder = `global: ${data.defaults[key]}`;
+      i.disabled = !canEdit;
+      fields[key] = i;
+      w.append(lab, i);
+      return w;
+    };
+    grid.append(
+      make("tariff_cap_punta", "Tope Punta (%)", "Tope en horas caras. Recorta el dimming máximo (10–14 y 18–22 laborables)."),
+      make("tariff_cap_llano", "Tope Llano (%)", "Tope en horas intermedias (8–10, 14–18, 22–24 laborables)."),
+      make("tariff_cap_valle", "Tope Valle (%)", "Tope en valle (madrugada y fines de semana). Lo normal es 100 (sin recorte)."),
+      make("tariff_floor_level", "Suelo de seguridad (%)", "Nivel mínimo de dimming. El motor nunca baja de aquí, ni siquiera en horas caras."),
+    );
+    card.append(grid);
+
+    const actions = el("div", "perm-actions"); actions.style.marginTop = "12px";
+    if (canEdit) {
+      const save = el("button", "btn sm", "Guardar");
+      save.onclick = async () => {
+        const payload = {};
+        for (const k of Object.keys(fields)) {
+          const v = fields[k].value.trim();
+          payload[k] = v === "" ? null : parseInt(v, 10);
+        }
+        try {
+          await api(`/projects/${project.id}/tariff`, { method: "PUT", body: JSON.stringify(payload) });
+          toast(`Tarifa de ${project.name} guardada`);
+          modal.remove();
+        } catch (e) { toast(e.message, true); }
+      };
+      actions.append(save);
+    }
+    const cancel = el("button", "btn ghost sm", canEdit ? "Cancelar" : "Cerrar");
+    cancel.onclick = () => modal.remove();
+    actions.append(cancel); card.append(actions);
+    modal.append(card); document.body.append(modal);
   }
 
   async function renderPermisosUsuarios(body) {
@@ -3413,7 +3477,7 @@
           bans.forEach(b => {
             const tr = el("tr");
             const exp = b.expires_at ? fmtDateTime(b.expires_at) : "permanente";
-            tr.innerHTML = `<td class="mono">${b.ip}</td><td class="muted" style="font-size:12px">${b.reason || ""}</td><td>${b.banned_by}</td><td class="muted mono" style="font-size:12px">${exp}</td>`;
+            tr.innerHTML = `<td class="mono">${esc(b.ip)}</td><td class="muted" style="font-size:12px">${esc(b.reason || "")}</td><td>${esc(b.banned_by)}</td><td class="muted mono" style="font-size:12px">${exp}</td>`;
             const td = el("td");
             const rm = el("button", "btn ghost sm", "Quitar");
             rm.onclick = async () => { try { await api(`/security/bans/${encodeURIComponent(b.ip)}`, { method: "DELETE" }); toast("Ban quitado"); loadSecurity(); } catch (e) { toast(e.message, true); } };
@@ -3479,7 +3543,7 @@
           const cls = SEC_BADGE[e.action] || "";
           const label = SEC_LABEL[e.action] || e.action;
           const det = e.detail ? Object.entries(e.detail).map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`).join(" · ") : "";
-          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${e.username}</td><td><span class="badge ${cls}">${label}</span></td><td class="muted" style="font-size:12px">${det}</td>`;
+          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${esc(e.username)}</td><td><span class="badge ${esc(cls)}">${esc(label)}</span></td><td class="muted" style="font-size:12px">${esc(det)}</td>`;
           tb.append(tr);
         });
       };

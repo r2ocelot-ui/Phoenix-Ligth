@@ -8,6 +8,7 @@ class ProjectRead(BaseModel):
     id: int
     code: str
     name: str
+    region: str = ""
     created_at: datetime
     # Topes de dimming por tramo tarifario propios del proyecto (NULL → usa
     # el default global de settings). Expuestos para que la UI distinga
@@ -35,6 +36,12 @@ class ProjectCreate(BaseModel):
     # Short slug used by the UI (e.g. "madrid", "barcelona").
     code: str = Field(..., min_length=2, max_length=32, pattern=r"^[a-z0-9_\-]+$")
     name: str = Field(..., min_length=2, max_length=128)
+    region: str = Field("", max_length=64)
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=2, max_length=128)
+    region: str | None = Field(default=None, max_length=64)
 
 
 class ProjectAssignUser(BaseModel):

@@ -13,7 +13,7 @@ from app.models.project import Project
 from app.models.user import User
 from app.core.config import settings
 from app.schemas.project import (
-    ProjectAssignUser, ProjectCreate, ProjectRead, ProjectTariffUpdate,
+    ProjectAssignUser, ProjectCreate, ProjectRead, ProjectTariffUpdate, ProjectUpdate,
 )
 from app.services import audit_log, ranks, tenancy
 from app.services.auth import get_current_user, require_permission
@@ -50,12 +50,35 @@ def create_project(
     _require_owner(actor)
     if db.query(Project).filter(Project.code == body.code).first():
         raise HTTPException(status.HTTP_409_CONFLICT, "Ya existe un proyecto con ese código")
-    project = Project(code=body.code, name=body.name)
+    project = Project(code=body.code, name=body.name, region=body.region)
     db.add(project)
     db.commit()
     db.refresh(project)
     audit_log.record(db, username=actor.username, action="project.create",
-                     target=project.code, detail={"name": project.name})
+                     target=project.code, detail={"name": project.name, "region": body.region})
+    return project
+
+
+@router.patch("/{project_id}", response_model=ProjectRead)
+def update_project(
+    project_id: int,
+    body: ProjectUpdate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_USER_MANAGE)),
+):
+    """Editar nombre / región de un proyecto (owner). La región solo agrupa
+    ciudades para asignar en bloque; no cambia el aislamiento."""
+    _require_owner(actor)
+    project = db.get(Project, project_id)
+    if not project:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Proyecto no encontrado")
+    data = body.model_dump(exclude_unset=True)
+    for k, v in data.items():
+        setattr(project, k, v)
+    db.commit()
+    db.refresh(project)
+    audit_log.record(db, username=actor.username, action="project.update",
+                     target=project.code, detail=data)
     return project
 
 

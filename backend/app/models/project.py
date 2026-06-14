@@ -19,6 +19,10 @@ class Project(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     code: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(128))
+    # Región / comunidad para AGRUPAR ciudades (Comunidad Valenciana, Murcia…).
+    # Es solo organización + asignación en bloque: por debajo el aislamiento
+    # sigue siendo por ``project_id`` (N:N), así que no toca el núcleo multi-tenant.
+    region: Mapped[str] = mapped_column(String(64), default="")
     # Topes de dimming por tramo tarifario (configurables por proyecto/contrato).
     # NULL = usa el default global de settings (tariff_cap_*/tariff_floor_level).
     # Así, una ciudad con un contrato 3.0TD agresivo puede recortar más en punta

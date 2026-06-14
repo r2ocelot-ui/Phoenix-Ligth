@@ -1315,6 +1315,28 @@ def test_project_tariff_caps_endpoints(client):
                       headers=_auth(dir_tok)).status_code == 200
 
 
+def test_project_region_field(client):
+    """Región/comunidad por proyecto: se crea, se lee y se edita (PATCH). Sirve
+    para agrupar ciudades y asignarlas en bloque (sin tocar el aislamiento)."""
+    _register(client, "owner"); own = _token(client, "owner")
+    a = client.post("/api/v1/projects", json={"code": "valencia", "name": "Valencia", "region": "Comunidad Valenciana"}, headers=_auth(own))
+    assert a.status_code == 201 and a.json()["region"] == "Comunidad Valenciana"
+    # Otra ciudad de la misma región + una de Murcia.
+    client.post("/api/v1/projects", json={"code": "alicante", "name": "Alicante", "region": "Comunidad Valenciana"}, headers=_auth(own))
+    client.post("/api/v1/projects", json={"code": "murcia", "name": "Murcia", "region": "Murcia"}, headers=_auth(own))
+    projs = client.get("/api/v1/projects", headers=_auth(own)).json()
+    regions = {p["region"] for p in projs}
+    assert "Comunidad Valenciana" in regions and "Murcia" in regions
+    # Editar la región de una ciudad.
+    pid = a.json()["id"]
+    r = client.patch(f"/api/v1/projects/{pid}", json={"region": "C. Valenciana"}, headers=_auth(own))
+    assert r.status_code == 200 and r.json()["region"] == "C. Valenciana"
+    # Un no-owner no puede editar.
+    client.post("/api/v1/users", json={"username": "operario", "password": "secret123", "rank": "operador"}, headers=_auth(own))
+    op = _token(client, "operario")
+    assert client.patch(f"/api/v1/projects/{pid}", json={"region": "X"}, headers=_auth(op)).status_code == 403
+
+
 def test_project_tariff_enabled_toggle(client):
     """Toggle por proyecto de 'recortar por tarifa': None=global, False=nunca
     recorta (avenida noble), True=sí."""

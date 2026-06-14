@@ -2696,6 +2696,8 @@
       cp.append(el("div", null, "<strong>Crear proyecto / ciudad</strong> <span class='muted' style='font-size:12px'>· aísla cuadros y usuarios de cada cliente</span>"));
       const code = el("input"); code.placeholder = "código (p.ej. madrid)"; code.style.width = "180px";
       const name = el("input"); name.placeholder = "nombre (p.ej. Madrid Centro)"; name.style.flex = "1";
+      const region = el("input"); region.placeholder = "comunidad / región (opcional)"; region.style.width = "220px";
+      region.setAttribute("list", "region-list");
 
       // Fila de búsqueda: ciudad o CP → autocompleta nombre y sugiere código.
       const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -2720,25 +2722,39 @@
       const add = el("button", "btn sm", "Crear");
       add.onclick = async () => {
         if (!code.value.trim() || !name.value.trim()) { toast("Falta código o nombre.", true); return; }
-        try { await api("/projects", { method: "POST", body: JSON.stringify({ code: code.value.trim(), name: name.value.trim() }) }); toast("Proyecto creado"); loadProjectsForChip(); loadProyectos(); }
+        try { await api("/projects", { method: "POST", body: JSON.stringify({ code: code.value.trim(), name: name.value.trim(), region: region.value.trim() }) }); toast("Proyecto creado"); loadProjectsForChip(); loadProyectos(); }
         catch (e) { toast(e.message, true); }
       };
-      row.append(code, name, add); cp.append(row);
+      row.append(code, name, region, add); cp.append(row);
+      // Datalist con las regiones ya usadas, para reutilizarlas al escribir.
+      const dl = el("datalist"); dl.id = "region-list";
+      [...new Set(projects.map(p => p.region).filter(Boolean))].sort().forEach(r => { const o = el("option"); o.value = r; dl.append(o); });
+      cp.append(dl);
       if (isOwnerUser()) body.append(cp);  // crear proyecto: solo el owner
 
       // Lista de proyectos.
       const panel = el("div", "panel");
       const t = el("table");
-      t.innerHTML = `<thead><tr><th>ID</th><th>Código</th><th>Nombre</th><th>Usuarios</th><th>Cuadros</th><th></th></tr></thead>`;
+      t.innerHTML = `<thead><tr><th>ID</th><th>Código</th><th>Nombre</th><th>Región</th><th>Usuarios</th><th>Cuadros</th><th></th></tr></thead>`;
       const tb = el("tbody");
       projects.forEach(p => {
         const nu = countUsers(p.id), nc = countCabs(p.id);
         const tr = el("tr");
-        tr.innerHTML = `<td class="mono">${p.id}</td><td class="mono">${esc(p.code)}</td><td>${esc(p.name)}</td><td class="mono">${nu}</td><td class="mono">${nc}</td>`;
+        tr.innerHTML = `<td class="mono">${p.id}</td><td class="mono">${esc(p.code)}</td><td>${esc(p.name)}</td><td>${p.region ? esc(p.region) : "<span class='muted'>—</span>"}</td><td class="mono">${nu}</td><td class="mono">${nc}</td>`;
         const td = el("td");
         const tariff = el("button", "btn ghost sm", "💶 Tarifa");
         tariff.onclick = () => openProjectTariff(p);
         td.append(tariff);
+        if (isOwnerUser()) {  // editar/borrar: solo el owner
+          const edit = el("button", "btn ghost sm", "✎ Región"); edit.style.marginLeft = "4px";
+          edit.onclick = async () => {
+            const r = prompt(`Comunidad / región de "${p.name}" (vacío = ninguna):`, p.region || "");
+            if (r === null) return;
+            try { await api(`/projects/${p.id}`, { method: "PATCH", body: JSON.stringify({ region: r.trim() }) }); toast("Región actualizada"); loadProjectsForChip(); loadProyectos(); }
+            catch (e) { toast(e.message, true); }
+          };
+          td.append(edit);
+        }
         if (isOwnerUser()) {  // borrar proyecto: solo el owner
           const del = el("button", "btn ghost sm", "🗑"); del.style.color = "#ef4444"; del.style.marginLeft = "4px";
           del.onclick = async () => {
@@ -2751,7 +2767,7 @@
         }
         tr.append(td); tb.append(tr);
       });
-      if (!projects.length) tb.append(el("tr", null, `<td colspan="6" class="muted" style="text-align:center;padding:12px">Sin proyectos. Crea el primero arriba.</td>`));
+      if (!projects.length) tb.append(el("tr", null, `<td colspan="7" class="muted" style="text-align:center;padding:12px">Sin proyectos. Crea el primero arriba.</td>`));
       t.append(tb); panel.append(t); body.append(panel);
     } catch (e) { body.append(el("div", "empty", e.message)); }
   }
@@ -2920,9 +2936,10 @@
       projRow.innerHTML = `<div class="muted" style="font-size:11px">Proyectos / ciudades <span style="opacity:.7">(marca las que cubre)</span></div>`;
       const projects = state.projects || [];
       const current = new Set((u.project_ids && u.project_ids.length) ? u.project_ids : (u.project_id ? [u.project_id] : []));
-      const box = el("div"); box.style.display = "flex"; box.style.flexWrap = "wrap"; box.style.gap = "12px"; box.style.marginTop = "6px";
+      const box = el("div"); box.style.display = "flex"; box.style.flexDirection = "column"; box.style.gap = "8px"; box.style.marginTop = "6px";
       const save = async () => {
-        const ids = [...box.querySelectorAll("input:checked")].map(c => parseInt(c.value, 10));
+        // Solo las casillas de ciudad (.proj-ck); las de "región entera" no cuentan.
+        const ids = [...box.querySelectorAll("input.proj-ck:checked")].map(c => parseInt(c.value, 10));
         try {
           await api("/projects/assign-user", { method: "POST", body: JSON.stringify({ user_id: u.id, project_ids: ids }) });
           u.project_ids = ids; u.project_id = ids[0] || null;
@@ -2932,11 +2949,25 @@
       if (!projects.length) {
         box.append(el("span", "muted", "No hay proyectos. Crea alguno en la pestaña Proyectos."));
       }
-      projects.forEach(p => {
-        const lab = el("label"); lab.style.display = "inline-flex"; lab.style.alignItems = "center"; lab.style.gap = "5px"; lab.style.fontSize = "13px"; lab.style.cursor = "pointer";
-        const ck = el("input"); ck.type = "checkbox"; ck.value = String(p.id); if (current.has(p.id)) ck.checked = true;
-        ck.onchange = save;
-        lab.append(ck, document.createTextNode(p.name)); box.append(lab);
+      // Agrupar por región/comunidad: así se marca una zona entera (varias
+      // ciudades) de una vez. Por debajo siguen siendo project_ids (N:N).
+      const byRegion = {};
+      projects.forEach(p => { const r = p.region || "Sin región"; (byRegion[r] = byRegion[r] || []).push(p); });
+      Object.keys(byRegion).sort().forEach(region => {
+        const kids = byRegion[region];
+        const grp = el("div"); grp.style.cssText = "border:1px solid var(--border); border-radius:8px; padding:8px";
+        const head = el("label"); head.style.cssText = "display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; cursor:pointer";
+        const all = el("input"); all.type = "checkbox"; all.checked = kids.every(p => current.has(p.id));
+        head.append(all, document.createTextNode(region));
+        const kidWrap = el("div"); kidWrap.style.cssText = "display:flex; flex-wrap:wrap; gap:10px; padding:6px 0 0 18px";
+        kids.forEach(p => {
+          const lab = el("label"); lab.style.cssText = "display:inline-flex; align-items:center; gap:5px; font-size:13px; cursor:pointer";
+          const ck = el("input"); ck.type = "checkbox"; ck.className = "proj-ck"; ck.value = String(p.id); if (current.has(p.id)) ck.checked = true;
+          ck.onchange = () => { all.checked = [...kidWrap.querySelectorAll("input.proj-ck")].every(c => c.checked); save(); };
+          lab.append(ck, document.createTextNode(p.name)); kidWrap.append(lab);
+        });
+        all.onchange = () => { kidWrap.querySelectorAll("input.proj-ck").forEach(c => { c.checked = all.checked; }); save(); };
+        grp.append(head, kidWrap); box.append(grp);
       });
       projRow.append(box); wrap.append(projRow);
     }

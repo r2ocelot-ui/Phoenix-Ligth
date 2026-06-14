@@ -1313,3 +1313,29 @@ def test_project_tariff_caps_endpoints(client):
     # Pero SÍ puede leer los suyos.
     assert client.get(f"/api/v1/projects/{p['id']}/tariff",
                       headers=_auth(dir_tok)).status_code == 200
+
+
+def test_project_tariff_enabled_toggle(client):
+    """Toggle por proyecto de 'recortar por tarifa': None=global, False=nunca
+    recorta (avenida noble), True=sí."""
+    _register(client, "owner"); own = _token(client, "owner")
+    p = client.post("/api/v1/projects", json={"code": "noble", "name": "Avenida"},
+                    headers=_auth(own)).json()
+    g = client.get(f"/api/v1/projects/{p['id']}/tariff", headers=_auth(own)).json()
+    assert g["project"]["tariff_enabled"] is None                 # por defecto: global
+    assert g["effective"]["tariff_enabled"] == g["defaults"]["tariff_enabled"]
+    # La ponemos a "no recortar nunca".
+    r = client.put(f"/api/v1/projects/{p['id']}/tariff",
+                   json={"tariff_enabled": False}, headers=_auth(own))
+    assert r.status_code == 200
+    g2 = client.get(f"/api/v1/projects/{p['id']}/tariff", headers=_auth(own)).json()
+    assert g2["project"]["tariff_enabled"] is False
+    assert g2["effective"]["tariff_enabled"] is False
+    # Verifica en el motor: con tarifa OFF, en hora punta el nivel NO se recorta.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    from app.services import dimming_controller as dc
+    punta = datetime(2026, 1, 15, 20, 0, tzinfo=ZoneInfo("Europe/Madrid"))  # noche + punta
+    con = dc.resolve_ai_level(punta, 40.4168, -3.7038, street_profile="arterial", use_tariff=True)
+    sin = dc.resolve_ai_level(punta, 40.4168, -3.7038, street_profile="arterial", use_tariff=False)
+    assert sin >= con  # sin recorte por tarifa, el nivel es igual o mayor

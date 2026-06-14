@@ -2794,6 +2794,18 @@
     );
     card.append(grid);
 
+    // ¿Recortar el dimming por precio de la luz en esta ciudad? (tri-estado)
+    const onWrap = el("div"); onWrap.style.marginTop = "10px";
+    const onLab = el("div", "muted"); onLab.style.cssText = "font-size:11px;margin-bottom:4px";
+    onLab.append(document.createTextNode("Recortar dimming por tarifa"),
+      helpIcon("Si lo pones en 'No', esta ciudad NUNCA baja la luz por precio (ni en hora punta) — útil en avenidas nobles o zonas sensibles. 'Por defecto' usa la configuración global."));
+    const tariffOn = el("select"); tariffOn.disabled = !canEdit;
+    [["", "Por defecto (global)"], ["true", "Sí — recortar en horas caras"], ["false", "No — nunca recortar"]].forEach(([v, lbl]) => {
+      const o = el("option", null, lbl); o.value = v; tariffOn.append(o);
+    });
+    tariffOn.value = data.project.tariff_enabled == null ? "" : String(data.project.tariff_enabled);
+    onWrap.append(onLab, tariffOn); card.append(onWrap);
+
     const actions = el("div", "perm-actions"); actions.style.marginTop = "12px";
     if (canEdit) {
       const save = el("button", "btn sm", "Guardar");
@@ -2803,6 +2815,7 @@
           const v = fields[k].value.trim();
           payload[k] = v === "" ? null : parseInt(v, 10);
         }
+        payload.tariff_enabled = tariffOn.value === "" ? null : (tariffOn.value === "true");
         try {
           await api(`/projects/${project.id}/tariff`, { method: "PUT", body: JSON.stringify(payload) });
           toast(`Tarifa de ${project.name} guardada`);

@@ -7,7 +7,7 @@ See docs/DECISIONS.md §3.1.
 """
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -27,6 +27,10 @@ class Project(Base):
     tariff_cap_llano: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tariff_cap_valle: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tariff_floor_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ¿Aplicar recorte de dimming por tarifa en este proyecto? NULL = usa el
+    # global (settings.tariff_enabled). False = nunca recorta por precio (p.ej.
+    # una avenida noble que se quiere a tope siempre). True = sí recorta.
+    tariff_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc)
     )

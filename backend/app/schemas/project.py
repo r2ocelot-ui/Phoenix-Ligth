@@ -16,16 +16,19 @@ class ProjectRead(BaseModel):
     tariff_cap_llano: int | None = None
     tariff_cap_valle: int | None = None
     tariff_floor_level: int | None = None
+    tariff_enabled: bool | None = None
 
 
 class ProjectTariffUpdate(BaseModel):
     """Topes de tarifa por proyecto. Cada campo es opcional; ``None`` = "usa el
     global". Solo `0–100` (0 = apaga en ese tramo). El alumbrado nunca se apaga
-    por tarifa: el floor protege el dimming, no el on/off."""
+    por tarifa: el floor protege el dimming, no el on/off. ``tariff_enabled``:
+    None=global, False=esta ciudad nunca recorta por precio, True=sí."""
     tariff_cap_punta: int | None = Field(default=None, ge=0, le=100)
     tariff_cap_llano: int | None = Field(default=None, ge=0, le=100)
     tariff_cap_valle: int | None = Field(default=None, ge=0, le=100)
     tariff_floor_level: int | None = Field(default=None, ge=0, le=100)
+    tariff_enabled: bool | None = None
 
 
 class ProjectCreate(BaseModel):

@@ -303,11 +303,13 @@ class MQTTBus:
                             "P3": proj.tariff_cap_valle,
                         }
                     floor = proj.tariff_floor_level if proj and proj.tariff_floor_level is not None else None
+                    # ¿recortar por tarifa? None del proyecto → usa el global.
+                    t_on = proj.tariff_enabled if (proj and proj.tariff_enabled is not None) else settings.tariff_enabled
                     out[c.code] = {
                         "mode": c.dimming_mode or "schedule",
                         "lat": c.latitude, "lon": c.longitude,
                         "profile": c.street_profile or "residential",
-                        "caps": caps, "floor": floor,
+                        "caps": caps, "floor": floor, "tariff_on": t_on,
                     }
                 return out
         except Exception:
@@ -327,6 +329,7 @@ class MQTTBus:
                 tariff.now_local(), lat, lon,
                 street_profile=cfg.get("profile", "residential"),
                 ambient_lux=lux, floor=floor, caps=cfg.get("caps"),
+                use_tariff=cfg.get("tariff_on", True),
             )
         return dimming_controller.resolve_level(datetime.now().time(), ambient_lux=lux)
 
@@ -337,8 +340,9 @@ class MQTTBus:
         mode = cabinet.dimming_mode or "schedule"
         if mode == "manual":
             return None
-        # Si el cuadro pertenece a un proyecto con topes propios, los usamos.
+        # Si el cuadro pertenece a un proyecto con tarifa propia, la usamos.
         caps, floor = None, None
+        tariff_on = settings.tariff_enabled
         if cabinet.project_id:
             try:
                 from app.core.database import SessionLocal
@@ -351,11 +355,13 @@ class MQTTBus:
                     )):
                         caps = {"P1": proj.tariff_cap_punta, "P2": proj.tariff_cap_llano, "P3": proj.tariff_cap_valle}
                     floor = proj.tariff_floor_level
+                    if proj.tariff_enabled is not None:
+                        tariff_on = proj.tariff_enabled
             except Exception:
                 pass
         cfg = {"lat": cabinet.latitude, "lon": cabinet.longitude,
                "profile": cabinet.street_profile or "residential",
-               "caps": caps, "floor": floor}
+               "caps": caps, "floor": floor, "tariff_on": tariff_on}
         level = self._auto_level_for(cabinet.code, cfg, mode)
         self.record_command(cabinet.code, dim=level)
         await self._safe_publish(

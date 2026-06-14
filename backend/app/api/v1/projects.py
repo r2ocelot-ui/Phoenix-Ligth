@@ -145,18 +145,21 @@ def get_project_tariff(
             "tariff_cap_llano": project.tariff_cap_llano,
             "tariff_cap_valle": project.tariff_cap_valle,
             "tariff_floor_level": project.tariff_floor_level,
+            "tariff_enabled": project.tariff_enabled,
         },
         "effective": {
             "tariff_cap_punta": project.tariff_cap_punta if project.tariff_cap_punta is not None else settings.tariff_cap_punta,
             "tariff_cap_llano": project.tariff_cap_llano if project.tariff_cap_llano is not None else settings.tariff_cap_llano,
             "tariff_cap_valle": project.tariff_cap_valle if project.tariff_cap_valle is not None else settings.tariff_cap_valle,
             "tariff_floor_level": project.tariff_floor_level if project.tariff_floor_level is not None else settings.tariff_floor_level,
+            "tariff_enabled": project.tariff_enabled if project.tariff_enabled is not None else settings.tariff_enabled,
         },
         "defaults": {
             "tariff_cap_punta": settings.tariff_cap_punta,
             "tariff_cap_llano": settings.tariff_cap_llano,
             "tariff_cap_valle": settings.tariff_cap_valle,
             "tariff_floor_level": settings.tariff_floor_level,
+            "tariff_enabled": settings.tariff_enabled,
         },
     }
 

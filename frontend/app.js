@@ -615,6 +615,52 @@
     INTRUSION: "Intrusión",
     COMMUNICATION_LOSS: "Sin comunicación",
   };
+  // Severidad en español (la clase CSS del badge sigue saliendo del valor crudo).
+  const SEVERITY_LABELS = { CRITICAL: "Crítica", WARNING: "Aviso", INFO: "Informativa" };
+  const alarmTypeLabel = (t) => ALARM_LABELS[t] || t;
+  const severityLabel = (s) => SEVERITY_LABELS[s] || s;
+  // Acciones de auditoría en español (códigos `dominio.accion` → texto claro).
+  const ACTION_LABELS = {
+    "auth.bootstrap": "Cuenta raíz creada", "auth.login": "Inicio de sesión",
+    "auth.login_failed": "Login fallido", "auth.login_step1": "Login paso 1 OK",
+    "auth.password_set": "Contraseña cambiada", "auth.unlock": "Desbloqueo",
+    "auth.unlock_failed": "Desbloqueo fallido", "auth.lockout": "Cuenta bloqueada",
+    "auth.pin_set": "PIN definido", "auth.pin_clear": "PIN borrado",
+    "auth.pattern_set": "Patrón definido", "auth.pattern_clear": "Patrón borrado",
+    "auth.totp_setup": "2FA: configuración iniciada", "auth.totp_enabled": "2FA activado",
+    "auth.totp_disabled": "2FA desactivado", "auth.totp_recovery_regen": "2FA: claves regeneradas",
+    "auth.totp_recovery_used": "2FA: código de recuperación usado",
+    "emergency.all_on": "Modo emergencia (todo al 100%)",
+    "cabinet.create": "Cuadro creado", "cabinet.update": "Cuadro actualizado",
+    "cabinet.delete": "Cuadro borrado", "cabinet.relay": "Encendido/apagado de cuadro",
+    "cabinet.dim": "Regulación (dimming)", "cabinet.mode": "Cambio de modo de regulación",
+    "cabinet.auto": "Vuelta a automático", "topology.wipe": "Topología vaciada",
+    "circuit.create": "Circuito creado", "circuit.update": "Circuito actualizado",
+    "circuit.delete": "Circuito borrado", "circuit.reassign": "Circuito movido de cuadro",
+    "lightpoint.create": "Luminaria creada", "lightpoint.update": "Luminaria actualizada",
+    "lightpoint.delete": "Luminaria borrada",
+    "project.create": "Proyecto creado", "project.delete": "Proyecto borrado",
+    "project.assign_user": "Usuario asignado a proyecto(s)",
+    "project.assign_cabinet": "Cuadro asignado a proyecto",
+    "project.tariff_update": "Tarifa de proyecto actualizada",
+    "device.register": "Dispositivo vinculado", "device.deactivate": "Dispositivo desvinculado",
+    "alarm.ack": "Alarmas reconocidas (ACK)",
+    "user.create": "Usuario creado", "user.password_reset": "Contraseña reseteada (admin)",
+    "user.pin_reset": "PIN reseteado (admin)", "user.pin_clear": "PIN borrado (admin)",
+    "user.pattern_reset": "Patrón reseteado (admin)", "user.pattern_clear": "Patrón borrado (admin)",
+    "user.totp_recovery_regen": "2FA: claves regeneradas (admin)",
+    "user.profile": "Ficha de usuario editada", "user.delete": "Usuario eliminado",
+    "user.rank_change": "Rango cambiado", "user.promote": "Usuario promocionado",
+    "user.permissions": "Permisos actualizados",
+    "role.create": "Rango creado", "role.update": "Rango editado", "role.delete": "Rango borrado",
+    "security.ip_banned": "IP baneada", "security.ip_unbanned": "IP desbloqueada",
+    "security.siege_on": "Modo siege ON", "security.siege_off": "Modo siege OFF",
+    "security.whitelist_add": "IP añadida a whitelist", "security.whitelist_remove": "IP quitada de whitelist",
+    "security.new_device": "Dispositivo nuevo", "security.device_revoked": "Dispositivo revocado",
+    "security.device_unknown": "Cuadro: dispositivo desconocido",
+    "security.device_mismatch": "Cuadro: serial no coincide",
+  };
+  const actionLabel = (a) => ACTION_LABELS[a] || a;
   function mountEventDock() {
     state.eventDock = state.eventDock || [];
     state.dockOpen = state.dockOpen ?? false;
@@ -1467,7 +1513,7 @@
     const tb = el("tbody");
     alarms.forEach(a => {
       const tr = el("tr");
-      tr.innerHTML = `<td class="mono">${esc(a.cabinet_id)}</td><td>${esc(a.type)}</td><td><span class="badge ${(a.severity || "").toLowerCase()}">${esc(a.severity)}</span></td><td class="muted">${esc(a.message || "")}</td>`;
+      tr.innerHTML = `<td class="mono">${esc(a.cabinet_id)}</td><td>${esc(alarmTypeLabel(a.type))}</td><td><span class="badge ${(a.severity || "").toLowerCase()}">${esc(severityLabel(a.severity))}</span></td><td class="muted">${esc(a.message || "")}</td>`;
       const td = el("td");
       if (canAck) { const b = el("button", "btn sm ghost", "ACK"); b.onclick = () => ackCab(a.cabinet_id); td.append(b); }
       tr.append(td); tb.append(tr);
@@ -3345,7 +3391,7 @@
         rows.forEach(e => {
           const tr = el("tr");
           const when = fmtDateTime(e.timestamp);
-          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${esc(e.username)}</td><td><span class="badge">${esc(e.action)}</span></td><td class="mono">${e.target ? esc(e.target) : "—"}</td><td class="muted" style="font-size:12px">${e.detail ? esc(JSON.stringify(e.detail)) : ""}</td>`;
+          tr.innerHTML = `<td class="muted mono" style="font-size:12px">${when}</td><td>${esc(e.username)}</td><td><span class="badge" title="${esc(e.action)}">${esc(actionLabel(e.action))}</span></td><td class="mono">${e.target ? esc(e.target) : "—"}</td><td class="muted" style="font-size:12px">${e.detail ? esc(JSON.stringify(e.detail)) : ""}</td>`;
           tb.append(tr);
         });
       };

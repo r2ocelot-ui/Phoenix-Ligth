@@ -43,8 +43,8 @@ def evaluate(
                 type=AlarmType.LAMP_OUT,
                 severity=AlarmSeverity.CRITICAL,
                 message=(
-                    f"Zero current with line energised on {measurement.lamp_circuit}: "
-                    f"likely blown lamp or driver failure."
+                    f"Sin consumo con línea en tensión en {measurement.lamp_circuit}: "
+                    f"probable luminaria fundida o driver averiado."
                 ),
                 timestamp=now,
                 value=measurement.current_a,
@@ -57,7 +57,7 @@ def evaluate(
                 cabinet_id=measurement.cabinet_id,
                 type=AlarmType.LINE_FAILURE,
                 severity=AlarmSeverity.CRITICAL,
-                message=f"Line voltage collapsed on {measurement.lamp_circuit}.",
+                message=f"Caída de tensión de línea en {measurement.lamp_circuit}.",
                 timestamp=now,
                 value=measurement.voltage_v,
             )
@@ -69,7 +69,7 @@ def evaluate(
                 cabinet_id=measurement.cabinet_id,
                 type=AlarmType.OVERVOLTAGE,
                 severity=AlarmSeverity.WARNING,
-                message=f"Overvoltage detected ({measurement.voltage_v:.1f} V).",
+                message=f"Sobretensión detectada ({measurement.voltage_v:.1f} V).",
                 timestamp=now,
                 value=measurement.voltage_v,
             )
@@ -81,7 +81,7 @@ def evaluate(
                 cabinet_id=measurement.cabinet_id,
                 type=AlarmType.UNDERVOLTAGE,
                 severity=AlarmSeverity.WARNING,
-                message=f"Undervoltage detected ({measurement.voltage_v:.1f} V).",
+                message=f"Subtensión detectada ({measurement.voltage_v:.1f} V).",
                 timestamp=now,
                 value=measurement.voltage_v,
             )
@@ -93,7 +93,7 @@ def evaluate(
                 cabinet_id=measurement.cabinet_id,
                 type=AlarmType.OVERCURRENT,
                 severity=AlarmSeverity.CRITICAL,
-                message=f"Overcurrent: {measurement.current_a:.2f} A.",
+                message=f"Sobreintensidad: {measurement.current_a:.2f} A.",
                 timestamp=now, value=measurement.current_a,
             )
         )

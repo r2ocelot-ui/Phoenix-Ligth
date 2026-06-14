@@ -54,6 +54,10 @@ Formato de cada entrada:
     valor global; vacío = "usar global"). Owner edita, resto solo lee.
   - (HECHO 14-jun) Rematados los últimos XSS de la auditoría: IP bans y
     eventos de seguridad.
+  - (HECHO 14-jun) **Alarmas y Auditoría en español**: `ALARM_LABELS` +
+    `SEVERITY_LABELS` en la tabla de alarmas; las 5 alarmas eléctricas del
+    backend traducidas; `ACTION_LABELS` traduce los códigos de auditoría
+    (`cabinet.create`→"Cuadro creado"…), con el código crudo en el `title`.
 - **Pendiente para la próxima**
   - Limpiar progresivamente `style="..."` → clases CSS para poder endurecer
     `style-src` en una segunda vuelta.

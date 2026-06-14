@@ -20,6 +20,13 @@ Formato de cada entrada:
 ## 2026-06-14 · CSP estricta + iconos de ayuda + menú reordenado
 
 - **Hecho**
+  - **Logo fénix rojo** colocado: el capitán lo subió (WebP renombrado, aterrizó
+    en la raíz) → lo moví a `frontend/static/phoenix-icon.png`, convertí a PNG
+    real con Pillow (256px, transparente) y **agrandé** dentro del chip (menú
+    50/44px, login 92/82px). Maquetas verificadas con render PIL.
+  - **Decisión**: el `.exe` (PyInstaller) se hornea **por versión cuando haga
+    falta**, no se desarrolla sobre él. Seguimos en código fuente. Anotado en
+    el backlog.
   - **Hueco de logo PNG**: `emblemAll()` carga `frontend/static/phoenix-icon.png`
     (menú + login + favicon) y cae al emblema SVG si no existe. Decidido el
     **fénix rojo simple** para uso interno. Falta que el capitán suba el PNG.

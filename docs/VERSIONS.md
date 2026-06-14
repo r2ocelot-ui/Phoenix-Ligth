@@ -129,7 +129,14 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **Iconos de ayuda (?)** estilo Hydra (componente reutilizable) | 🧪 | `helpIcon(tip)` — tooltip CSS, sin frases ocupando sitio. Aplicado en herramientas del mapa, modo del Control, perfil de calle y Nominal del circuito |
 | **Menú reordenado** por uso (Operación → Infraestructura → Administración) | 🧪 | Inicio · Cuadros · Alarmas · Control · Topología · Luminarias · Proyectos · Permisos · Seguridad · Auditoría |
 | Fix menor: default del select legacy a "visualizador" (era "novato") | 🧪 | Alta de usuario por la tabla legacy ya no cae al 1er rango del catálogo |
-| **Topes de tarifa POR PROYECTO** (P1/P2/P3 + floor) — backend | 🧪 | `GET/PUT /projects/{id}/tariff` (owner edita, director lee). `NULL = usa global`. Motor IA y `cost_aware_level` aceptan `caps` por proyecto. 4 tests nuevos. Falta UI |
+| **Topes de tarifa POR PROYECTO** (P1/P2/P3 + floor) | 🧪 | `GET/PUT /projects/{id}/tariff` (owner edita, director lee). `NULL = usa global`. Motor IA y `cost_aware_level` aceptan `caps` por proyecto |
+| **UI de tarifa por proyecto** (botón "💶 Tarifa" en Proyectos) | 🧪 | Modal con los 4 topes; placeholder = valor global, vacío = "usar global". Owner edita, resto lee. Cada campo con su `?` |
+| **Alarmas en español** (tipo + severidad + mensajes del motor) | 🧪 | Menú → Alarmas: `ALARM_LABELS`/`SEVERITY_LABELS`; las 5 alarmas eléctricas del backend traducidas |
+| **Auditoría en español** (códigos de acción → texto) | 🧪 | `ACTION_LABELS` traduce `cabinet.create`→"Cuadro creado", etc. Código crudo en el `title` al pasar el ratón |
+| Fix: el reloj usa la zona horaria desde el **primer render** (`await loadInfo`) | 🧪 | En Canarias ya no parpadea un instante en hora de Madrid al entrar |
+| **Saneador `safeColor()`** en colores del backend (pines, tablas, fichas) | 🧪 | Un color no-hex cae a un default seguro; defensa en profundidad sobre la CSP |
+| Limpieza: tabla legacy de Usuarios → redirige a **Permisos** | 🧪 | `#usuarios` lleva a la sección real; −80 líneas y un punto menos de XSS |
+| **Logo fénix rojo** (menú + login + favicon) + agrandado dentro del chip | 🧪 | `frontend/static/phoenix-icon.png` (PNG 256px, transparente). Respaldo a la llama si falta |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)
@@ -150,10 +157,7 @@ y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 | Token del WebSocket fuera de la URL | acaba en logs → ticket efímero. **⏸️ contigo delante**: toca el login del WS, hay que probarlo en navegador |
 | Completar datos legales `LICENSE`/`EULA` | Angel Eduardo ✓ · Kumiho ✓; **faltan contacto, localidad de jurisdicción y forma jurídica** (S.L.…) — los pones tú |
 | Licencia: modo de enforcement (suave/intermedio/duro) | **decidido: suave por ahora**; al activar, preferible **intermedio** (periodo de gracia). Cambiarlo es trivial |
-| **UI de tarifa por proyecto** (botón "💶 Tarifa" en Proyectos) | 🧪 | Modal con los 4 topes; placeholder = valor global; vacío = "usar global". Owner edita, resto lee |
-| **Alarmas en español** (tipo + severidad + mensajes del motor) | 🧪 | Tabla usa `ALARM_LABELS`/`SEVERITY_LABELS`; las 5 alarmas eléctricas del backend traducidas |
-| **Auditoría en español** (códigos de acción → texto) | 🧪 | `ACTION_LABELS` traduce `cabinet.create`→"Cuadro creado", etc. El código crudo queda en el `title` al pasar el ratón |
-| Tarifa: horario por proyecto (no solo topes) | hoy 2.0TD fijo; los topes ya son por proyecto. Pendiente que las franjas P1/P2/P3 también lo sean |
+| Tarifa: horario por proyecto (no solo topes) | hoy 2.0TD fijo; los topes ya son por proyecto. Pendiente que las franjas P1/P2/P3 también lo sean (clientes en 3.0TD/6.1TD) |
 | MQTT en producción: aplicar `infra/mosquitto.prod.conf` | el ejemplo endurecido ✓; falta desplegarlo con certs reales (no toca al demo) |
 | Pegar `docs/HYDRA-SECURITY-NOTES.md` en la sesión de Hydra | y aplicar su checklist allí |
 | ESIOS/REE — precio kWh en tiempo real | dimming por coste real (detalle en *Integraciones*) |
@@ -161,15 +165,15 @@ y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 **🟢 No urgente**
 | Bloque | Qué falta / por qué |
 |---|---|
-| Cablear el auto-level a auto-dimming real (con override) | hoy es **asesor**; validar niveles en pantalla antes de darle las llaves |
+| Pulir el auto-dimming real con override | el modo **IA/Programa** ya manda el nivel desde el bus; falta afinar la transición manual↔auto en pantalla y validar niveles contigo |
+| **Empaquetar `.exe`** (PyInstaller) cuando saquemos versión "para entregar" | un comando → `Phoenix.exe` portátil (Python embebido). NO ahora: se hornea por versión, no se desarrolla sobre él |
 | **Dimming adaptativo por uso de la calle** (idea del capitán) | (a) perfil de uso por punto/cuadro *offline*: calles tranquilas más bajas, vías principales más altas; (b) dinámico por evento (presencia/tráfico→sube, accidente→máx) vía bus Smartcity/Argus. Une #4 + #6 + V2 |
 | Mover lógica crítica al servidor (modelo híbrido) | la protección anti-ingeniería-inversa real |
 | **Multi-proyecto FASE 2**: jerarquía zona→ciudad | regiones que agrupan ciudades (director asignado a "Levante" ve todas sus ciudades sin marcarlas una a una). Hoy se cubre marcando varias; esto es la elegancia para zonas grandes |
 | PBKDF2 → Argon2id | mejora del hashing. **⏸️ contigo**: migra credenciales + dependencia nativa nueva; con doble-formato de verificación |
 | Cifrar `totp_secret` en BD | hoy se guarda en claro (toca el 2FA; lo hago con backward-compat cuando digas) |
 | SQLite → Postgres + Alembic | para producción de verdad (**infra**: Postgres no disponible aquí) |
-| CSP estricta en `index.html` | defensa fuerte anti-XSS. **⏸️**: requiere externalizar el JS inline primero, o rompe el panel |
-| Limpiar `innerHTML` con datos dinámicos | pasar progresivamente a `textContent` |
+| Limpiar `style="..."` inline → clases CSS | para poder endurecer `style-src` en la CSP (hoy lleva `'unsafe-inline'` por los ~226 estilos inline). El XSS de `innerHTML` ya está tapado con `esc()` |
 | Fases lunares offline · AEMET | marginales (detalle en *Integraciones*) |
 
 **👁️ Pendiente de TU verificación visual**

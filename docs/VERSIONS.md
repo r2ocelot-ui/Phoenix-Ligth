@@ -142,6 +142,7 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **🔒 Fix anti-escalado en cambio de rango** | 🧪 | `POST /users/{id}/rank` no exigía rango inferior; dos admin_proyecto podían degradarse. Añadido `_ensure_manageable` + test |
 | **🔒 XSS: escapados 3 focos** (topo-card, rangos/permisos, dock de eventos) | 🧪 | `esc()`/`safeColor()` en nombre/zona de CM, label/descr de rango, label/sub del dock |
 | Emergencia: afecta a TODOS los cuadros del scope (no solo los online) | 🧪 | En un corte real los cuadros están offline; ahora se fuerzan igual desde BD |
+| **Precio de la luz en tiempo real** (proveedor REE, `GET /tariff/price`) | 🧪 | `services/price.py` enchufable; off por defecto; cae a tramos fijos si no hay internet. Parser tolerante + caché. 4 tests con mock. **Falta**: cablearlo al dimming (opt-in, contigo) y verificar la API en vivo |
 | **Alarmas en español** (tipo + severidad + mensajes del motor) | 🧪 | Menú → Alarmas: `ALARM_LABELS`/`SEVERITY_LABELS`; las 5 alarmas eléctricas del backend traducidas |
 | **Auditoría en español** (códigos de acción → texto) | 🧪 | `ACTION_LABELS` traduce `cabinet.create`→"Cuadro creado", etc. Código crudo en el `title` al pasar el ratón |
 | Fix: el reloj usa la zona horaria desde el **primer render** (`await loadInfo`) | 🧪 | En Canarias ya no parpadea un instante en hora de Madrid al entrar |
@@ -171,7 +172,7 @@ y luego a **🔵** con tu visto bueno. Es la única lista que hay que mirar.
 | Tarifa: horario por proyecto (no solo topes) | hoy 2.0TD fijo; los topes ya son por proyecto. Pendiente que las franjas P1/P2/P3 también lo sean (clientes en 3.0TD/6.1TD) |
 | MQTT en producción: aplicar `infra/mosquitto.prod.conf` | el ejemplo endurecido ✓; falta desplegarlo con certs reales (no toca al demo) |
 | Pegar `docs/HYDRA-SECURITY-NOTES.md` en la sesión de Hydra | y aplicar su checklist allí |
-| ESIOS/REE — precio kWh en tiempo real | dimming por coste real (detalle en *Integraciones*) |
+| ESIOS/REE — **cablear el precio real al dimming** | el proveedor + `/tariff/price` ya están (🧪); falta que el modo IA use el precio real (opt-in, contigo) y validar la API en vivo en un server con internet |
 
 **🟢 No urgente**
 | Bloque | Qué falta / por qué |

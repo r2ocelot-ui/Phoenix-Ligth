@@ -46,6 +46,14 @@ fetch('/api/v1/tariff/now',{headers:{Authorization:'Bearer '+localStorage.getIte
 ```
 Devuelve `period` (P1/P2/P3), `label` (Punta/Llano/Valle) y `level_cap`.
 
+**Precio de la luz en tiempo real** (si activas `PHOENIX_PRICE_SOURCE=ree`):
+```js
+fetch('/api/v1/tariff/price',{headers:{Authorization:'Bearer '+localStorage.getItem('ph_token')}}).then(r=>r.json()).then(console.log)
+```
+Con el proveedor apagado (por defecto) devuelve `{available:false}`. Activado y
+con internet, `{available:true, price_eur_kwh, eur_mwh, at}`. Si la API externa
+falla, cae a `available:false` y el sistema usa los tramos fijos.
+
 **Topes de tarifa de un proyecto** (nuevo, 14-jun):
 ```js
 fetch('/api/v1/projects/1/tariff',{headers:{Authorization:'Bearer '+localStorage.getItem('ph_token')}}).then(r=>r.json()).then(console.log)

@@ -107,6 +107,19 @@ class Settings(BaseSettings):
     tariff_cap_llano: int = 90   # P2
     tariff_cap_valle: int = 100  # P3
 
+    # Precio de la luz en TIEMPO REAL (opcional). "off" → usa los tramos fijos
+    # (offline, comportamiento por defecto). Otro valor activa un proveedor:
+    # "ree" = API pública de Red Eléctrica (España, PVPC, sin clave). Diseñado
+    # genérico (proveedor enchufable) para no atar el núcleo a un país. Si el
+    # proveedor falla o no hay internet, se cae limpio a los tramos fijos:
+    # lo offline siempre gana.
+    price_source: str = "off"
+    price_api_url: str = (
+        "https://apidatos.ree.es/es/datos/mercados/precios-mercados-tiempo-real"
+    )
+    price_cache_minutes: int = 30   # cachea la curva del día; no machaca la API
+    price_timeout_s: float = 6.0    # corte rápido si la API no responde
+
     # Licenciamiento anti-copia (on-premise), Ed25519. La clave PRIVADA la
     # guardamos nosotros y firma licencias con tools/make_license.py; el
     # cliente solo lleva la PÚBLICA, así no se puede falsificar aunque tenga

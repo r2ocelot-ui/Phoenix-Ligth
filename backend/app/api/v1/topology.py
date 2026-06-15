@@ -1,4 +1,8 @@
+import csv
+import io
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -341,6 +345,106 @@ def create_lightpoint(
         target=f"{body.cabinet_code}/F{body.number}", detail=body.model_dump(),
     )
     return point
+
+
+class CsvImport(BaseModel):
+    csv: str
+
+
+def _g(row: dict, *keys: str) -> str:
+    """Primer valor no vacío entre varias cabeceras posibles (tolera acentos)."""
+    for k in keys:
+        v = (row.get(k) or "").strip()
+        if v:
+            return v
+    return ""
+
+
+@router.post("/lightpoints/import")
+def import_lightpoints(
+    body: CsvImport,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
+) -> dict:
+    """Carga masiva de luminarias desde un CSV (mismo formato que el export):
+    Nº, Calle, Nº calle, Localidad, Provincia, CP, CM, Circuito, Fase,
+    Fabricante, Modelo, W, Inventario, Tecnología.
+
+    UPSERT por (CM, Nº): si la luminaria existe la actualiza, si no la crea. El
+    circuito se resuelve por (CM, Nº de circuito); si no existe, se crea.
+    Multi-tenant: las filas de cuadros fuera del scope se ignoran con aviso.
+    Robusto: una fila mala no aborta el resto; se devuelve el resumen."""
+    text = (body.csv or "").lstrip("﻿")
+    if not text.strip():
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "CSV vacío")
+    reader = csv.DictReader(io.StringIO(text))
+    created = updated = 0
+    errors: list[str] = []
+    affected: set[int] = set()
+    visible = tenancy.cabinet_codes_in_scope(db, actor, None)
+    for i, row in enumerate(reader, start=2):  # fila 1 = cabeceras
+        try:
+            cm = _g(row, "CM")
+            num_s = _g(row, "Nº", "Nº ", "N")
+            if not cm or not num_s:
+                errors.append(f"fila {i}: faltan CM o Nº")
+                continue
+            num = int(float(num_s))
+            if visible is not None and cm not in visible:
+                errors.append(f"fila {i}: CM {cm} fuera de tu ámbito")
+                continue
+            cab = db.query(Cabinet).filter(Cabinet.code == cm).first()
+            if cab is None:
+                errors.append(f"fila {i}: CM {cm} no existe")
+                continue
+            cnum = int(float(_g(row, "Circuito") or 1))
+            circ = db.query(Circuit).filter(
+                Circuit.cabinet_code == cm, Circuit.number == cnum
+            ).first()
+            if circ is None:
+                circ = Circuit(cabinet_code=cm, number=cnum, name="")
+                db.add(circ)
+                db.flush()
+            try:
+                power = float(_g(row, "W") or 0)
+            except ValueError:
+                power = 0.0
+            fields = {
+                "circuit_id": circ.id,
+                "phase": _g(row, "Fase") or "L1",
+                "street": _g(row, "Calle"),
+                "street_number": _g(row, "Nº calle"),
+                "locality": _g(row, "Localidad"),
+                "province": _g(row, "Provincia"),
+                "postal_code": _g(row, "CP"),
+                "manufacturer": _g(row, "Fabricante"),
+                "model": _g(row, "Modelo"),
+                "power_w": power,
+                "inventory_code": _g(row, "Inventario"),
+                "technology": _g(row, "Tecnología", "Tecnologia"),
+            }
+            lp = db.query(LightPoint).filter(
+                LightPoint.cabinet_code == cm, LightPoint.number == num
+            ).first()
+            if lp:
+                for k, v in fields.items():
+                    setattr(lp, k, v)
+                updated += 1
+            else:
+                db.add(LightPoint(cabinet_code=cm, number=num, **fields))
+                created += 1
+            affected.add(circ.id)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"fila {i}: {exc}")
+    db.commit()
+    for cid in affected:
+        _recompute_circuit_power(db, cid)
+    db.commit()
+    audit_log.record(
+        db, username=actor.username, action="lightpoint.import",
+        detail={"created": created, "updated": updated, "errors": len(errors)},
+    )
+    return {"created": created, "updated": updated, "errors": errors}
 
 
 @router.patch("/lightpoints/{point_id}", response_model=LightPointRead)

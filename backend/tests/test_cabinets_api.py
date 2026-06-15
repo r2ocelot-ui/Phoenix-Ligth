@@ -212,3 +212,29 @@ def test_ws_delivers_snapshot(client):
         msg = ws.receive_json()
         assert msg["type"] == "snapshot"
         assert isinstance(msg["cabinets"], list)
+
+
+def test_lightpoints_csv_import_upsert(client):
+    """Importar CSV de luminarias: crea, luego actualiza por (CM, Nº) sin
+    duplicar, y una fila con CM inexistente avisa sin romper el resto."""
+    headers = {"Authorization": f"Bearer {_token(client)}"}
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-IMP"}, headers=headers)
+    csv1 = (
+        "Nº,Calle,Nº calle,Localidad,Provincia,CP,CM,Circuito,Fase,Fabricante,Modelo,W,Inventario,Tecnología\r\n"
+        "1,Calle Mayor,5,Madrid,Madrid,28013,CAB-IMP,1,L1,Schreder,Z1,80,INV-1,LED\r\n"
+        "2,,,,,,CAB-IMP,1,L2,,,100,,\r\n"
+    )
+    r = client.post("/api/v1/lightpoints/import", json={"csv": csv1}, headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["created"] == 2 and r.json()["updated"] == 0
+    # Reimport con cambio → UPDATE, no duplica.
+    csv2 = "Nº,Calle,CM,Circuito,Fase,W\r\n1,Calle Mayor Reformada,CAB-IMP,1,L1,90\r\n"
+    r2 = client.post("/api/v1/lightpoints/import", json={"csv": csv2}, headers=headers)
+    assert r2.json()["updated"] == 1 and r2.json()["created"] == 0
+    pts = client.get("/api/v1/lightpoints?cabinet_code=CAB-IMP", headers=headers).json()
+    assert len(pts) == 2  # no duplicó
+    p1 = next(p for p in pts if p["number"] == 1)
+    assert p1["street"] == "Calle Mayor Reformada" and p1["power_w"] == 90
+    # CM inexistente → aviso en esa fila, no rompe.
+    r3 = client.post("/api/v1/lightpoints/import", json={"csv": "Nº,CM\r\n1,CAB-NOPE\r\n"}, headers=headers)
+    assert r3.status_code == 200 and r3.json()["created"] == 0 and len(r3.json()["errors"]) == 1

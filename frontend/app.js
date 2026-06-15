@@ -686,7 +686,7 @@
     "circuit.create": "Circuito creado", "circuit.update": "Circuito actualizado",
     "circuit.delete": "Circuito borrado", "circuit.reassign": "Circuito movido de cuadro",
     "lightpoint.create": "Luminaria creada", "lightpoint.update": "Luminaria actualizada",
-    "lightpoint.delete": "Luminaria borrada",
+    "lightpoint.delete": "Luminaria borrada", "lightpoint.import": "Importación de luminarias (CSV)",
     "project.create": "Proyecto creado", "project.delete": "Proyecto borrado",
     "project.assign_user": "Usuario asignado a proyecto(s)",
     "project.assign_cabinet": "Cuadro asignado a proyecto",
@@ -1735,6 +1735,28 @@
         ["Nº", "Calle", "Nº calle", "Localidad", "Provincia", "CP", "CM", "Circuito", "Fase", "Fabricante", "Modelo", "W", "Inventario", "Tecnología"],
         rows.map(({ pt, cab, circ }) => [pt.number, pt.street, pt.street_number, pt.locality, pt.province, pt.postal_code, cab.code, circ ? circ.number : "", pt.phase, pt.manufacturer, pt.model, pt.power_w, pt.inventory_code, pt.technology]));
       bar.append(search, cmFilter, counter, csvBtn);
+      // Importar CSV (mismo formato) — solo quien gestiona. UPSERT por (CM, Nº).
+      if (has("cabinet:manage")) {
+        const impBtn = el("button", "btn ghost sm", "⬆ Importar"); impBtn.title = "Subir un CSV para crear/actualizar luminarias en bloque";
+        const fileInp = el("input"); fileInp.type = "file"; fileInp.accept = ".csv,text/csv"; fileInp.style.display = "none";
+        impBtn.onclick = () => fileInp.click();
+        fileInp.onchange = () => {
+          const f = fileInp.files && fileInp.files[0]; if (!f) return;
+          const fr = new FileReader();
+          fr.onload = async () => {
+            try {
+              const r = await api("/lightpoints/import", { method: "POST", body: JSON.stringify({ csv: String(fr.result) }) });
+              const errs = r.errors || [];
+              toast(`Importadas: ${r.created} nuevas, ${r.updated} actualizadas${errs.length ? " · " + errs.length + " avisos" : ""}`);
+              if (errs.length) alert("Avisos de importación:\n\n" + errs.slice(0, 20).join("\n") + (errs.length > 20 ? "\n…" : ""));
+              loadLuminarias();
+            } catch (e) { toast(e.message, true); }
+            finally { fileInp.value = ""; }
+          };
+          fr.readAsText(f, "utf-8");
+        };
+        bar.append(impBtn, fileInp);
+      }
       c.append(bar);
 
       const panel = el("div", "panel");
@@ -2906,6 +2928,7 @@
         if (!res || !res.city) { toast("No encontrado. Prueba otra búsqueda.", true); return; }
         name.value = res.province && res.province !== res.city ? `${res.city} (${res.province})` : res.city;
         if (!code.value.trim()) code.value = slugify(res.city);
+        if (res.province && !region.value.trim()) region.value = res.province;  // autorrellena provincia/zona
         toast(`→ ${res.city}${res.postal_code ? " · CP " + res.postal_code : ""}`);
       };
       find.onclick = doSearch;

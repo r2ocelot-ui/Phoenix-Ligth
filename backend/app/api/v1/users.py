@@ -283,6 +283,10 @@ def change_rank(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot assign a rank above your own")
 
     user = _get(db, user_id, actor)
+    # Anti-escalado: solo se puede re-rankear a alguien de rango ESTRICTAMENTE
+    # inferior (coherente con los resets de credenciales). Sin esto, dos
+    # admin_proyecto del mismo proyecto podrían degradarse mutuamente.
+    _ensure_manageable(actor, user)
     old = user.rank
     user.rank = rank
     db.commit()

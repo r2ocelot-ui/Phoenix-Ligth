@@ -137,6 +137,11 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **Apagar emergencia** (recuerda y restaura el modo previo) | 🧪 | `Cabinet.pre_emergency_mode` + `POST /emergency/clear` + `GET /emergency/status`. Botón verde en el menú de usuario aparece solo si hay emergencia activa. Idempotente. Test cubre el ciclo completo |
 | **Búsqueda global (Ctrl+K)** en el topbar | 🧪 | Busca instantánea sobre cache (sin peticiones extra): cuadros, luminarias, calles, circuitos, proyectos, secciones del menú. Flechas + Enter, "/" también abre |
 | Limpieza: `.fs-11/12/13/14` (utilitarias) — extraídos ~29 styles inline | 🧪 | Reemplaza `class="..." style="font-size:NNpx"` por `class="... fs-NN"`. Mejora de mantenibilidad sin riesgo |
+| **🔒 Fix fuga multi-tenant: topología, circuitos, luminarias, alarmas** | 🧪 | Auditoría 15-jun: estos endpoints NO filtraban por proyecto → un técnico veía/editaba los de otras ciudades. Ahora aplican `cabinet_codes_in_scope`/`ensure_visible`. Tests de regresión |
+| **🔒 Fix: desvincular dispositivo exigía ver el cuadro** | 🧪 | `DELETE /devices/{id}` no comprobaba scope; ahora `ensure_visible` del cuadro asociado |
+| **🔒 Fix anti-escalado en cambio de rango** | 🧪 | `POST /users/{id}/rank` no exigía rango inferior; dos admin_proyecto podían degradarse. Añadido `_ensure_manageable` + test |
+| **🔒 XSS: escapados 3 focos** (topo-card, rangos/permisos, dock de eventos) | 🧪 | `esc()`/`safeColor()` en nombre/zona de CM, label/descr de rango, label/sub del dock |
+| Emergencia: afecta a TODOS los cuadros del scope (no solo los online) | 🧪 | En un corte real los cuadros están offline; ahora se fuerzan igual desde BD |
 | **Alarmas en español** (tipo + severidad + mensajes del motor) | 🧪 | Menú → Alarmas: `ALARM_LABELS`/`SEVERITY_LABELS`; las 5 alarmas eléctricas del backend traducidas |
 | **Auditoría en español** (códigos de acción → texto) | 🧪 | `ACTION_LABELS` traduce `cabinet.create`→"Cuadro creado", etc. Código crudo en el `title` al pasar el ratón |
 | Fix: el reloj usa la zona horaria desde el **primer render** (`await loadInfo`) | 🧪 | En Canarias ya no parpadea un instante en hora de Madrid al entrar |

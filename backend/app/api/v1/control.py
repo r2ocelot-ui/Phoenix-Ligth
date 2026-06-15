@@ -44,13 +44,13 @@ async def emergency_all_on(
     owner sin filtro activo abarca todos."""
     visible = tenancy.cabinet_codes_in_scope(db, user, None)
     affected: list[str] = []
-    # Cargamos los cuadros del scope para poder preservar su modo previo.
-    cabs = db.query(Cabinet).filter(
-        Cabinet.code.in_(bus._known_cabinets)
-    ).all()
-    for cab in cabs:
-        if visible is not None and cab.code not in visible:
-            continue
+    # TODOS los cuadros del scope, incluidos los registrados que aún no han
+    # reportado telemetría: en una emergencia real (corte de luz) muchos pueden
+    # estar offline y son justo los que hay que forzar a encender.
+    cab_q = db.query(Cabinet)
+    if visible is not None:
+        cab_q = cab_q.filter(Cabinet.code.in_(visible))
+    for cab in cab_q.all():
         try:
             await bus.publish(f"phoenix/cabinets/{cab.code}/cmd/relay", {"state": "on"})
             await bus.publish(f"phoenix/cabinets/{cab.code}/cmd/dim", {"level": 100})

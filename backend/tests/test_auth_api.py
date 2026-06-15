@@ -1361,3 +1361,44 @@ def test_project_tariff_enabled_toggle(client):
     con = dc.resolve_ai_level(punta, 40.4168, -3.7038, street_profile="arterial", use_tariff=True)
     sin = dc.resolve_ai_level(punta, 40.4168, -3.7038, street_profile="arterial", use_tariff=False)
     assert sin >= con  # sin recorte por tarifa, el nivel es igual o mayor
+
+
+def test_topology_and_alarms_scoped_to_project(client):
+    """Regresión de fuga multi-tenant: un director de una ciudad NO ve ni toca
+    la topología ni las alarmas de otra; el owner sí ve todo."""
+    _register(client, "owner"); own = _token(client, "owner")
+    mad = client.post("/api/v1/projects", json={"code": "madrid", "name": "Madrid"}, headers=_auth(own)).json()
+    bcn = client.post("/api/v1/projects", json={"code": "bcn", "name": "Barcelona"}, headers=_auth(own)).json()
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-MAD", "project_id": mad["id"]}, headers=_auth(own))
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-BCN", "project_id": bcn["id"]}, headers=_auth(own))
+    d = _create_user(client, own, "dire", rank="admin_proyecto")
+    client.post("/api/v1/projects/assign-user", json={"user_id": d["id"], "project_ids": [mad["id"]]}, headers=_auth(own))
+    dire = _token(client, "dire")
+
+    # /topology: el director solo ve su ciudad.
+    codes = {c["code"] for c in client.get("/api/v1/topology", headers=_auth(dire)).json()["cabinets"]}
+    assert codes == {"CAB-MAD"}
+    # Crear circuito/luminaria en la ciudad ajena → 404; en la suya → 201.
+    assert client.post("/api/v1/circuits", json={"cabinet_code": "CAB-BCN", "number": 1}, headers=_auth(dire)).status_code == 404
+    assert client.post("/api/v1/circuits", json={"cabinet_code": "CAB-MAD", "number": 1}, headers=_auth(dire)).status_code == 201
+    assert client.post("/api/v1/lightpoints", json={"cabinet_code": "CAB-BCN", "circuit_id": 1, "number": 1}, headers=_auth(dire)).status_code == 404
+    # Alarmas de la ciudad ajena → 404.
+    assert client.get("/api/v1/cabinets/CAB-BCN/alarms", headers=_auth(dire)).status_code == 404
+    # Listados scoped.
+    lc = client.get("/api/v1/circuits", headers=_auth(dire)).json()
+    assert all(c["cabinet_code"] == "CAB-MAD" for c in lc)
+    # El owner ve las dos ciudades.
+    assert {"CAB-MAD", "CAB-BCN"}.issubset({c["code"] for c in client.get("/api/v1/topology", headers=_auth(own)).json()["cabinets"]})
+
+
+def test_change_rank_blocks_equal_or_higher(client):
+    """Anti-escalado: un admin_proyecto no puede re-rankear a otro de su mismo
+    rango (ni superior); el owner sí puede."""
+    _register(client, "owner"); own = _token(client, "owner")
+    _create_user(client, own, "admin_a", rank="admin_proyecto")
+    b = _create_user(client, own, "admin_b", rank="admin_proyecto")
+    ta = _token(client, "admin_a")
+    # admin_a (con user:manage) intenta degradar a admin_b (rango IGUAL) → 403 por el guard.
+    assert client.post(f"/api/v1/users/{b['id']}/rank", json={"rank": "operador"}, headers=_auth(ta)).status_code == 403
+    # El owner sí puede.
+    assert client.post(f"/api/v1/users/{b['id']}/rank", json={"rank": "operador"}, headers=_auth(own)).status_code == 200

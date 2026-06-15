@@ -76,6 +76,10 @@ def deactivate_device(
     device = db.get(Device, device_id)
     if not device:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Dispositivo no encontrado")
+    # El dispositivo hereda la visibilidad del proyecto de su cuadro: un
+    # cabinet:manage de otra ciudad no puede desvincular hardware ajeno.
+    cab = db.query(Cabinet).filter(Cabinet.code == device.cabinet_code).first()
+    tenancy.ensure_visible(cab, actor)
     if not device.is_active:
         return {"ok": True, "already": True}
     device.is_active = False

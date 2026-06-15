@@ -28,7 +28,7 @@ _DEFAULT_SUPPORT_TYPES = ["Columna", "Brazo mural", "Báculo", "Catenaria", "Pes
 _DEFAULT_LAYOUT_TYPES = ["Unilateral", "Bilateral pareada", "Bilateral tresbolillo",
                           "Central (mediana)", "Suspensión cable", "Otro"]
 _DEFAULT_LIGHT_SOURCE_TYPES = ["LED", "VSAP", "VSBP", "HM", "Mercurio", "Halógena", "Otro"]
-from app.services import audit_log, ranks
+from app.services import audit_log, ranks, tenancy
 from app.services.auth import require_permission
 
 router = APIRouter(tags=["topology"])
@@ -54,13 +54,26 @@ def _recompute_circuit_power(db: Session, circuit_id: int | None) -> None:
     circuit.expected_power_w = float(total)
 
 
+def _ensure_cabinet_visible(db: Session, actor: User, cabinet_code: str) -> None:
+    """El proyecto manda dónde: comprueba que el cuadro existe y está en el
+    scope del actor. Un no-owner sobre un código fuera de su ciudad → 404."""
+    cab = db.query(Cabinet).filter(Cabinet.code == cabinet_code).first()
+    if cab is None:
+        if not tenancy.is_global(actor):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro no encontrado")
+        return
+    tenancy.ensure_visible(cab, actor)
+
+
 @router.get("/topology")
 def get_topology(
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_CABINET_READ)),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
 ) -> dict:
     """Full tree for the map: cabinets (CM) -> circuits -> light points, with
-    live status merged in and the phase colour key."""
+    live status merged in and the phase colour key. Multi-tenant: solo los
+    cuadros del scope del usuario (el owner los ve todos)."""
+    codes = tenancy.cabinet_codes_in_scope(db, actor, None)
     live = {c["cabinet_id"]: c for c in bus.snapshot()}
     circuits = db.query(Circuit).all()
     points = db.query(LightPoint).all()
@@ -75,6 +88,8 @@ def get_topology(
 
     cabinets = []
     for cab in db.query(Cabinet).order_by(Cabinet.number, Cabinet.code).all():
+        if codes is not None and cab.code not in codes:
+            continue  # fuera del scope del usuario
         snap = live.get(cab.code, {})
         cabinets.append(
             {
@@ -144,11 +159,14 @@ def get_topology(
 def list_circuits(
     cabinet_code: str | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_CABINET_READ)),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
 ):
     query = db.query(Circuit)
     if cabinet_code:
         query = query.filter(Circuit.cabinet_code == cabinet_code)
+    codes = tenancy.cabinet_codes_in_scope(db, actor, None)
+    if codes is not None:
+        query = query.filter(Circuit.cabinet_code.in_(codes))
     return query.order_by(Circuit.cabinet_code, Circuit.number).all()
 
 
@@ -158,6 +176,7 @@ def create_circuit(
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
 ) -> Circuit:
+    _ensure_cabinet_visible(db, actor, body.cabinet_code)
     circuit = Circuit(**body.model_dump())
     db.add(circuit)
     db.commit()
@@ -184,6 +203,7 @@ def update_circuit(
     circuit = db.get(Circuit, circuit_id)
     if not circuit:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Circuit not found")
+    _ensure_cabinet_visible(db, actor, circuit.cabinet_code)  # no editar fuera de tu scope
     data = body.model_dump(exclude_unset=True)
 
     # Reasignación a otro CM: validar destino y arrastrar las luminarias del
@@ -191,6 +211,7 @@ def update_circuit(
     moved_lights = 0
     new_code = data.pop("cabinet_code", None)
     if new_code and new_code != circuit.cabinet_code:
+        _ensure_cabinet_visible(db, actor, new_code)  # destino también en tu scope
         if not db.query(Cabinet).filter(Cabinet.code == new_code).first():
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"CM destino no encontrado: {new_code}")
         old_code = circuit.cabinet_code
@@ -228,6 +249,7 @@ def delete_circuit(
     circuit = db.get(Circuit, circuit_id)
     if not circuit:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Circuit not found")
+    _ensure_cabinet_visible(db, actor, circuit.cabinet_code)
     attached = db.query(LightPoint).filter(LightPoint.circuit_id == circuit_id).count()
     if attached:
         raise HTTPException(
@@ -288,13 +310,16 @@ def list_lightpoints(
     cabinet_code: str | None = None,
     circuit_id: int | None = None,
     db: Session = Depends(get_db),
-    _: User = Depends(require_permission(ranks.P_CABINET_READ)),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
 ):
     query = db.query(LightPoint)
     if cabinet_code:
         query = query.filter(LightPoint.cabinet_code == cabinet_code)
     if circuit_id:
         query = query.filter(LightPoint.circuit_id == circuit_id)
+    codes = tenancy.cabinet_codes_in_scope(db, actor, None)
+    if codes is not None:
+        query = query.filter(LightPoint.cabinet_code.in_(codes))
     return query.order_by(LightPoint.cabinet_code, LightPoint.number).all()
 
 
@@ -304,6 +329,7 @@ def create_lightpoint(
     db: Session = Depends(get_db),
     actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
 ) -> LightPoint:
+    _ensure_cabinet_visible(db, actor, body.cabinet_code)
     point = LightPoint(**body.model_dump())
     db.add(point)
     db.commit()
@@ -327,6 +353,7 @@ def update_lightpoint(
     point = db.get(LightPoint, point_id)
     if not point:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Light point not found")
+    _ensure_cabinet_visible(db, actor, point.cabinet_code)
     old_circuit_id = point.circuit_id
     for key, value in body.model_dump(exclude_unset=True).items():
         setattr(point, key, value)
@@ -351,6 +378,7 @@ def delete_lightpoint(
     point = db.get(LightPoint, point_id)
     if not point:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Light point not found")
+    _ensure_cabinet_visible(db, actor, point.cabinet_code)
     circuit_id = point.circuit_id
     db.delete(point)
     db.commit()

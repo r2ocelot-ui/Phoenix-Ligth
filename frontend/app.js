@@ -2850,6 +2850,26 @@
   // Sección "Proyectos" del menú (solo Director/Phoenix por el data-perm).
   // El owner gestiona (crear/borrar/asignar); un director ve sus ciudades
   // en solo lectura (el backend ya exige owner para crear/borrar).
+  // Sugerencias para el autocompletado de "Provincia/zona". El campo es TEXTO
+  // LIBRE (vale cualquier provincia de la UE/mundo): esto solo son atajos. Se
+  // siembra con las 50 provincias de España (mercado principal) + los países de
+  // la UE, y se mezcla con las que ya hayas usado. No encierra a España.
+  const REGION_SUGGESTIONS = [
+    // Provincias de España
+    "A Coruña", "Álava", "Albacete", "Alicante", "Almería", "Asturias", "Ávila",
+    "Badajoz", "Barcelona", "Bizkaia", "Burgos", "Cáceres", "Cádiz", "Cantabria",
+    "Castellón", "Ciudad Real", "Córdoba", "Cuenca", "Gipuzkoa", "Girona",
+    "Granada", "Guadalajara", "Huelva", "Huesca", "Illes Balears", "Jaén",
+    "La Rioja", "Las Palmas", "León", "Lleida", "Lugo", "Madrid", "Málaga",
+    "Murcia", "Navarra", "Ourense", "Palencia", "Pontevedra", "Salamanca",
+    "Santa Cruz de Tenerife", "Segovia", "Sevilla", "Soria", "Tarragona",
+    "Teruel", "Toledo", "Valencia", "Valladolid", "Zamora", "Zaragoza",
+    // Países de la UE (para despliegues fuera de España)
+    "Alemania", "Austria", "Bélgica", "Bulgaria", "Chequia", "Chipre", "Croacia",
+    "Dinamarca", "Eslovaquia", "Eslovenia", "España", "Estonia", "Finlandia",
+    "Francia", "Grecia", "Hungría", "Irlanda", "Italia", "Letonia", "Lituania",
+    "Luxemburgo", "Malta", "Países Bajos", "Polonia", "Portugal", "Rumanía", "Suecia",
+  ];
   async function loadProyectos() {
     const c = $("#content"); c.innerHTML = "";
     await renderProyectos(c);
@@ -2900,9 +2920,12 @@
         catch (e) { toast(e.message, true); }
       };
       row.append(code, name, region, add); cp.append(row);
-      // Datalist con las regiones ya usadas, para reutilizarlas al escribir.
+      // Datalist: sugerencias base (provincias ES + países UE) + las ya usadas.
+      // El navegador filtra solo al teclear ("A" → todas con A; "Ali" → Alicante).
       const dl = el("datalist"); dl.id = "region-list";
-      [...new Set(projects.map(p => p.region).filter(Boolean))].sort().forEach(r => { const o = el("option"); o.value = r; dl.append(o); });
+      const used = projects.map(p => p.region).filter(Boolean);
+      [...new Set([...REGION_SUGGESTIONS, ...used])].sort((a, b) => a.localeCompare(b, "es"))
+        .forEach(r => { const o = el("option"); o.value = r; dl.append(o); });
       cp.append(dl);
       if (isOwnerUser()) body.append(cp);  // crear proyecto: solo el owner
 

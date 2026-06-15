@@ -491,7 +491,7 @@
 
   // ====== Modo Emergencia ============
   async function emergencyAllOn() {
-    if (!confirm("MODO EMERGENCIA: encender todo y poner dimming al 100%. ¿Continuar?")) return;
+    if (!confirm(`⚠ MODO EMERGENCIA\n\nVas a ENCENDER al 100% ${state.cabinets.length} cuadro(s) de tu ámbito.\n(Phoenix = toda la red · un director = solo su ciudad.)\n\n¿Continuar?`)) return;
     try {
       const r = await api("/emergency/all-on", { method: "POST" });
       toast(`Emergencia aplicada a ${r.cabinets.length} cuadros`);

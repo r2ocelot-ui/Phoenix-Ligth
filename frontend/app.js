@@ -778,7 +778,7 @@
       const row = el("div", "dock-row");
       const tick = el("div", "dock-tick " + (ev.severity === "critical" ? "bad" : ev.severity || ""));
       const msg = el("div", "dock-msg");
-      msg.innerHTML = `<div>${ev.label}</div>${ev.sub ? `<div class="muted">${ev.sub}</div>` : ""}`;
+      msg.innerHTML = `<div>${esc(ev.label)}</div>${ev.sub ? `<div class="muted">${esc(ev.sub)}</div>` : ""}`;
       const time = el("div", "dock-time", fmtTime(ev.timestamp));
       row.append(tick, msg, time);
       body.append(row);
@@ -1847,18 +1847,18 @@
     const phases = [...new Set(cpts.map(pt => pt.phase))].sort();
     const statusCls = !cab.online ? "off" : (cab.status === "critical" ? "bad" : (cab.status === "warning" ? "warn" : "ok"));
     card.innerHTML = `
-      <div class="topo-head" style="border-left:3px solid ${cab.color}">
+      <div class="topo-head" style="border-left:3px solid ${safeColor(cab.color, "#f97316")}">
         <div class="topo-title">
           <span class="topo-dot ${statusCls}"></span>
           <strong>CM${cab.number}</strong>
-          <span class="muted mono fs-11">${cab.code}</span>
+          <span class="muted mono fs-11">${esc(cab.code)}</span>
         </div>
-        <div class="topo-name muted">${cab.name || ""}</div>
+        <div class="topo-name muted">${esc(cab.name || "")}</div>
       </div>
       <div class="topo-stats">
         <div><span class="topo-num">${cab.circuits.length}</span><span class="muted">circuitos</span></div>
         <div><span class="topo-num">${cpts.length}</span><span class="muted">luminarias</span></div>
-        <div><span class="topo-num">${phases.length || "—"}</span><span class="muted">fases ${phases.join(" ") || ""}</span></div>
+        <div><span class="topo-num">${phases.length || "—"}</span><span class="muted">fases ${esc(phases.join(" "))}</span></div>
       </div>`;
     card.onclick = () => openTopoDetail(cab, tp, canEdit);
     return card;
@@ -2733,10 +2733,10 @@
     if (locked && !role.is_owner) badges.push(`<span class="badge">solo lectura</span>`);
     head.innerHTML = `
       <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap">
-        <h3 style="margin:0; font-size:18px">${role.label}</h3>
+        <h3 style="margin:0; font-size:18px">${esc(role.label)}</h3>
         <span class="muted mono fs-11">id ${role.id} · nivel ${role.level}</span>
       </div>
-      <div class="muted" style="font-size:12px; margin-top:4px">${role.description || ""}</div>
+      <div class="muted" style="font-size:12px; margin-top:4px">${esc(role.description || "")}</div>
       <div style="margin-top:6px">${badges.join(" ")}</div>`;
     detail.append(head);
 
@@ -2753,7 +2753,7 @@
         const cb = el("input"); cb.type = "checkbox"; cb.checked = role.permissions.includes(p.id); cb.disabled = locked;
         checkboxes[p.id] = cb;
         const txt = el("div");
-        txt.innerHTML = `<div class="perm-label">${p.label} <span class="mono muted fs-11">${p.id}</span></div><div class="muted fs-11">${p.description}</div>`;
+        txt.innerHTML = `<div class="perm-label">${esc(p.label)} <span class="mono muted fs-11">${esc(p.id)}</span></div><div class="muted fs-11">${esc(p.description)}</div>`;
         row.append(cb, txt); list.append(row);
       });
     }
@@ -3552,11 +3552,11 @@
     if (locked && !role.is_owner) badges.push(`<span class="badge">solo lectura</span>`);
     head.innerHTML = `
       <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap">
-        <h3 style="margin:0; font-size:16px">${role.label}</h3>
+        <h3 style="margin:0; font-size:16px">${esc(role.label)}</h3>
         <span class="muted mono fs-11">${role.id} · nivel ${role.level}</span>
         ${badges.join(" ")}
       </div>
-      <div class="muted" style="font-size:12px; margin-top:3px">${role.description || ""}</div>`;
+      <div class="muted" style="font-size:12px; margin-top:3px">${esc(role.description || "")}</div>`;
     detail.append(head);
 
     detail.append(el("div", "perm-hr"));

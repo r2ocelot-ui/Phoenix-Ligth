@@ -2870,7 +2870,7 @@
       cp.append(el("div", null, "<strong>Crear proyecto / ciudad</strong> <span class='muted' style='font-size:12px'>· aísla cuadros y usuarios de cada cliente</span>"));
       const code = el("input"); code.placeholder = "código (p.ej. madrid)"; code.style.width = "180px";
       const name = el("input"); name.placeholder = "nombre (p.ej. Madrid Centro)"; name.style.flex = "1";
-      const region = el("input"); region.placeholder = "comunidad / región (opcional)"; region.style.width = "220px";
+      const region = el("input"); region.placeholder = "provincia / zona (opcional)"; region.style.width = "220px";
       region.setAttribute("list", "region-list");
 
       // Fila de búsqueda: ciudad o CP → autocompleta nombre y sugiere código.
@@ -2909,7 +2909,7 @@
       // Lista de proyectos.
       const panel = el("div", "panel");
       const t = el("table");
-      t.innerHTML = `<thead><tr><th>ID</th><th>Código</th><th>Nombre</th><th>Región</th><th>Usuarios</th><th>Cuadros</th><th></th></tr></thead>`;
+      t.innerHTML = `<thead><tr><th>ID</th><th>Código</th><th>Nombre</th><th>Provincia/zona</th><th>Usuarios</th><th>Cuadros</th><th></th></tr></thead>`;
       const tb = el("tbody");
       projects.forEach(p => {
         const nu = countUsers(p.id), nc = countCabs(p.id);
@@ -2920,11 +2920,11 @@
         tariff.onclick = () => openProjectTariff(p);
         td.append(tariff);
         if (isOwnerUser()) {  // editar/borrar: solo el owner
-          const edit = el("button", "btn ghost sm", "✎ Región"); edit.style.marginLeft = "4px";
+          const edit = el("button", "btn ghost sm", "✎ Provincia"); edit.style.marginLeft = "4px";
           edit.onclick = async () => {
-            const r = prompt(`Comunidad / región de "${p.name}" (vacío = ninguna):`, p.region || "");
+            const r = prompt(`Provincia / zona de "${p.name}" (vacío = ninguna):`, p.region || "");
             if (r === null) return;
-            try { await api(`/projects/${p.id}`, { method: "PATCH", body: JSON.stringify({ region: r.trim() }) }); toast("Región actualizada"); loadProjectsForChip(); loadProyectos(); }
+            try { await api(`/projects/${p.id}`, { method: "PATCH", body: JSON.stringify({ region: r.trim() }) }); toast("Provincia actualizada"); loadProjectsForChip(); loadProyectos(); }
             catch (e) { toast(e.message, true); }
           };
           td.append(edit);
@@ -3126,7 +3126,7 @@
       // Agrupar por región/comunidad: así se marca una zona entera (varias
       // ciudades) de una vez. Por debajo siguen siendo project_ids (N:N).
       const byRegion = {};
-      projects.forEach(p => { const r = p.region || "Sin región"; (byRegion[r] = byRegion[r] || []).push(p); });
+      projects.forEach(p => { const r = p.region || "Sin provincia/zona"; (byRegion[r] = byRegion[r] || []).push(p); });
       Object.keys(byRegion).sort().forEach(region => {
         const kids = byRegion[region];
         const grp = el("div"); grp.style.cssText = "border:1px solid var(--border); border-radius:8px; padding:8px";

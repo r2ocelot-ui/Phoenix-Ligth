@@ -25,6 +25,7 @@ Backend FastAPI + MQTT; panel web de una sola página.
 | `docs/PRUEBAS-NAVEGADOR.md` | Recetas F12 → Console para probar endpoints sin clicar |
 | `docs/SMARTCITY-BUS.md` | Visión V2 del bus compartido del ecosistema |
 | `docs/HYDRA-SECURITY-NOTES.md` | Notas de seguridad para la sesión de Hydra |
+| `docs/HYDRA-IA-SEMAFOROS.md` | Investigación Hydra: IA en semáforos, NPU/cámaras y costes |
 | `LICENSE` / `docs/EULA.md` | Licencia Ed25519 + EULA (datos legales pendientes) |
 
 ## Flujo de trabajo (git)

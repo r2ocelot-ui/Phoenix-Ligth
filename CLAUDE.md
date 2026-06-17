@@ -26,6 +26,7 @@ Backend FastAPI + MQTT; panel web de una sola página.
 | `docs/SMARTCITY-BUS.md` | Visión V2 del bus compartido del ecosistema |
 | `docs/HYDRA-SECURITY-NOTES.md` | Notas de seguridad para la sesión de Hydra |
 | `docs/HYDRA-IA-SEMAFOROS.md` | Investigación Hydra: IA en semáforos, NPU/cámaras y costes |
+| `docs/HYDRA-CRUCE-PILOTO.md` | Hydra: diseño de cruce piloto (mini-PC AMD + cámaras certificadas + BOM) |
 | `LICENSE` / `docs/EULA.md` | Licencia Ed25519 + EULA (datos legales pendientes) |
 
 ## Flujo de trabajo (git)

@@ -214,6 +214,58 @@ def test_ws_delivers_snapshot(client):
         assert isinstance(msg["cabinets"], list)
 
 
+def test_lightpoints_import_requires_data_transfer(client):
+    """El import de luminarias está reservado a ingeniero+ (permiso
+    data:transfer). Un operador (que sí puede gestionar topología clásica si
+    se la dan, pero NO transferir datos en bloque) recibe 403; un ingeniero
+    completa la operación sin que el backend la rechace por permiso.
+    Defensa explícita del backlog del 14-jun: subir/bajar inventario en
+    bloque solo desde rangos altos."""
+    boss = _token(client)
+    # Creamos el CM con el owner.
+    client.post(
+        "/api/v1/cabinets/registry",
+        json={"code": "CAB-PERM"},
+        headers={"Authorization": f"Bearer {boss}"},
+    )
+
+    # Operador (sin data:transfer) → 403.
+    client.post(
+        "/api/v1/users",
+        json={"username": "op1", "password": "secret123", "rank": "operador"},
+        headers={"Authorization": f"Bearer {boss}"},
+    )
+    op = client.post(
+        "/api/v1/auth/login",
+        data={"username": "op1", "password": "secret123"},
+    ).json()["access_token"]
+    csv_body = "Nº,CM,Fase,W\r\n1,CAB-PERM,L1,80\r\n"
+    blocked = client.post(
+        "/api/v1/lightpoints/import",
+        json={"csv": csv_body},
+        headers={"Authorization": f"Bearer {op}"},
+    )
+    assert blocked.status_code == 403
+
+    # Ingeniero (con data:transfer por defecto) → 200.
+    client.post(
+        "/api/v1/users",
+        json={"username": "ing1", "password": "secret123", "rank": "ingeniero"},
+        headers={"Authorization": f"Bearer {boss}"},
+    )
+    ing = client.post(
+        "/api/v1/auth/login",
+        data={"username": "ing1", "password": "secret123"},
+    ).json()["access_token"]
+    ok = client.post(
+        "/api/v1/lightpoints/import",
+        json={"csv": csv_body},
+        headers={"Authorization": f"Bearer {ing}"},
+    )
+    assert ok.status_code == 200
+    assert ok.json()["created"] == 1
+
+
 def test_lightpoints_csv_import_upsert(client):
     """Importar CSV de luminarias: crea, luego actualiza por (CM, Nº) sin
     duplicar, y una fila con CM inexistente avisa sin romper el resto."""

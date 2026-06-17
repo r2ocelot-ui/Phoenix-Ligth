@@ -1301,19 +1301,22 @@
   function renderCuadros(c) {
     c.innerHTML = "";
     if (!state.cabinets.length) { c.append(el("div", "empty", "No hay cuadros reportando todavía.")); return; }
-    // Barra superior con exportar CSV (atajo para informes de operación).
+    // Barra superior con exportar CSV (solo ingeniero+: permiso data:transfer).
     const bar = el("div", "row between"); bar.style.marginBottom = "12px";
     bar.append(el("span", "muted", `${state.cabinets.length} cuadros · ${state.cabinets.filter(x => x.online).length} en línea`));
-    const csv = el("button", "btn ghost sm", "⬇ CSV"); csv.title = "Descargar estado de los cuadros (Excel)";
-    csv.onclick = () => downloadCSV("cuadros.csv",
-      ["Código", "Nombre", "Zona", "Online", "Estado", "Modo", "Dim%", "V (V)", "I (A)", "P (W)", "cos φ"],
-      state.cabinets.map(x => { const t = x.telemetry || {}; return [
-        x.cabinet_id, x.name || "", x.zone || "", x.online ? "sí" : "no",
-        x.online ? (x.status || "ok") : "offline",
-        x.dimming_mode || "schedule", x.state?.dim ?? "",
-        t.voltage_v ?? "", t.current_a ?? "", t.active_power_w ?? "", t.power_factor ?? "",
-      ]; }));
-    bar.append(csv); c.append(bar);
+    if (has("data:transfer")) {
+      const csv = el("button", "btn ghost sm", "⬇ CSV"); csv.title = "Descargar estado de los cuadros (Excel)";
+      csv.onclick = () => downloadCSV("cuadros.csv",
+        ["Código", "Nombre", "Zona", "Online", "Estado", "Modo", "Dim%", "V (V)", "I (A)", "P (W)", "cos φ"],
+        state.cabinets.map(x => { const t = x.telemetry || {}; return [
+          x.cabinet_id, x.name || "", x.zone || "", x.online ? "sí" : "no",
+          x.online ? (x.status || "ok") : "offline",
+          x.dimming_mode || "schedule", x.state?.dim ?? "",
+          t.voltage_v ?? "", t.current_a ?? "", t.active_power_w ?? "", t.power_factor ?? "",
+        ]; }));
+      bar.append(csv);
+    }
+    c.append(bar);
     const grid = el("div", "grid cards");
     state.cabinets.forEach(cab => {
       const t = cab.telemetry || {};
@@ -1730,13 +1733,17 @@
       const allCmOpt = el("option", null, "Todos los cuadros"); allCmOpt.value = ""; cmFilter.append(allCmOpt);
       tp.cabinets.forEach(cab => { const o = el("option", null, `CM${cab.number} · ${cab.name || cab.code}`); o.value = cab.code; cmFilter.append(o); });
       const counter = el("span", "muted"); counter.style.fontSize = "12px"; counter.style.alignSelf = "center";
-      const csvBtn = el("button", "btn ghost sm", "⬇ CSV"); csvBtn.title = "Descargar todo el inventario de luminarias a CSV (Excel)";
-      csvBtn.onclick = () => downloadCSV("luminarias.csv",
-        ["Nº", "Calle", "Nº calle", "Localidad", "Provincia", "CP", "CM", "Circuito", "Fase", "Fabricante", "Modelo", "W", "Inventario", "Tecnología"],
-        rows.map(({ pt, cab, circ }) => [pt.number, pt.street, pt.street_number, pt.locality, pt.province, pt.postal_code, cab.code, circ ? circ.number : "", pt.phase, pt.manufacturer, pt.model, pt.power_w, pt.inventory_code, pt.technology]));
-      bar.append(search, cmFilter, counter, csvBtn);
-      // Importar CSV (mismo formato) — solo quien gestiona. UPSERT por (CM, Nº).
-      if (has("cabinet:manage")) {
+      bar.append(search, cmFilter, counter);
+      // Exportar / importar (solo ingeniero+: permiso data:transfer).
+      if (has("data:transfer")) {
+        const csvBtn = el("button", "btn ghost sm", "⬇ CSV"); csvBtn.title = "Descargar todo el inventario de luminarias a CSV (Excel)";
+        csvBtn.onclick = () => downloadCSV("luminarias.csv",
+          ["Nº", "Calle", "Nº calle", "Localidad", "Provincia", "CP", "CM", "Circuito", "Fase", "Fabricante", "Modelo", "W", "Inventario", "Tecnología"],
+          rows.map(({ pt, cab, circ }) => [pt.number, pt.street, pt.street_number, pt.locality, pt.province, pt.postal_code, cab.code, circ ? circ.number : "", pt.phase, pt.manufacturer, pt.model, pt.power_w, pt.inventory_code, pt.technology]));
+        bar.append(csvBtn);
+      }
+      // Importar CSV (mismo formato) — UPSERT por (CM, Nº).
+      if (has("data:transfer")) {
         const impBtn = el("button", "btn ghost sm", "⬆ Importar"); impBtn.title = "Subir un CSV para crear/actualizar luminarias en bloque";
         const fileInp = el("input"); fileInp.type = "file"; fileInp.accept = ".csv,text/csv"; fileInp.style.display = "none";
         impBtn.onclick = () => fileInp.click();
@@ -3658,11 +3665,15 @@
       const entries = await api("/audit?limit=500");
       const bar = el("div", "row between"); bar.style.marginBottom = "10px";
       bar.append(el("span", "muted", `${entries.length} eventos`));
-      const csvBtn = el("button", "btn ghost sm", "⬇ CSV"); csvBtn.title = "Descargar el registro de auditoría a CSV";
-      csvBtn.onclick = () => downloadCSV("auditoria.csv",
-        ["Fecha/hora", "Usuario", "Acción", "Objetivo", "Detalle"],
-        entries.map(e => [fmtDateTime(e.timestamp), e.username, actionLabel(e.action), e.target || "", e.detail ? JSON.stringify(e.detail) : ""]));
-      bar.append(csvBtn); c.append(bar);
+      // Exportar CSV (solo ingeniero+: permiso data:transfer).
+      if (has("data:transfer")) {
+        const csvBtn = el("button", "btn ghost sm", "⬇ CSV"); csvBtn.title = "Descargar el registro de auditoría a CSV";
+        csvBtn.onclick = () => downloadCSV("auditoria.csv",
+          ["Fecha/hora", "Usuario", "Acción", "Objetivo", "Detalle"],
+          entries.map(e => [fmtDateTime(e.timestamp), e.username, actionLabel(e.action), e.target || "", e.detail ? JSON.stringify(e.detail) : ""]));
+        bar.append(csvBtn);
+      }
+      c.append(bar);
       const p = el("div", "panel");
       const tb = el("tbody");
       const t = el("table");

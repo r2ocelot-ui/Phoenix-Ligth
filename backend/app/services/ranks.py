@@ -25,6 +25,7 @@ P_AUDIT_READ = "audit:read"
 P_USER_VIEW = "user:view"
 P_USER_MANAGE = "user:manage"
 P_ROLE_MANAGE = "role:manage"
+P_DATA_TRANSFER = "data:transfer"
 WILDCARD = "*"
 
 # Catalogue surfaced to the panel — each permission carries a short label so
@@ -46,6 +47,8 @@ PERMISSION_CATALOG: list[dict] = [
      "description": "Crear, desactivar, cambiar rango/contraseña y permisos de usuario."},
     {"id": P_ROLE_MANAGE, "label": "Gestionar rangos",
      "description": "Editar los permisos por defecto de cada rango y crear rangos custom."},
+    {"id": P_DATA_TRANSFER, "label": "Importar / exportar datos",
+     "description": "Descargar CSV de inventario/auditoría y subir CSV o backups. Reservado a ingeniero o superior."},
 ]
 
 ALL_PERMISSIONS = [p["id"] for p in PERMISSION_CATALOG]
@@ -88,10 +91,10 @@ DEFAULT_RANKS: dict[str, dict] = {
     },
     "ingeniero": {
         "level": 4, "label": "Ingeniero",
-        "description": "Responsable técnico: topología, configuración de cuadros y analítica.",
+        "description": "Responsable técnico: topología, configuración de cuadros, analítica e importar/exportar inventario.",
         "permissions": {
             P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,
-            P_AUDIT_READ, P_USER_VIEW,
+            P_AUDIT_READ, P_USER_VIEW, P_DATA_TRANSFER,
         },
     },
     "admin_proyecto": {
@@ -100,6 +103,7 @@ DEFAULT_RANKS: dict[str, dict] = {
         "permissions": {
             P_CABINET_READ, P_CABINET_CONTROL, P_ALARM_ACK, P_CABINET_MANAGE,
             P_AUDIT_READ, P_USER_VIEW, P_USER_MANAGE, P_ROLE_MANAGE,
+            P_DATA_TRANSFER,
         },
     },
     "owner": {

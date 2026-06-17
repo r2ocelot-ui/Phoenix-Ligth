@@ -31,6 +31,14 @@ def seed_default_roles(db: Session) -> None:
                 # Refresh cosmetic fields only.
                 row.label = default["label"]
                 row.description = default["description"]
+                # Backfill aditivo: si añadimos un permiso nuevo en código (ej.
+                # data:transfer), se incorpora a los rangos built-in que ya
+                # debían tenerlo. Nunca quitamos: las ediciones del admin sobre
+                # permisos preexistentes sobreviven al upgrade.
+                cur = set(row.permissions or [])
+                missing = set(perms) - cur
+                if missing:
+                    row.permissions = sorted(cur | missing)
             continue
         db.add(Role(
             id=rid,

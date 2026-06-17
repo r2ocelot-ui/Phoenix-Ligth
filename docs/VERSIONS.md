@@ -149,6 +149,7 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | **Saneador `safeColor()`** en colores del backend (pines, tablas, fichas) | 🧪 | Un color no-hex cae a un default seguro; defensa en profundidad sobre la CSP |
 | Limpieza: tabla legacy de Usuarios → redirige a **Permisos** | 🧪 | `#usuarios` lleva a la sección real; −80 líneas y un punto menos de XSS |
 | **Logo fénix rojo** (menú + login + favicon) + agrandado dentro del chip | 🧪 | `frontend/static/phoenix-icon.png` (PNG 256px, transparente). Respaldo a la llama si falta |
+| **🔒 Import/export sólo ingeniero+** (permiso `data:transfer`) | 🧪 | Operario, técnico y supervisor ya no ven los botones ⬇ CSV (cuadros, luminarias, auditoría) ni ⬆ Importar. Backend bloquea `/lightpoints/import` con 403. **Backfill aditivo** en el seeder: una instalación vieja recibe el permiso en `ingeniero` y `admin_proyecto` al reiniciar, sin pisar ediciones del admin. Tests: 1× gate (403/200) + 1× backfill |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

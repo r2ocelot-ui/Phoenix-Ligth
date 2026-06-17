@@ -172,3 +172,47 @@ del día atacado en orden de valor.
     `main.py::_security_headers`.
   - Resto del backlog 🟡/🟢 en `VERSIONS.md` (JWT→cookie, ticket WS, Argon2id,
     ESIOS/REE, datos legales LICENSE/EULA…).
+
+---
+
+## 2026-06-16 (tarde) · Hydra: investigación + cruce piloto + Phoenix backlog
+
+Tarde mixta. Primero consulta del capitán sobre IA en semáforos (Hydra),
+luego vuelta a Phoenix con bloque pequeño y aislado del backlog del miércoles.
+
+- **Hecho (Hydra · investigación)**
+  - `docs/HYDRA-IA-SEMAFOROS.md`: IA real en España hoy (RD 450/2026), matiz
+    percepción vs decisión, opciones de NPU sin NVIDIA (Hailo-8, Coral,
+    Jetson Orin) y precios orientativos jun-2026. 3 arquitecturas por cruce
+    (~840 € / ~4.000 € / ~1.200 €) — versión "garaje".
+  - `docs/HYDRA-CRUCE-PILOTO.md`: aterrizado con piezas concretas — mini-PC
+    **AMD Ryzen AI 9 HX 370** (50 TOPS NPU XDNA 2 + 16 TOPS iGPU) sin
+    NVIDIA, cámaras industriales certificadas EN 50293 (Dahua / Hikvision /
+    FLIR térmica), cableado, BOM y comparativa final. Tres opciones:
+    **Opción A** mini-PC AMD + cámaras industriales **~5.100 €** ⭐,
+    **B** cámaras ANPR ~9.800 €, **C** FLIR térmica ~18.700 €.
+  - Ambos linkeados desde `CLAUDE.md`.
+- **Hecho (Phoenix · backlog 🤖)**
+  - **`data:transfer` (ingeniero+)**: import/export sólo desde rangos altos.
+    Nuevo permiso `P_DATA_TRANSFER` en `ranks.py` con label español. Gate
+    de `/lightpoints/import` cambiado de `cabinet:manage` a `data:transfer`.
+    Frontend: los tres botones ⬇ CSV (cuadros, luminarias, auditoría) y el
+    ⬆ Importar gateados por `has("data:transfer")`. **Backfill aditivo** en
+    `role_store.seed_default_roles`: instalaciones viejas reciben el permiso
+    en `ingeniero` y `admin_proyecto` al reiniciar, sin pisar ediciones
+    manuales del admin sobre otros permisos. Tests: 1 de gate (403 operador
+    / 200 ingeniero) + 1 de backfill. **149 verdes** + lint JS OK.
+- **Decisiones**
+  - "Backfill aditivo" cambia ligeramente el contrato del seeder: hasta hoy
+    NUNCA tocaba permisos de filas existentes; ahora SÍ añade los que falten
+    respecto a `DEFAULT_RANKS`. Justificación: introducir un permiso nuevo en
+    código y obligar a todos los admins a enmendarlo a mano es una trampa
+    UX. Nunca quitamos, así que las ediciones del admin sobre permisos
+    preexistentes siguen sobreviviendo.
+- **Pendiente para la próxima**
+  - Backup/restore JSON de un CM completo (cuadro + circuitos + luminarias),
+    gated por `data:transfer`.
+  - Emergencia por CM + modal de confirmación listando los afectados.
+  - Bloque 🤝 contigo: JWT→cookie HttpOnly+CSRF, ticket WS, Argon2id, cifrar
+    `totp_secret`, cablear precio real ESIOS→dimming IA, datos legales
+    LICENSE/EULA.

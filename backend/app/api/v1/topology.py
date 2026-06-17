@@ -364,7 +364,7 @@ def _g(row: dict, *keys: str) -> str:
 def import_lightpoints(
     body: CsvImport,
     db: Session = Depends(get_db),
-    actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
+    actor: User = Depends(require_permission(ranks.P_DATA_TRANSFER)),
 ) -> dict:
     """Carga masiva de luminarias desde un CSV (mismo formato que el export):
     Nº, Calle, Nº calle, Localidad, Provincia, CP, CM, Circuito, Fase,

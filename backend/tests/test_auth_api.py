@@ -591,6 +591,36 @@ def test_role_editor_rejects_privilege_escalation(client):
     assert r.status_code == 403
 
 
+def test_seed_default_roles_backfills_new_permissions(client):
+    """Upgrade-safe: si una instalación vieja tenía 'ingeniero' sin el
+    permiso 'data:transfer' (porque aún no existía en código), un reinicio
+    debe añadírselo solo. Las ediciones del admin sobre otros permisos NO
+    se tocan — el backfill es estrictamente aditivo."""
+    from app.core.database import get_db
+    from app.models.role import Role
+    from app.services import ranks, role_store
+
+    db = next(app.dependency_overrides[get_db]())
+    # Simula una BD vieja: 'ingeniero' built-in pero sin data:transfer, y un
+    # permiso eliminado por el admin (audit:read) que NO debe reaparecer.
+    db.add(Role(
+        id="ingeniero", level=4, label="Ingeniero",
+        description="legado",
+        permissions=["cabinet:read", "cabinet:control", "alarm:ack",
+                     "cabinet:manage", "user:view"],
+        is_builtin=True, is_owner=False,
+    ))
+    db.commit()
+
+    role_store.seed_default_roles(db)
+    refreshed = db.get(Role, "ingeniero")
+    perms = set(refreshed.permissions or [])
+    # Lo nuevo aparece (data:transfer es del código actual, no estaba en BD).
+    assert ranks.P_DATA_TRANSFER in perms
+    # Y el live cache también lo refleja, así require_permission lo respeta.
+    assert ranks.P_DATA_TRANSFER in ranks.RANKS["ingeniero"]["permissions"]
+
+
 def test_role_editor_creates_and_uses_custom_role(client):
     from app.services import role_store
     from app.core.database import get_db

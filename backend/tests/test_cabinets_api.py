@@ -266,6 +266,112 @@ def test_lightpoints_import_requires_data_transfer(client):
     assert ok.json()["created"] == 1
 
 
+def test_backup_restore_cabinet_roundtrip(client):
+    """Backup JSON de un CM completo → restore en otro CM → topología
+    idéntica (circuitos + luminarias). Un segundo restore es idempotente
+    (no duplica). Gateado por data:transfer (operador → 403)."""
+    boss = _token(client)
+    H = {"Authorization": f"Bearer {boss}"}
+    # CM origen: 2 circuitos, 3 luminarias.
+    client.post("/api/v1/cabinets/registry", json={
+        "code": "CAB-SRC", "name": "Origen", "latitude": 40.4, "longitude": -3.7,
+    }, headers=H)
+    client.post("/api/v1/circuits", json={
+        "cabinet_code": "CAB-SRC", "number": 1, "name": "Salida 1", "phase": "L1",
+    }, headers=H)
+    client.post("/api/v1/circuits", json={
+        "cabinet_code": "CAB-SRC", "number": 2, "name": "Salida 2", "phase": "L2",
+    }, headers=H)
+    circuits = client.get("/api/v1/circuits?cabinet_code=CAB-SRC", headers=H).json()
+    c1 = next(c for c in circuits if c["number"] == 1)
+    c2 = next(c for c in circuits if c["number"] == 2)
+    client.post("/api/v1/lightpoints", json={
+        "cabinet_code": "CAB-SRC", "circuit_id": c1["id"], "number": 1,
+        "label": "Farola 01", "phase": "L1", "power_w": 80.0,
+        "street": "Calle Mayor",
+    }, headers=H)
+    client.post("/api/v1/lightpoints", json={
+        "cabinet_code": "CAB-SRC", "circuit_id": c1["id"], "number": 2,
+        "label": "Farola 02", "phase": "L1", "power_w": 90.0,
+    }, headers=H)
+    client.post("/api/v1/lightpoints", json={
+        "cabinet_code": "CAB-SRC", "circuit_id": c2["id"], "number": 3,
+        "label": "Farola 03", "phase": "L2", "power_w": 100.0,
+    }, headers=H)
+
+    # Backup.
+    backup = client.get("/api/v1/cabinets/CAB-SRC/backup", headers=H)
+    assert backup.status_code == 200
+    payload = backup.json()
+    assert payload["schema_version"] == 1
+    assert payload["cabinet"]["code"] == "CAB-SRC"
+    assert {c["number"] for c in payload["circuits"]} == {1, 2}
+    assert {p["number"] for p in payload["lightpoints"]} == {1, 2, 3}
+    # Cada luminaria lleva el número de su circuito, no un id transitorio.
+    p1 = next(p for p in payload["lightpoints"] if p["number"] == 1)
+    assert p1["circuit_number"] == 1 and p1["power_w"] == 80.0
+
+    # CM destino (vacío, distinto código → backup como plantilla).
+    client.post("/api/v1/cabinets/registry", json={
+        "code": "CAB-DST", "name": "Destino",
+    }, headers=H)
+    res = client.post("/api/v1/cabinets/CAB-DST/restore", json=payload, headers=H)
+    assert res.status_code == 200, res.text
+    out = res.json()
+    assert out["circuits_created"] == 2 and out["lp_created"] == 3
+    assert out["circuits_updated"] == 0 and out["lp_updated"] == 0
+    assert out["errors"] == []
+
+    # Topología clonada: mismos circuitos y luminarias en el destino.
+    pts = client.get("/api/v1/lightpoints?cabinet_code=CAB-DST", headers=H).json()
+    assert {p["number"] for p in pts} == {1, 2, 3}
+    assert next(p for p in pts if p["number"] == 1)["power_w"] == 80.0
+
+    # Restore idempotente: re-aplicar el mismo JSON solo actualiza.
+    res2 = client.post("/api/v1/cabinets/CAB-DST/restore", json=payload, headers=H)
+    out2 = res2.json()
+    assert out2["circuits_created"] == 0 and out2["lp_created"] == 0
+    assert out2["circuits_updated"] == 2 and out2["lp_updated"] == 3
+
+
+def test_backup_restore_require_data_transfer(client):
+    """Los endpoints conjunto/backup están reservados a ingeniero+. Un
+    operador no llega ni a leer (defensa en profundidad: el inventario
+    podría ser sensible)."""
+    boss = _token(client)
+    H = {"Authorization": f"Bearer {boss}"}
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-GATE"}, headers=H)
+    # Operador sin data:transfer.
+    client.post("/api/v1/users", json={
+        "username": "op2", "password": "secret123", "rank": "operador",
+    }, headers=H)
+    op = client.post(
+        "/api/v1/auth/login", data={"username": "op2", "password": "secret123"},
+    ).json()["access_token"]
+    Hop = {"Authorization": f"Bearer {op}"}
+    assert client.get("/api/v1/cabinets/CAB-GATE/backup", headers=Hop).status_code == 403
+    assert client.post(
+        "/api/v1/cabinets/CAB-GATE/restore",
+        json={"schema_version": 1, "circuits": [], "lightpoints": []},
+        headers=Hop,
+    ).status_code == 403
+
+
+def test_restore_rejects_future_schema_version(client):
+    """Defensa contra archivos que vengan de una versión más nueva del
+    formato — antes que aceptar a medias, paramos con 422."""
+    boss = _token(client)
+    H = {"Authorization": f"Bearer {boss}"}
+    client.post("/api/v1/cabinets/registry", json={"code": "CAB-VER"}, headers=H)
+    bad = client.post(
+        "/api/v1/cabinets/CAB-VER/restore",
+        json={"schema_version": 999, "circuits": [], "lightpoints": []},
+        headers=H,
+    )
+    assert bad.status_code == 422
+    assert "schema_version" in bad.text
+
+
 def test_lightpoints_csv_import_upsert(client):
     """Importar CSV de luminarias: crea, luego actualiza por (CM, Nº) sin
     duplicar, y una fila con CM inexistente avisa sin romper el resto."""

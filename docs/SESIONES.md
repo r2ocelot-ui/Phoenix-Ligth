@@ -209,9 +209,20 @@ luego vuelta a Phoenix con bloque pequeño y aislado del backlog del miércoles.
     código y obligar a todos los admins a enmendarlo a mano es una trampa
     UX. Nunca quitamos, así que las ediciones del admin sobre permisos
     preexistentes siguen sobreviviendo.
+- **Hecho (Phoenix · backlog 🤖 cont.)**
+  - **Backup/restore JSON conjunto del CM**. `GET /cabinets/{code}/backup`
+    devuelve un JSON autocontenido con cuadro + circuitos + luminarias y la
+    versión del esquema; `POST /cabinets/{code}/restore` hace **UPSERT por
+    número** (circuito y luminaria) y NUNCA borra — si el operario sube el
+    archivo equivocado, no destruye el resto. El código del JSON puede
+    diferir del CM destino: vale como copia y como plantilla para clonar a
+    otro CM. Si el esquema del archivo es futuro respecto al que entiende
+    el servidor, 422 explícito. Acción auditada (`cabinet.backup` y
+    `cabinet.restore`). Frontend: dos botones nuevos en la pestaña Cuadro
+    de la ficha de topología, sólo visibles con `data:transfer`. 3 tests
+    (roundtrip + clonado, gate 403 a operador, schema futuro 422). **152
+    verdes** + lint JS OK.
 - **Pendiente para la próxima**
-  - Backup/restore JSON de un CM completo (cuadro + circuitos + luminarias),
-    gated por `data:transfer`.
   - Emergencia por CM + modal de confirmación listando los afectados.
   - Bloque 🤝 contigo: JWT→cookie HttpOnly+CSRF, ticket WS, Argon2id, cifrar
     `totp_secret`, cablear precio real ESIOS→dimming IA, datos legales

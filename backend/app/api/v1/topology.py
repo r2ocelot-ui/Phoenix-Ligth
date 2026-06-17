@@ -1,5 +1,6 @@
 import csv
 import io
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -490,3 +491,225 @@ def delete_lightpoint(
     db.commit()
     audit_log.record(db, username=actor.username, action="lightpoint.delete", target=str(point_id))
     return {"deleted": True}
+
+
+# --------------------------- Backup / restore JSON (CM completo) ----------
+# Backlog del 14-jun: "se podria hacer en la topologia y cuadros.. importar y
+# exportar conjunto o separado". Conjunto = todo el CM (cuadro+circuitos+
+# luminarias) en un único JSON. Reservado a `data:transfer` (ingeniero+).
+
+# Versión del esquema del backup. Subir el número solo cuando rompamos
+# compatibilidad con archivos viejos (el restore avisa si no la entiende).
+_BACKUP_SCHEMA_VERSION = 1
+
+
+def _serialize_cabinet(cab: Cabinet) -> dict:
+    return {
+        "code": cab.code, "name": cab.name, "number": cab.number,
+        "color": cab.color, "zone": cab.zone,
+        "latitude": cab.latitude, "longitude": cab.longitude,
+        "dimming_mode": cab.dimming_mode, "street_profile": cab.street_profile,
+    }
+
+
+def _serialize_circuit(ci: Circuit) -> dict:
+    return {
+        "number": ci.number, "name": ci.name, "color": ci.color,
+        "phase": ci.phase, "expected_power_w": ci.expected_power_w,
+    }
+
+
+# Campos del modelo LightPoint que viajan en el backup. Mantengo la lista
+# explícita para que añadir un campo al ORM no lo cuele inadvertidamente en el
+# backup (y por tanto en el restore, que setattr-ea solo los conocidos).
+_LP_BACKUP_FIELDS = (
+    "number", "label", "phase", "latitude", "longitude", "power_w",
+    "inventory_code", "technology", "manufacturer", "model", "photometric",
+    "regulation", "serial_number", "color_temp_k", "network_id",
+    "province", "locality", "postal_code", "street", "street_number", "notes",
+    "support_type", "layout_type", "construction_type", "light_source_type",
+    "old_manufacturer", "old_model", "old_power_w", "old_light_source_type",
+    "old_notes",
+)
+
+
+def _serialize_lightpoint(lp: LightPoint, circuit_number: int) -> dict:
+    data = {f: getattr(lp, f) for f in _LP_BACKUP_FIELDS}
+    data["circuit_number"] = circuit_number  # vínculo lógico estable al circuito
+    return data
+
+
+@router.get("/cabinets/{cabinet_code}/backup")
+def backup_cabinet(
+    cabinet_code: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_DATA_TRANSFER)),
+) -> dict:
+    """Devuelve la topología completa de un CM (cuadro + circuitos +
+    luminarias) en un JSON autocontenido. Sirve como copia de seguridad y
+    como plantilla: el operario puede restaurarlo en el mismo CM o usarlo
+    para sembrar otro."""
+    cab = db.query(Cabinet).filter(Cabinet.code == cabinet_code).first()
+    if not cab:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro no encontrado")
+    tenancy.ensure_visible(cab, actor)
+    circuits = db.query(Circuit).filter(Circuit.cabinet_code == cabinet_code).order_by(Circuit.number).all()
+    circ_by_id = {c.id: c for c in circuits}
+    points = db.query(LightPoint).filter(LightPoint.cabinet_code == cabinet_code).order_by(LightPoint.number).all()
+    payload = {
+        "schema_version": _BACKUP_SCHEMA_VERSION,
+        "exported_at": datetime.now(timezone.utc).isoformat(),
+        "exported_by": actor.username,
+        "cabinet": _serialize_cabinet(cab),
+        "circuits": [_serialize_circuit(c) for c in circuits],
+        "lightpoints": [
+            _serialize_lightpoint(p, circ_by_id[p.circuit_id].number)
+            for p in points if p.circuit_id in circ_by_id
+        ],
+    }
+    audit_log.record(
+        db, username=actor.username, action="cabinet.backup",
+        target=cabinet_code,
+        detail={"circuits": len(payload["circuits"]),
+                "lightpoints": len(payload["lightpoints"])},
+    )
+    return payload
+
+
+class CabinetRestore(BaseModel):
+    """JSON crudo del backup. Lo validamos campo a campo en el endpoint
+    (es más permisivo que un schema estricto: aceptamos archivos viejos
+    siempre que la `schema_version` no supere la nuestra)."""
+    schema_version: int | None = None
+    cabinet: dict | None = None
+    circuits: list[dict] | None = None
+    lightpoints: list[dict] | None = None
+
+
+@router.post("/cabinets/{cabinet_code}/restore")
+def restore_cabinet(
+    cabinet_code: str,
+    body: CabinetRestore,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_DATA_TRANSFER)),
+) -> dict:
+    """Aplica un backup JSON al CM indicado en la URL. Hace **UPSERT**:
+    actualiza por número de circuito y de luminaria, crea si no existe.
+    **Nunca borra** lo que no aparezca en el JSON (defensa: si te equivocas
+    de archivo, no pierdes nada).
+
+    El `code` interno del JSON puede ser distinto del de la URL — útil para
+    usar un backup como plantilla en otro CM. La metadata del cuadro
+    (nombre, zona, modo, perfil, color) se aplica al CM destino si el
+    operario tiene también `cabinet:manage`; si no, se respeta el cuadro y
+    solo se mueven circuitos/luminarias."""
+    if body.schema_version and body.schema_version > _BACKUP_SCHEMA_VERSION:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"schema_version {body.schema_version} no soportada (máxima {_BACKUP_SCHEMA_VERSION})",
+        )
+    cab = db.query(Cabinet).filter(Cabinet.code == cabinet_code).first()
+    if not cab:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro destino no encontrado")
+    tenancy.ensure_visible(cab, actor)
+
+    # Metadata del cuadro: solo si el actor tiene cabinet:manage (es modificar
+    # configuración, no solo mover datos).
+    cab_meta_applied = False
+    if body.cabinet and ranks.has_permission(actor, ranks.P_CABINET_MANAGE):
+        for k in ("name", "zone", "color", "dimming_mode", "street_profile"):
+            v = body.cabinet.get(k)
+            if v is not None:
+                setattr(cab, k, v)
+        cab_meta_applied = True
+
+    # Circuitos: upsert por (cabinet_code, number).
+    circuits_created = circuits_updated = 0
+    circuit_id_by_number: dict[int, int] = {}
+    for raw in (body.circuits or []):
+        try:
+            cnum = int(raw.get("number"))
+        except (TypeError, ValueError):
+            continue
+        ci = db.query(Circuit).filter(
+            Circuit.cabinet_code == cabinet_code, Circuit.number == cnum
+        ).first()
+        fields = {k: raw.get(k) for k in ("name", "color", "phase") if raw.get(k) is not None}
+        if ci:
+            for k, v in fields.items():
+                setattr(ci, k, v)
+            circuits_updated += 1
+        else:
+            ci = Circuit(cabinet_code=cabinet_code, number=cnum, **fields)
+            db.add(ci); db.flush()
+            circuits_created += 1
+        circuit_id_by_number[cnum] = ci.id
+
+    # Asegura que los circuitos referenciados por las luminarias existen
+    # aunque el JSON no los listara (compat con backups parciales / CSV viejo).
+    for raw in (body.lightpoints or []):
+        cnum = raw.get("circuit_number")
+        if cnum is None or cnum in circuit_id_by_number:
+            continue
+        ci = db.query(Circuit).filter(
+            Circuit.cabinet_code == cabinet_code, Circuit.number == int(cnum)
+        ).first()
+        if ci is None:
+            ci = Circuit(cabinet_code=cabinet_code, number=int(cnum), name="")
+            db.add(ci); db.flush()
+            circuits_created += 1
+        circuit_id_by_number[int(cnum)] = ci.id
+
+    # Luminarias: upsert por (cabinet_code, number).
+    lp_created = lp_updated = 0
+    errors: list[str] = []
+    affected_circuits: set[int] = set()
+    for raw in (body.lightpoints or []):
+        try:
+            num = int(raw.get("number"))
+        except (TypeError, ValueError):
+            errors.append(f"luminaria sin número: {raw!r:.80s}")
+            continue
+        cnum = raw.get("circuit_number")
+        if cnum is None or int(cnum) not in circuit_id_by_number:
+            errors.append(f"luminaria {num}: circuit_number {cnum!r} no encontrado")
+            continue
+        cid = circuit_id_by_number[int(cnum)]
+        # `number` viaja en fields (está en _LP_BACKUP_FIELDS); el kwarg
+        # explícito iría duplicado, así que solo lo paso como name/clave única.
+        fields = {f: raw.get(f) for f in _LP_BACKUP_FIELDS if f in raw and raw.get(f) is not None}
+        fields["circuit_id"] = cid
+        fields["number"] = num
+        lp = db.query(LightPoint).filter(
+            LightPoint.cabinet_code == cabinet_code, LightPoint.number == num
+        ).first()
+        if lp:
+            for k, v in fields.items():
+                setattr(lp, k, v)
+            lp_updated += 1
+        else:
+            db.add(LightPoint(cabinet_code=cabinet_code, **fields))
+            lp_created += 1
+        affected_circuits.add(cid)
+
+    db.commit()
+    for cid in affected_circuits:
+        _recompute_circuit_power(db, cid)
+    db.commit()
+    audit_log.record(
+        db, username=actor.username, action="cabinet.restore",
+        target=cabinet_code,
+        detail={"cabinet_meta_applied": cab_meta_applied,
+                "circuits_created": circuits_created,
+                "circuits_updated": circuits_updated,
+                "lp_created": lp_created, "lp_updated": lp_updated,
+                "errors": len(errors)},
+    )
+    return {
+        "cabinet_meta_applied": cab_meta_applied,
+        "circuits_created": circuits_created,
+        "circuits_updated": circuits_updated,
+        "lp_created": lp_created,
+        "lp_updated": lp_updated,
+        "errors": errors,
+    }

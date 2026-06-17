@@ -1951,6 +1951,57 @@
       actions.append(edit, del);
       body.append(actions);
     }
+
+    // Backup / restore JSON del CM completo. Reservado a ingeniero+
+    // (permiso data:transfer): la copia de seguridad lleva todo el
+    // inventario y solo deberían moverla rangos altos.
+    if (has("data:transfer")) {
+      const sep = el("div"); sep.className = "muted fs-11"; sep.style.marginTop = "14px";
+      sep.textContent = "Copia de seguridad del cuadro (cuadro + circuitos + luminarias):";
+      body.append(sep);
+      const row = el("div", "perm-actions");
+      const dl = el("button", "btn ghost sm", "⬇ Backup JSON");
+      dl.title = "Descarga todo el inventario del cuadro en un JSON";
+      dl.onclick = async () => {
+        try {
+          const payload = await api(`/cabinets/${encodeURIComponent(cab.code)}/backup`);
+          const blob = new Blob([JSON.stringify(payload, null, 2)],
+                                { type: "application/json;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `${cab.code}-backup.json`;
+          document.body.append(a); a.click(); a.remove();
+          URL.revokeObjectURL(url);
+        } catch (e) { toast(e.message, true); }
+      };
+      const up = el("button", "btn ghost sm", "⬆ Restaurar JSON");
+      up.title = "Sube un backup .json: hace UPSERT (no borra lo no listado)";
+      const fileInp = el("input"); fileInp.type = "file"; fileInp.accept = ".json,application/json"; fileInp.style.display = "none";
+      up.onclick = () => fileInp.click();
+      fileInp.onchange = () => {
+        const f = fileInp.files && fileInp.files[0]; if (!f) return;
+        const fr = new FileReader();
+        fr.onload = async () => {
+          try {
+            const data = JSON.parse(String(fr.result));
+            const r = await api(`/cabinets/${encodeURIComponent(cab.code)}/restore`,
+                                { method: "POST", body: JSON.stringify(data) });
+            const errs = r.errors || [];
+            toast(`Circuitos: +${r.circuits_created} / ~${r.circuits_updated} · `
+                  + `Luminarias: +${r.lp_created} / ~${r.lp_updated}`
+                  + (errs.length ? ` · ${errs.length} avisos` : ""));
+            if (errs.length) alert("Avisos de restore:\n\n" + errs.slice(0, 20).join("\n") + (errs.length > 20 ? "\n…" : ""));
+            modal.remove();
+            await loadTopologia();
+          } catch (e) { toast(e.message, true); }
+          finally { fileInp.value = ""; }
+        };
+        fr.readAsText(f, "utf-8");
+      };
+      row.append(dl, up, fileInp);
+      body.append(row);
+    }
   }
 
   function renderCircuitsTab(body, cab, canEdit) {

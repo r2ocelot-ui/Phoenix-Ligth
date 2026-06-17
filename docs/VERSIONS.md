@@ -150,6 +150,7 @@ estén 🔵, cerramos **V1** y la revisión **V1.R1** pasa a ser lo activo.
 | Limpieza: tabla legacy de Usuarios → redirige a **Permisos** | 🧪 | `#usuarios` lleva a la sección real; −80 líneas y un punto menos de XSS |
 | **Logo fénix rojo** (menú + login + favicon) + agrandado dentro del chip | 🧪 | `frontend/static/phoenix-icon.png` (PNG 256px, transparente). Respaldo a la llama si falta |
 | **🔒 Import/export sólo ingeniero+** (permiso `data:transfer`) | 🧪 | Operario, técnico y supervisor ya no ven los botones ⬇ CSV (cuadros, luminarias, auditoría) ni ⬆ Importar. Backend bloquea `/lightpoints/import` con 403. **Backfill aditivo** en el seeder: una instalación vieja recibe el permiso en `ingeniero` y `admin_proyecto` al reiniciar, sin pisar ediciones del admin. Tests: 1× gate (403/200) + 1× backfill |
+| **Backup / restaurar un CM completo en JSON** (conjunto) | 🧪 | Topología → abrir el CM → pestaña Cuadro: "⬇ Backup JSON" descarga cuadro + circuitos + luminarias en un archivo; "⬆ Restaurar JSON" hace **UPSERT** (nunca borra lo no listado). El JSON sirve también como **plantilla**: lo puedes restaurar en otro CM. `GET/POST /cabinets/{code}/backup|restore` gateados por `data:transfer`. Versión de esquema en el archivo + rechazo 422 si llega una futura. 3 tests (roundtrip, gate 403, esquema futuro) |
 
 ### 📋 Pendiente — todo lo que queda (X)
 Lista única de lo que falta. Al cerrarse, un bloque sube a **✅ Hecho** (🧪)

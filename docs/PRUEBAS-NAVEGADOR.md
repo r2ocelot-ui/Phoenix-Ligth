@@ -68,3 +68,40 @@ fetch('/api/v1/RUTA_AQUI',{headers:{Authorization:'Bearer '+localStorage.getItem
 
 > Nota: estas pruebas son de **solo lectura** (GET). No cambian nada en el sistema.
 > Para POST/PUT mejor usar la interfaz, que valida y audita.
+
+## Pruebas del bloque 16-jun · data:transfer · backup · emergencia parcial
+
+**¿Tengo el permiso `data:transfer`?** Lo necesitas para importar/exportar:
+```js
+fetch('/api/v1/auth/me',{headers:{Authorization:'Bearer '+localStorage.getItem('ph_token')}}).then(r=>r.json()).then(m=>console.log(m.permissions.includes('data:transfer')?'✓ data:transfer':'✗ falta data:transfer'))
+```
+Si entras como `phoenix` (owner) saldrá ✓ siempre (wildcard). Como `operador` o
+`tecnico`: ✗ (y los botones ⬇ CSV / ⬆ Importar no aparecen en pantalla).
+
+**Backup JSON de un CM completo** (cuadro + circuitos + luminarias):
+```js
+fetch('/api/v1/cabinets/CAB-001/backup',{headers:{Authorization:'Bearer '+localStorage.getItem('ph_token')}}).then(r=>r.json()).then(console.log)
+```
+Devuelve `{schema_version:1, cabinet, circuits, lightpoints}`. Cada luminaria
+lleva `circuit_number` (clave estable, no un id transitorio). El mismo JSON
+lo descarga el botón **⬇ Backup JSON** en Topología → ficha del CM.
+
+**Restaurar un backup en OTRO CM** (lo usa como plantilla; UPSERT, no borra):
+```js
+const payload = /* pega aquí el JSON descargado de un CM */ {};
+fetch('/api/v1/cabinets/CAB-NUEVO/restore',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+localStorage.getItem('ph_token')},body:JSON.stringify(payload)}).then(r=>r.json()).then(console.log)
+```
+Resumen: `{circuits_created, circuits_updated, lp_created, lp_updated, errors}`.
+
+**Emergencia POR CM** (solo dos cuadros, no todo el ámbito):
+```js
+fetch('/api/v1/emergency/all-on',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+localStorage.getItem('ph_token')},body:JSON.stringify({cabinet_codes:['CAB-001','CAB-002']})}).then(r=>r.json()).then(console.log)
+```
+Sin body (`body:'{}'`) o con la lista vacía → emergencia global (todo el scope),
+como antes. Apagar igual: `/api/v1/emergency/clear` con o sin `cabinet_codes`.
+
+**Quién está en emergencia AHORA**:
+```js
+fetch('/api/v1/emergency/status',{headers:{Authorization:'Bearer '+localStorage.getItem('ph_token')}}).then(r=>r.json()).then(console.log)
+```
+Devuelve `{active, cabinets:['CAB-001',…]}` — solo los CMs del scope.

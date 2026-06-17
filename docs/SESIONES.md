@@ -222,8 +222,17 @@ luego vuelta a Phoenix con bloque pequeño y aislado del backlog del miércoles.
     de la ficha de topología, sólo visibles con `data:transfer`. 3 tests
     (roundtrip + clonado, gate 403 a operador, schema futuro 422). **152
     verdes** + lint JS OK.
+- **Hecho (Phoenix · backlog 🤖 cont.)** · Emergencia por CM con modal
+  - Endpoints `/emergency/all-on` y `/emergency/clear` aceptan body OPCIONAL
+    `EmergencyScope { cabinet_codes: [] }`. Sin body → todo el scope
+    (compatibilidad). Con lista → solo esos CMs, **filtrados también por
+    la tenencia** (no se puede saltar el scope listando códigos de otra
+    ciudad). Frontend: el `confirm()` plano se sustituye por un **modal**
+    con la lista de cuadros afectados y checkboxes para destildar
+    selectivamente. Si están todos marcados se manda body vacío
+    (`{}` → comportamiento global). Test nuevo de scope parcial + defensa
+    contra códigos fuera del scope. **153 verdes** + lint JS OK.
 - **Pendiente para la próxima**
-  - Emergencia por CM + modal de confirmación listando los afectados.
   - Bloque 🤝 contigo: JWT→cookie HttpOnly+CSRF, ticket WS, Argon2id, cifrar
     `totp_secret`, cablear precio real ESIOS→dimming IA, datos legales
     LICENSE/EULA.

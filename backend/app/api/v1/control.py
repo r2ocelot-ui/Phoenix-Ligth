@@ -28,21 +28,33 @@ def _authorize_cabinet(db: Session, cabinet_id: str, user: User) -> Cabinet:
     return cabinet
 
 
+class EmergencyScope(BaseModel):
+    """Body OPCIONAL para emergencia parcial. Sin body (o cabinet_codes vacío)
+    se aplica a todo el scope del actor (comportamiento histórico). Con
+    cabinet_codes, sólo a esos CMs (filtrados también por el scope, no se
+    puede saltar la tenencia ni listando códigos de otra ciudad)."""
+    cabinet_codes: list[str] | None = None
+
+
 @emergency_router.post("/all-on")
 async def emergency_all_on(
+    body: EmergencyScope | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
     """Modo emergencia: enciende todo y pone dimming al 100% en cada cuadro
-    conocido. Pensado para incidencias (corte de luz, accidente, evento).
+    afectado. Pensado para incidencias (corte de luz, accidente, evento).
 
     Guarda el modo de cada cuadro en ``pre_emergency_mode`` (solo la primera
     vez) para que ``/emergency/clear`` pueda devolverlos a su modo previo
     (Manual / Programa / IA) sin que el operario tenga que reasignarlos uno a uno.
 
-    Multi-tenant: solo afecta a los cuadros del proyecto del usuario. Un
-    owner sin filtro activo abarca todos."""
+    Scope: si el body trae ``cabinet_codes`` no vacío, sólo a esos CMs
+    (filtrados además por la tenencia del usuario para no permitir saltarla).
+    Sin body o con la lista vacía → todo el scope del actor. Un owner sin
+    filtro activo abarca toda la red."""
     visible = tenancy.cabinet_codes_in_scope(db, user, None)
+    requested = set((body.cabinet_codes if body else None) or [])
     affected: list[str] = []
     # TODOS los cuadros del scope, incluidos los registrados que aún no han
     # reportado telemetría: en una emergencia real (corte de luz) muchos pueden
@@ -50,6 +62,10 @@ async def emergency_all_on(
     cab_q = db.query(Cabinet)
     if visible is not None:
         cab_q = cab_q.filter(Cabinet.code.in_(visible))
+    if requested:
+        # La intersección con `visible` ya está aplicada por el filtro previo;
+        # esto restringe ADEMÁS a los que el operario eligió en el modal.
+        cab_q = cab_q.filter(Cabinet.code.in_(requested))
     for cab in cab_q.all():
         try:
             await bus.publish(f"phoenix/cabinets/{cab.code}/cmd/relay", {"state": "on"})
@@ -77,6 +93,7 @@ async def emergency_all_on(
 
 @emergency_router.post("/clear")
 async def emergency_clear(
+    body: EmergencyScope | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(require_permission(ranks.P_CABINET_CONTROL)),
 ) -> dict:
@@ -84,13 +101,19 @@ async def emergency_clear(
     (Manual / Programa / IA), aplica el nivel correspondiente al instante y
     limpia ``pre_emergency_mode``.
 
-    Multi-tenant: solo restaura los cuadros del scope del operario. Solo toca
-    cuadros que estén marcados como "en emergencia" (``pre_emergency_mode``
+    Scope: como ``/emergency/all-on``. Sin body limpia todos los CMs en
+    emergencia del scope; con ``cabinet_codes`` solo los listados (a su vez
+    filtrados por la tenencia del usuario).
+
+    Solo toca cuadros marcados como "en emergencia" (``pre_emergency_mode``
     no nulo); el resto queda como está."""
     visible = tenancy.cabinet_codes_in_scope(db, user, None)
+    requested = set((body.cabinet_codes if body else None) or [])
     q = db.query(Cabinet).filter(Cabinet.pre_emergency_mode.isnot(None))
     if visible is not None:
         q = q.filter(Cabinet.code.in_(visible))
+    if requested:
+        q = q.filter(Cabinet.code.in_(requested))
     cabs = q.all()
     restored: list[dict] = []
     for cab in cabs:

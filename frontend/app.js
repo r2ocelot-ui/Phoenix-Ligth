@@ -490,21 +490,103 @@
   }
 
   // ====== Modo Emergencia ============
+  // Confirmación con LISTA de cuadros afectados (no solo el contador). El
+  // operario puede destildar los que no quiere forzar — por defecto van
+  // todos. Si destilda todos, el botón Aplicar queda inhabilitado. Sin
+  // selección parcial, el body queda vacío y el backend cubre todo el scope
+  // (compatibilidad con la versión global previa).
+  function openEmergencyModal({ mode, cabinets, onApply }) {
+    const isOn = mode === "on";
+    const title = isOn ? "⚠ Activar emergencia" : "✓ Apagar emergencia";
+    const intro = isOn
+      ? "Vas a ENCENDER al 100% los cuadros marcados. Cada cuadro guarda su modo previo (Manual / Programa / IA) para poder restaurarlo al apagar la emergencia."
+      : "Vas a devolver cada cuadro marcado a su modo previo (Manual / Programa / IA) y aplicarlo al instante.";
+    const modal = el("div", "modal"); modal.id = "emergency-modal";
+    const card = el("div", "modal-card"); card.style.maxWidth = "560px";
+    const head = el("div", "row between");
+    head.innerHTML = `<h3 style="margin:0">${title}</h3>`;
+    const closeX = el("button", "btn ghost sm", "✕"); closeX.onclick = () => modal.remove();
+    head.append(closeX); card.append(head);
+    card.append(el("div", "muted", intro));
+
+    const tools = el("div", "row between"); tools.style.marginTop = "10px";
+    const counter = el("span", "muted fs-12");
+    const togRow = el("div");
+    const all = el("button", "btn ghost sm", "Marcar todos");
+    const none = el("button", "btn ghost sm", "Desmarcar todos");
+    togRow.append(all, none); tools.append(counter, togRow); card.append(tools);
+
+    const list = el("div", "panel"); list.style.maxHeight = "260px"; list.style.overflow = "auto"; list.style.marginTop = "8px";
+    const items = [];
+    cabinets.forEach(cab => {
+      const row = el("label", "row between"); row.style.padding = "6px 8px"; row.style.cursor = "pointer";
+      const left = el("div");
+      left.innerHTML = `<span class="mono">${esc(cab.cabinet_id || cab.code)}</span> · ${esc(cab.name || "—")} <span class="muted fs-11">${esc(cab.zone || "")}</span>`;
+      const cb = el("input"); cb.type = "checkbox"; cb.checked = true;
+      cb.dataset.code = cab.cabinet_id || cab.code;
+      row.append(left, cb); list.append(row); items.push(cb);
+    });
+    card.append(list);
+
+    const actions = el("div", "perm-actions"); actions.style.justifyContent = "flex-end";
+    const cancel = el("button", "btn ghost", "Cancelar"); cancel.onclick = () => modal.remove();
+    const apply = el("button", "btn", isOn ? "Aplicar emergencia" : "Apagar emergencia");
+    if (isOn) apply.style.background = "#dc2626";
+    actions.append(cancel, apply); card.append(actions);
+
+    function refresh() {
+      const sel = items.filter(c => c.checked).length;
+      counter.textContent = `${sel} de ${items.length} cuadros seleccionados`;
+      apply.disabled = sel === 0;
+      apply.style.opacity = sel === 0 ? "0.55" : "1";
+    }
+    items.forEach(cb => cb.addEventListener("change", refresh));
+    all.onclick = () => { items.forEach(c => c.checked = true); refresh(); };
+    none.onclick = () => { items.forEach(c => c.checked = false); refresh(); };
+    refresh();
+
+    apply.onclick = async () => {
+      const picked = items.filter(c => c.checked).map(c => c.dataset.code);
+      // Si están TODOS marcados, no enviamos lista (el backend asume "todo
+      // el scope"); útil para no mandar 50 códigos cuando no hace falta.
+      const all = picked.length === items.length;
+      const body = all ? {} : { cabinet_codes: picked };
+      apply.disabled = true;
+      try { await onApply(body, picked); modal.remove(); }
+      catch (e) { toast(e.message, true); apply.disabled = false; }
+    };
+
+    modal.append(card); document.body.append(modal);
+  }
+
   async function emergencyAllOn() {
-    if (!confirm(`⚠ MODO EMERGENCIA\n\nVas a ENCENDER al 100% ${state.cabinets.length} cuadro(s) de tu ámbito.\n(Phoenix = toda la red · un director = solo su ciudad.)\n\n¿Continuar?`)) return;
-    try {
-      const r = await api("/emergency/all-on", { method: "POST" });
-      toast(`Emergencia aplicada a ${r.cabinets.length} cuadros`);
-      await refreshEmergencyStatus(); refreshLive();
-    } catch (e) { toast(e.message, true); }
+    if (!state.cabinets.length) { toast("No hay cuadros en tu ámbito"); return; }
+    openEmergencyModal({
+      mode: "on",
+      cabinets: state.cabinets,
+      onApply: async (body, picked) => {
+        const r = await api("/emergency/all-on", { method: "POST", body: JSON.stringify(body) });
+        toast(`Emergencia aplicada a ${r.cabinets.length} cuadro(s)`);
+        await refreshEmergencyStatus(); refreshLive();
+      },
+    });
   }
   async function emergencyClear() {
-    if (!confirm("APAGAR EMERGENCIA: cada cuadro vuelve a su modo previo (Manual / Programa / IA). ¿Continuar?")) return;
-    try {
-      const r = await api("/emergency/clear", { method: "POST" });
-      toast(`Restaurados ${r.cabinets.length} cuadros a su modo`);
-      await refreshEmergencyStatus(); refreshLive();
-    } catch (e) { toast(e.message, true); }
+    let st;
+    try { st = await api("/emergency/status"); }
+    catch (e) { toast(e.message, true); return; }
+    if (!st.active) { toast("No hay emergencia activa"); await refreshEmergencyStatus(); return; }
+    // Solo los que ESTÁN en emergencia entran en el modal del clear.
+    const active = state.cabinets.filter(c => st.cabinets.includes(c.cabinet_id || c.code));
+    openEmergencyModal({
+      mode: "off",
+      cabinets: active.length ? active : st.cabinets.map(code => ({ cabinet_id: code, name: "—" })),
+      onApply: async (body, picked) => {
+        const r = await api("/emergency/clear", { method: "POST", body: JSON.stringify(body) });
+        toast(`Restaurados ${r.cabinets.length} cuadro(s) a su modo`);
+        await refreshEmergencyStatus(); refreshLive();
+      },
+    });
   }
   // Consulta /emergency/status y muestra el botón correspondiente. Se llama
   // tras cualquier acción de emergencia y al arrancar la sesión (boot).

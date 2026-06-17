@@ -200,6 +200,47 @@ def test_emergency_remembers_and_restores_mode(client, monkeypatch):
     assert client.post("/api/v1/emergency/clear", headers=headers).status_code == 200
 
 
+def test_emergency_partial_scope_only_affects_listed(client, monkeypatch):
+    """Emergencia POR CM: con body {cabinet_codes:[…]} solo se fuerzan esos.
+    Defensa: incluir un CM fuera del scope NO lo afecta — la intersección
+    con la tenencia se hace siempre en backend."""
+    H = {"Authorization": f"Bearer {_token(client)}"}
+    for code in ("CAB-P1", "CAB-P2", "CAB-P3"):
+        client.post("/api/v1/cabinets/registry", json={"code": code}, headers=H)
+        client.post(f"/api/v1/cabinets/{code}/mode", json={"mode": "ai"}, headers=H)
+    mqtt_module.bus._known_cabinets.update({"CAB-P1", "CAB-P2", "CAB-P3"})
+    async def _noop(*a, **k):
+        return None
+    monkeypatch.setattr(mqtt_module.bus, "publish", _noop)
+    monkeypatch.setattr(mqtt_module.bus, "_safe_publish", _noop)
+
+    # Solo CAB-P1: el resto sigue en su modo (ai).
+    r = client.post(
+        "/api/v1/emergency/all-on",
+        json={"cabinet_codes": ["CAB-P1", "CAB-NOPE"]},
+        headers=H,
+    )
+    assert r.status_code == 200
+    affected = set(r.json()["cabinets"])
+    assert affected == {"CAB-P1"}  # 'CAB-NOPE' ignorado (fuera de scope/no existe)
+    data = {c["cabinet_id"]: c for c in client.get("/api/v1/cabinets", headers=H).json()}
+    assert data["CAB-P1"]["dimming_mode"] == "manual"
+    assert data["CAB-P2"]["dimming_mode"] == "ai"
+    assert data["CAB-P3"]["dimming_mode"] == "ai"
+    # status sigue diciendo "activa", solo con CAB-P1.
+    st = client.get("/api/v1/emergency/status", headers=H).json()
+    assert st["active"] is True and st["cabinets"] == ["CAB-P1"]
+
+    # /clear con scope también respeta la lista (limpia solo CAB-P1).
+    r2 = client.post(
+        "/api/v1/emergency/clear",
+        json={"cabinet_codes": ["CAB-P1"]},
+        headers=H,
+    )
+    assert {c["code"]: c["mode"] for c in r2.json()["cabinets"]} == {"CAB-P1": "ai"}
+    assert client.get("/api/v1/emergency/status", headers=H).json()["active"] is False
+
+
 def test_ws_rejects_bad_token(client):
     with pytest.raises(WebSocketDisconnect):
         with client.websocket_connect("/api/v1/ws?token=bad") as ws:

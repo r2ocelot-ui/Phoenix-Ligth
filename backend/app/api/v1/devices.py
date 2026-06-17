@@ -1,0 +1,91 @@
+"""CRUD for the device registry (SICE-style cabinet ↔ controller binding)."""
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.core.database import get_db
+from app.models.cabinet import Cabinet
+from app.models.device import Device
+from app.models.user import User
+from app.schemas.device import DeviceCreate, DeviceRead
+from app.services import audit_log, ranks, tenancy
+from app.services.auth import require_permission
+
+router = APIRouter(prefix="/devices", tags=["devices"])
+
+
+@router.get("", response_model=list[DeviceRead])
+def list_devices(
+    cabinet_code: str | None = None,
+    include_inactive: bool = False,
+    project_id: int | None = None,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_READ)),
+):
+    q = db.query(Device).order_by(Device.id.desc())
+    if cabinet_code:
+        q = q.filter(Device.cabinet_code == cabinet_code)
+    if not include_inactive:
+        q = q.filter(Device.is_active.is_(True))
+    # Devices inherit visibility from their cabinet's project.
+    codes = tenancy.cabinet_codes_in_scope(db, actor, project_id)
+    if codes is not None:
+        q = q.filter(Device.cabinet_code.in_(codes))
+    return q.all()
+
+
+@router.post("", response_model=DeviceRead, status_code=status.HTTP_201_CREATED)
+def register_device(
+    body: DeviceCreate,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
+):
+    cabinet = db.query(Cabinet).filter(Cabinet.code == body.cabinet_code).first()
+    if not cabinet:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cuadro no encontrado")
+    tenancy.ensure_visible(cabinet, actor)
+    if db.query(Device).filter(Device.serial == body.serial).first():
+        raise HTTPException(status.HTTP_409_CONFLICT, "Ese serial ya está registrado")
+    # Replace any other active binding for this cabinet — only one at a time.
+    for stale in db.query(Device).filter(
+        Device.cabinet_code == body.cabinet_code, Device.is_active.is_(True)
+    ):
+        stale.is_active = False
+        db.add(stale)
+
+    device = Device(
+        cabinet_code=body.cabinet_code, serial=body.serial,
+        imei=body.imei, model=body.model, firmware=body.firmware,
+    )
+    db.add(device)
+    db.commit()
+    db.refresh(device)
+    audit_log.record(
+        db, username=actor.username, action="device.register",
+        target=body.cabinet_code,
+        detail={"serial": body.serial, "imei": body.imei, "model": body.model},
+    )
+    return device
+
+
+@router.delete("/{device_id}")
+def deactivate_device(
+    device_id: int,
+    db: Session = Depends(get_db),
+    actor: User = Depends(require_permission(ranks.P_CABINET_MANAGE)),
+):
+    device = db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Dispositivo no encontrado")
+    # El dispositivo hereda la visibilidad del proyecto de su cuadro: un
+    # cabinet:manage de otra ciudad no puede desvincular hardware ajeno.
+    cab = db.query(Cabinet).filter(Cabinet.code == device.cabinet_code).first()
+    tenancy.ensure_visible(cab, actor)
+    if not device.is_active:
+        return {"ok": True, "already": True}
+    device.is_active = False
+    db.commit()
+    audit_log.record(
+        db, username=actor.username, action="device.deactivate",
+        target=device.cabinet_code, detail={"serial": device.serial},
+    )
+    return {"ok": True}

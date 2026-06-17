@@ -1,0 +1,182 @@
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class UserCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=6)
+    email: str | None = None
+
+
+class UserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    email: str | None
+    rank: str
+    activity_points: int
+    is_active: bool
+    created_at: datetime
+    project_id: int | None = None
+    project_ids: list[int] = []
+
+    @field_validator("project_ids", mode="before")
+    @classmethod
+    def _none_to_empty(cls, v):
+        # BDs viejas tienen project_ids = NULL; lo tratamos como lista vacía
+        # para no romper la serialización (causaba HTTP 500 al listar usuarios).
+        return v or []
+
+
+class UserDetail(UserRead):
+    permissions: list[str]
+    rank_level: int
+    progression: dict
+    has_pin: bool = False
+    has_pattern: bool = False
+    has_totp: bool = False
+    totp_recovery_remaining: int = 0
+    # --- Ficha del trabajador --------------------------------------------
+    # Pack laboral (empleados Phoenix):
+    full_name: str = ""
+    phone: str = ""
+    job_title: str = ""
+    department: str = ""
+    site: str = ""
+    shift: str = ""                       # mañana / tarde / oficina
+    # Pack contractual:
+    employee_id: str = ""
+    national_id: str = ""
+    company: str = ""
+    # Auditoría visible en la ficha (read-only, la fija el login):
+    last_login_at: datetime | None = None
+    last_login_ip: str = ""
+    # Notas internas: SOLO se rellena para quien gestiona usuarios (admin);
+    # ``None`` significa "no autorizado a verlas" (p.ej. el propio /auth/me).
+    notes: str | None = None
+
+
+class ProfileUpdate(BaseModel):
+    """Edición de la ficha del trabajador (admin). Todos los campos son
+    opcionales: solo se aplican los presentes en la petición (PATCH parcial)."""
+    full_name: str | None = Field(default=None, max_length=120)
+    phone: str | None = Field(default=None, max_length=40)
+    job_title: str | None = Field(default=None, max_length=80)
+    department: str | None = Field(default=None, max_length=80)
+    site: str | None = Field(default=None, max_length=80)
+    shift: str | None = Field(default=None, max_length=32)
+    employee_id: str | None = Field(default=None, max_length=40)
+    national_id: str | None = Field(default=None, max_length=20)
+    company: str | None = Field(default=None, max_length=120)
+    notes: str | None = Field(default=None, max_length=512)
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    rank: str
+
+
+class UserCreateAdmin(BaseModel):
+    """Admin issues the whole credential set at creation time. PIN and pattern
+    are optional here so the admin can leave them blank and let the user
+    define them in the first login if preferred."""
+    username: str = Field(..., min_length=3, max_length=64)
+    password: str = Field(..., min_length=6)
+    email: str | None = None
+    rank: str = "visualizador"
+    pin: str | None = Field(default=None, pattern=r"^\d{4,8}$")
+    pattern: str | None = Field(default=None, pattern=r"^[0-8]{4,9}$")
+
+
+class PasswordSet(BaseModel):
+    """Self-service password change: requires the current password. This is the
+    anti-keylogger guardrail — even if every keystroke is captured, rotating a
+    credential still needs the *current* one as proof of presence."""
+    current_password: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=6)
+
+
+class PasswordReset(BaseModel):
+    """Admin-driven password reset — no ``current_password`` because the admin
+    is acting on behalf of the user (e.g. forgotten password)."""
+    password: str = Field(..., min_length=6)
+
+
+class AdminPinSet(BaseModel):
+    """Admin-driven PIN reset (no current_pin required)."""
+    pin: str = Field(..., pattern=r"^\d{4,8}$")
+
+
+class AdminPatternSet(BaseModel):
+    """Admin-driven pattern reset (no current_pattern required)."""
+    pattern: str = Field(..., pattern=r"^[0-8]{4,9}$")
+
+
+class PinSet(BaseModel):
+    """Self-service PIN change: requires the current PIN if one is already set."""
+    pin: str = Field(..., pattern=r"^\d{4,8}$")
+    current_pin: str | None = Field(default=None, pattern=r"^\d{4,8}$")
+
+
+class PatternSet(BaseModel):
+    """Self-service pattern change: requires the current pattern if one is set."""
+    pattern: str = Field(..., pattern=r"^[0-8]{4,9}$")
+    current_pattern: str | None = Field(default=None, pattern=r"^[0-8]{4,9}$")
+
+
+class Unlock(BaseModel):
+    """Unlock the locked session with whichever credential the user set."""
+    pin: str | None = Field(default=None, pattern=r"^\d{4,8}$")
+    pattern: str | None = Field(default=None, pattern=r"^[0-8]{4,9}$")
+
+
+# --- Multi-step login ------------------------------------------------------
+class LoginStep1Result(BaseModel):
+    """Outcome of step 1. If ``access_token`` is present the login is finished
+    (account had no pattern). Otherwise the caller must complete step 2 with
+    the ``challenge_token`` and the pattern."""
+    step: int
+    access_token: str | None = None
+    challenge_token: str | None = None
+    token_type: str = "bearer"
+    rank: str
+    expires_in: int | None = None
+    # Qué ventana toca a continuación: "pattern", "totp" o None (login hecho).
+    next_step: str | None = None
+
+
+class LoginStep2(BaseModel):
+    challenge_token: str
+    pattern: str = Field(..., pattern=r"^[0-8]{4,9}$")
+
+
+class LoginStep3(BaseModel):
+    challenge_token: str
+    # Código de 6 dígitos de la app O una clave de recuperación (p.ej. A3F9-K2QX).
+    totp: str = Field(..., min_length=6, max_length=12)
+
+
+class TotpVerify(BaseModel):
+    code: str = Field(..., min_length=6, max_length=8)
+
+
+class TotpSetupResult(BaseModel):
+    secret: str
+    otpauth_uri: str
+    recovery_codes: list[str]  # en claro SOLO en la respuesta de setup
+
+
+class RankChange(BaseModel):
+    rank: str
+
+
+class PermissionOverride(BaseModel):
+    extra_permissions: list[str] = []
+    denied_permissions: list[str] = []
+
+
+class ActiveToggle(BaseModel):
+    is_active: bool

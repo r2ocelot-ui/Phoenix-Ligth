@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phoenix Light · Alumbrado Público Inteligente</title>
+  <!-- Favicon: usa static/phoenix-icon.png si está; si no, el navegador no muestra nada (inocuo). -->
+  <link rel="icon" type="image/png" href="static/phoenix-icon.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    /* ===== Tema (Kumiho / Phoenix). Cambia --accent* para otra división. ===== */
+    :root {
+      --bg: #020617; --panel: #0f172a; --panel-2: #0b1120;
+      --border: #1e293b; --border-2: #334155;
+      --text: #e2e8f0; --fg: #e2e8f0; --muted: #94a3b8; --dim: #64748b;
+      --accent: #f97316; --accent-2: #ef4444; --accent-3: #fb923c;
+      --accent-soft: rgba(249, 115, 22, .14); --accent-line: rgba(249, 115, 22, .45);
+      --ok: #22c55e; --warn: #f59e0b; --crit: #ef4444;
+      --sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+      --mono: ui-monospace, "SFMono-Regular", Menlo, monospace;
+      --fire: linear-gradient(135deg, #fb923c, #ef4444 60%, #b91c1c);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+      background: radial-gradient(1200px 600px at 80% -10%, #1c0a06 0%, var(--bg) 55%);
+      color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent-3); }
+    button { font-family: inherit; cursor: pointer; }
+    .hidden { display: none !important; }
+    .mono { font-family: var(--mono); }
+    .muted { color: var(--muted); }
+
+    /* ===== Emblema Phoenix con llama animada ===== */
+    .emblem { width: 50px; height: 50px; border-radius: 50%; display: grid; place-items: center;
+      background: radial-gradient(circle at 50% 35%, #2a1206, #0b0502);
+      border: 1px solid var(--accent-line); box-shadow: 0 0 22px rgba(239,68,68,.35); flex: none; }
+    .emblem svg { width: 32px; height: 32px; animation: flick 2.4s ease-in-out infinite; }
+    .emblem.big { width: 92px; height: 92px; box-shadow: 0 0 34px rgba(239,68,68,.45); } .emblem.big svg { width: 64px; height: 64px; }
+    /* Logo PNG dentro del chip (cuando existe static/phoenix-icon.png). Llena
+       más el círculo para que se vea detallado y llame la atención. */
+    .emblem-img { width: 44px; height: 44px; object-fit: contain; }
+    .emblem.big .emblem-img { width: 82px; height: 82px; }
+    @keyframes flick {
+      0%,100% { filter: drop-shadow(0 0 4px rgba(249,115,22,.8)); transform: scale(1); }
+      50% { filter: drop-shadow(0 0 10px rgba(239,68,68,1)); transform: scale(1.06); }
+    }
+
+    /* ===== Login ===== */
+    #login { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+    .login-card { width: 100%; max-width: 400px; background: linear-gradient(#0f172af2, #020617f2);
+      border: 1px solid var(--border-2); border-radius: 20px; padding: 32px; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+    .brand { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+    .brand h1 { margin: 0; font-size: 24px; letter-spacing: 4px; font-weight: 800; }
+    .brand .sub { font-size: 11px; letter-spacing: 3px; color: var(--accent-3); text-transform: uppercase; }
+    .login-card p.tag { color: var(--muted); font-size: 13px; margin: 14px 0 22px; }
+    label { display: block; font-size: 12px; color: var(--muted); margin: 14px 0 6px; letter-spacing: .5px; }
+    input, select { width: 100%; padding: 11px 13px; background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border-2); border-radius: 10px; font-size: 14px; outline: none; }
+    input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    /* El popup nativo de <option> sale blanco por defecto: lo forzamos al tema oscuro. */
+    select option, select optgroup { background: var(--panel-2); color: var(--text); }
+    /* Icono de ayuda (?) con tooltip — estilo Hydra, sin frases ocupando sitio. */
+    .help { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;
+      border-radius: 50%; border: 1px solid var(--border-2); color: var(--muted); font-size: 11px; font-weight: 700;
+      line-height: 1; cursor: help; position: relative; user-select: none; vertical-align: middle; margin-left: 6px; }
+    .help:hover, .help:focus { color: var(--text); border-color: var(--accent); outline: none; }
+    .help[data-tip]:hover::after, .help[data-tip]:focus::after {
+      content: attr(data-tip); position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%);
+      background: var(--panel); color: var(--text); border: 1px solid var(--border-2); border-radius: 8px;
+      padding: 8px 10px; width: max-content; max-width: 260px; font-size: 12px; font-weight: 400; line-height: 1.4;
+      white-space: normal; text-align: left; box-shadow: 0 8px 24px rgba(0,0,0,.45); z-index: 1000; pointer-events: none; }
+    .btn { border: 1px solid var(--accent-line); background: var(--fire); color: #fff; font-weight: 600;
+      padding: 11px 16px; border-radius: 10px; width: 100%; margin-top: 20px; font-size: 14px;
+      box-shadow: 0 8px 24px rgba(239,68,68,.3); }
+    .btn:hover { filter: brightness(1.08); }
+    .btn.ghost { background: transparent; color: var(--text); border-color: var(--border-2); box-shadow: none; }
+    .btn.sm { width: auto; margin: 0; padding: 7px 12px; font-size: 12.5px; }
+    .switch { text-align: center; margin-top: 16px; font-size: 13px; color: var(--muted); }
+    .switch a { cursor: pointer; }
+    .err { color: var(--crit); font-size: 13px; margin-top: 12px; min-height: 18px; }
+
+    /* ===== App shell ===== */
+    #app { display: grid; grid-template-columns: 244px 1fr; min-height: 100vh; }
+    aside { background: linear-gradient(#0b1120, #060b18); border-right: 1px solid var(--border);
+      padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; }
+    aside .brand { padding: 6px 8px 18px; }
+    aside .brand h1 { font-size: 18px; letter-spacing: 3px; }
+    nav a { display: flex; align-items: center; gap: 11px; padding: 11px 13px; border-radius: 10px;
+      color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 500; cursor: pointer; }
+    nav a:hover { background: #ffffff08; color: var(--text); }
+    nav a.active { background: var(--accent-soft); color: #fff; border: 1px solid var(--accent-line); }
+    nav a .ico { width: 18px; text-align: center; }
+    aside .spacer { flex: 1; }
+    .userbox { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: #ffffff05; }
+    .userbox .u { font-weight: 600; font-size: 14px; }
+    .userbox-mini { font-size: 10px; letter-spacing: .5px; text-transform: uppercase; text-align: center; padding: 8px 4px; }
+    /* Menú de usuario arriba a la derecha (estilo Hydra) */
+    .user-menu { position: relative; }
+    .user-chip {
+      display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+      padding: 5px 10px 5px 12px; border: 1px solid var(--border-2); border-radius: 999px;
+      background: rgba(255,255,255,0.03); color: var(--fg); font: inherit;
+    }
+    .user-chip:hover { background: rgba(255,255,255,0.07); }
+    .user-chip .u { font-weight: 600; font-size: 13px; }
+    .user-chip .caret { color: var(--dim); font-size: 11px; }
+    .user-dropdown {
+      position: absolute; top: 42px; right: 0; z-index: 950;
+      background: rgba(15, 23, 42, 0.97); border: 1px solid var(--border-2);
+      border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px); padding: 8px; min-width: 180px;
+      display: flex; flex-direction: column; gap: 6px;
+    }
+    .user-dropdown .btn { width: 100%; }
+    /* Reloj fecha + hora en la topbar (estilo Hydra) */
+    .clock { text-align: right; line-height: 1.1; }
+    .clock-time { font: 700 16px/1 var(--mono, monospace); letter-spacing: .5px; }
+    .clock-date { font-size: 11px; color: var(--dim); text-transform: capitalize; }
+    /* Chips de telemetría de infraestructura del cuadro */
+    .infra-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .infra-chip { font-size: 11px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-2); }
+    .infra-chip.ok { background: rgba(34,197,94,.12); border-color: rgba(34,197,94,.4); }
+    .infra-chip.bad { background: rgba(239,68,68,.14); border-color: rgba(239,68,68,.5); }
+
+    /* Flex column so #content fills the space and the footer can be pinned
+       to the very bottom regardless of how much the active view occupies. */
+    main { padding: 26px 30px; overflow: auto; display: flex; flex-direction: column; }
+    main > #content { flex: 1 0 auto; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px; }
+    .topbar h2 { margin: 0; font-size: 22px; font-weight: 700; }
+    .topbar .sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+    /* Utilitarias de tamaño de texto (sustituyen style="font-size:NNpx" repetidos). */
+    .fs-11 { font-size: 11px; } .fs-12 { font-size: 12px; } .fs-13 { font-size: 13px; }
+    .fs-14 { font-size: 14px; }
+    /* Búsqueda global del topbar (Ctrl+K). Resultados como dropdown flotante. */
+    .search-wrap { position: relative; }
+    .search-input { width: 240px; padding: 8px 12px; border-radius: 10px; font-size: 13px;
+      background: rgba(255,255,255,0.04); color: var(--text); border: 1px solid var(--border-2);
+      outline: none; transition: border-color .15s, box-shadow .15s; }
+    .search-input:focus { width: 320px; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .search-results { position: absolute; top: 38px; right: 0; width: 360px; max-height: 70vh; overflow-y: auto;
+      background: rgba(15,23,42,0.98); border: 1px solid var(--border-2); border-radius: 12px;
+      box-shadow: 0 12px 36px rgba(0,0,0,0.55); backdrop-filter: blur(8px); z-index: 1100; padding: 6px; }
+    .search-results .sr-group { font-size: 10px; text-transform: uppercase; letter-spacing: 1px;
+      color: var(--muted); padding: 8px 10px 4px; }
+    .search-results .sr-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+      border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text); }
+    .search-results .sr-item:hover, .search-results .sr-item.active { background: var(--accent-soft); }
+    .search-results .sr-item .sr-sub { color: var(--muted); font-size: 11px; margin-left: auto; }
+    .search-results .sr-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 13px; }
+
+    .grid { display: grid; gap: 16px; }
+    .kpis { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .cards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+    .card { background: linear-gradient(#0f172a, #0b1120); border: 1px solid var(--border);
+      border-radius: 14px; padding: 16px; }
+    .card.kpi .v { font-size: 30px; font-weight: 800; font-family: var(--mono); }
+    .card.kpi .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+    .card.kpi .v.accent { color: var(--accent-3); }
+
+    .cab-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .cab-head .id { font-weight: 700; font-size: 15px; letter-spacing: .5px; }
+    .cab-head .nm { font-size: 11px; color: var(--muted); }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+    .dot.ok { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dot.warning { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .dot.critical { background: var(--crit); box-shadow: 0 0 8px var(--crit); animation: pulse 1.6s infinite; }
+    .dot.off { background: var(--dim); }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(239,68,68,.6); } 70% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); } }
+    .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin: 6px 0 12px; }
+    .metrics .m .ml { font-size: 11px; color: var(--muted); }
+    .metrics .m .mv { font-family: var(--mono); font-size: 16px; font-weight: 600; }
+    .bar { height: 6px; background: var(--border-2); border-radius: 4px; overflow: hidden; }
+    .bar > span { display: block; height: 100%; background: var(--fire); transition: width .4s; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+    tbody tr:hover { background: #ffffff05; }
+    .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+      border: 1px solid var(--border-2); }
+    .badge.CRITICAL { color: #fecaca; border-color: #ef444466; background: #ef444418; }
+    .badge.WARNING { color: #fde68a; border-color: #f59e0b66; background: #f59e0b18; }
+    .badge.INFO { color: #bfdbfe; border-color: #3b82f666; background: #3b82f618; }
+    .rank { color: var(--accent-3); border-color: var(--accent-line); background: var(--accent-soft); text-transform: capitalize; }
+
+    .panel { background: linear-gradient(#0f172a, #0b1120); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .row.between { justify-content: space-between; }
+    input[type=range] { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent) var(--p,50%), var(--border-2) var(--p,50%)); padding: 0; }
+    input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; border-radius: 50%;
+      background: #fff; border: 3px solid var(--accent-2); cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.4); }
+    input[type=range]::-moz-range-thumb { width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 3px solid var(--accent-2); }
+
+    /* ===== Mapa (Leaflet, tema oscuro) ===== */
+    #map { height: 560px; border-radius: 14px; border: 1px solid var(--border); }
+    .leaflet-container { background: #060b18; font-family: var(--sans); }
+    .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); border: 1px solid var(--border-2); }
+    .leaflet-popup-content { font-size: 13px; }
+    .leaflet-bar a { background: var(--panel); color: var(--text); border-color: var(--border-2); }
+
+    /* ===== Selector de estilo de mapa (botón flotante desplegable, estilo Hydra) ===== */
+    .map-wrap { position: relative; }
+    .map-fab { position: absolute; top: 12px; right: 12px; z-index: 500;
+      background: var(--panel); color: var(--text); border: 1px solid var(--border-2);
+      border-radius: 10px; padding: 8px 12px; font-size: 13px; font-weight: 600;
+      box-shadow: 0 8px 24px rgba(0,0,0,.45); display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .map-fab:hover { border-color: var(--accent-line); }
+    .map-fab .caret { transition: transform .2s; }
+    .map-fab.open .caret { transform: rotate(180deg); }
+    .map-panel { position: absolute; top: 56px; right: 12px; z-index: 500;
+      background: var(--panel); border: 1px solid var(--border-2); border-radius: 12px;
+      padding: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.55); min-width: 200px;
+      display: flex; flex-direction: column; gap: 4px;
+      transform-origin: top right; transform: scale(.95); opacity: 0; pointer-events: none; transition: .18s; }
+    .map-panel.open { transform: none; opacity: 1; pointer-events: auto; }
+    .map-opt { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 8px;
+      cursor: pointer; font-size: 13px; color: var(--text); }
+    .map-opt:hover { background: #ffffff08; }
+    .map-opt.active { background: var(--accent-soft); border: 1px solid var(--accent-line); }
+    .map-opt .sw { width: 22px; height: 22px; border-radius: 5px; border: 1px solid #ffffff22; flex: none; }
+    .leaflet-tooltip.cm-label, .leaflet-tooltip.pt-label { background: transparent; border: none; box-shadow: none; padding: 0; font-family: var(--mono); text-shadow: 0 1px 3px #000, 0 0 2px #000; }
+    .leaflet-tooltip.cm-label { color: #fff; font-weight: 800; font-size: 11px; }
+    .leaflet-tooltip.pt-label { color: #e2e8f0; font-weight: 600; font-size: 10px; }
+    .leaflet-tooltip.cm-label:before, .leaflet-tooltip.pt-label:before { display: none; }
+    /* Pines como iconos HTML (divIcon): arrastre nativo + coloreado por CSS */
+    .pin-wrap { background: transparent; border: 0; }
+    .cm-pin {
+      width: 30px; height: 30px; border-radius: 50%; border: 3px solid #fff;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font: 800 9px/1 var(--mono, monospace); letter-spacing: -.3px;
+      box-shadow: 0 1px 5px rgba(0,0,0,.55); cursor: pointer;
+    }
+    .pt-pin {
+      width: 14px; height: 14px; border-radius: 50%; border: 1px solid #0b1120;
+      box-shadow: 0 1px 3px rgba(0,0,0,.5); cursor: pointer;
+    }
+    .pt-num {
+      position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+      color: #e2e8f0; font: 600 10px/1 var(--mono, monospace);
+      text-shadow: 0 1px 3px #000, 0 0 2px #000; white-space: nowrap;
+    }
+    .leaflet-marker-draggable { cursor: move; }
+
+    .toast { position: fixed; right: 22px; bottom: 22px; background: var(--panel); border: 1px solid var(--border-2);
+      border-left: 4px solid var(--accent); border-radius: 10px; padding: 13px 18px; font-size: 14px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.5); opacity: 0; transform: translateY(10px); transition: .25s; max-width: 360px; }
+    .toast.show { opacity: 1; transform: none; }
+    .toast.err { border-left-color: var(--crit); }
+    .empty { color: var(--dim); text-align: center; padding: 40px; font-size: 14px; }
+
+    /* ===== Modales (aviso de inactividad, bloqueo, emergencia) ===== */
+    .modal { position: fixed; inset: 0; background: rgba(2,6,23,.78); display: grid; place-items: center;
+      z-index: 9999; backdrop-filter: blur(4px); animation: fade .15s ease; }
+    .modal-card { background: linear-gradient(#0f172a, #0b1120); border: 1px solid var(--border-2);
+      border-radius: 16px; padding: 26px; max-width: 420px; width: 92%; box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+    .modal-card h3 { margin: 0 0 6px; font-size: 19px; }
+    .modal-card .desc { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; }
+    .modal-card .actions { display: flex; gap: 10px; margin-top: 18px; }
+    .modal-card .actions .btn { margin-top: 0; }
+    .pin-display { display: flex; justify-content: center; gap: 10px; margin: 14px 0 8px; }
+    .pin-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--border-2); }
+    .pin-dot.on { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+    .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+    .keypad button { padding: 14px; font-size: 18px; font-weight: 600; font-family: var(--mono);
+      background: var(--panel-2); color: var(--text); border: 1px solid var(--border-2); border-radius: 10px; cursor: pointer; }
+    .keypad button:hover { border-color: var(--accent-line); }
+    .keypad button.cancel { color: var(--muted); }
+    @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+    .countdown { font-family: var(--mono); font-size: 38px; font-weight: 800; color: var(--accent-3); text-align: center; margin: 10px 0; }
+    /* Security badge variants */
+    .badge.ok { color: #bbf7d0; border-color: #22c55e66; background: #22c55e18; }
+    .badge.warn { color: #fde68a; border-color: #f59e0b66; background: #f59e0b18; }
+    .badge.bad { color: #fecaca; border-color: #ef444466; background: #ef444418; }
+    /* Pattern pad (3×3, móvil) */
+    .pattern-pad { position: relative; width: 240px; height: 240px; margin: 8px auto 4px; touch-action: none; user-select: none; }
+    .pattern-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .pp-line { fill: none; stroke: var(--accent); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; opacity: .85; }
+    .pattern-grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(3,1fr); grid-template-rows: repeat(3,1fr); }
+    .pp-dot { display: grid; place-items: center; }
+    .pp-dot-in { width: 20px; height: 20px; border-radius: 50%; background: var(--border-2); transition: transform .12s, background .12s, box-shadow .12s; }
+    .pp-dot.on .pp-dot-in { background: var(--accent); box-shadow: 0 0 14px var(--accent); transform: scale(1.3); }
+    /* margin-top:auto empuja el footer al fondo de main; padding-top da aire
+       cuando el contenido es corto. Siempre centrado abajo del todo. */
+    footer.foot { color: var(--dim); font-size: 11px; letter-spacing: 1px; margin-top: auto; padding-top: 28px; text-align: center; text-transform: uppercase; }
+    /* ===== Inicio: el mapa ocupa el centro ===== */
+    .kpis-sm .kpi { padding: 10px 14px; }
+    .kpis-sm .k { font-size: 11px; letter-spacing: 0.6px; }
+    .kpis-sm .v { font-size: 22px; }
+    /* ===== Topología: grid de tarjetas compactas (escala a 100+ CMs) ===== */
+    .topo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 12px;
+    }
+    .topo-card {
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+      border-radius: 10px; padding: 0; cursor: pointer;
+      transition: background .15s, transform .12s;
+      overflow: hidden;
+    }
+    .topo-card:hover { background: rgba(255,255,255,0.05); transform: translateY(-1px); }
+    .topo-head { padding: 10px 12px; }
+    .topo-title { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .topo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+    .topo-dot.ok { background: var(--ok); }
+    .topo-dot.warn { background: #f59e0b; }
+    .topo-dot.bad { background: #ef4444; animation: pulse 1.6s infinite; }
+    .topo-dot.off { background: #475569; }
+    .topo-name { font-size: 11px; margin-top: 3px; }
+    .topo-stats {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--border);
+    }
+    .topo-stats > div {
+      padding: 8px 6px; text-align: center; border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .topo-stats > div:last-child { border-right: 0; }
+    .topo-num { font-size: 16px; font-weight: 600; }
+    .topo-stats .muted { font-size: 10px; }
+    /* ===== Paginador para tablas largas ===== */
+    .paginator {
+      display: grid; grid-template-columns: 1fr auto 1fr;
+      align-items: center; padding: 8px 4px; gap: 12px;
+    }
+    .paginator > div:last-child { display: flex; justify-content: flex-end; }
+    .paginator select { background: var(--panel-2); color: var(--text);
+      border: 1px solid var(--border-2); border-radius: 6px; padding: 4px 8px; }
+    .paginator .row { gap: 8px; align-items: center; }
+    /* ===== Permisos: tabs internas + acordeón de usuarios ===== */
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+    .tab {
+      background: transparent; color: var(--dim); border: 0; padding: 8px 16px;
+      border-bottom: 2px solid transparent; cursor: pointer; font: inherit;
+      transition: color .12s, border-color .12s;
+    }
+    .tab:hover { color: var(--fg); }
+    .tab.active { color: var(--fg); border-bottom-color: var(--ok); }
+    .tab-body { min-height: 200px; }
+    .user-list { display: grid; gap: 4px; }
+    .user-row {
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden;
+    }
+    .user-head {
+      display: grid; grid-template-columns: 16px 12px 1fr auto;
+      gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer;
+      transition: background .12s;
+    }
+    .user-head:hover { background: rgba(255,255,255,0.04); }
+    .user-head .caret { color: var(--dim); font-size: 12px; }
+    .user-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); }
+    .user-head .dot.ok { background: var(--ok); }
+    .user-head .dot.bad { background: #ef4444; }
+    .user-name { font-weight: 600; font-size: 13px; }
+    .user-sub { font-size: 11px; }
+    .user-detail {
+      padding: 14px 18px 16px; border-top: 1px solid var(--border);
+      background: rgba(0,0,0,0.18);
+    }
+    .user-detail-row {
+      display: grid; grid-template-columns: auto 1fr; gap: 32px;
+      align-items: center; flex-wrap: wrap;
+    }
+    .perm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .perm-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border: 1px solid var(--border-2); border-radius: 999px;
+      font-size: 11px; background: rgba(255,255,255,0.03);
+    }
+    .perm-chip.ok { background: rgba(34, 197, 94, 0.15); border-color: var(--ok); }
+    .user-actions { display: flex; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    /* Grid de permisos en el editor de rango (ultra compacto) */
+    .perm-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 4px 12px;
+    }
+    .perm-row-compact {
+      display: flex; align-items: center; gap: 8px;
+      padding: 5px 8px; border-radius: 6px; cursor: pointer;
+      transition: background .12s;
+    }
+    .perm-row-compact:hover { background: rgba(255,255,255,0.05); }
+    .perm-row-compact.locked { cursor: default; opacity: 0.7; }
+    .perm-row-compact.locked:hover { background: transparent; }
+    .perm-compact-label { font-size: 12px; }
+    /* ===== Editor de rangos: layout master-detail (vertical) ===== */
+    .roles-layout { display: grid; grid-template-columns: 260px 1fr; gap: 14px; }
+    .roles-list {
+      background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+      border-radius: 12px; padding: 6px; max-height: calc(100vh - 220px); overflow-y: auto;
+    }
+    .roles-list-head {
+      padding: 8px 10px; display: flex; justify-content: space-between;
+      align-items: baseline; border-bottom: 1px solid var(--border); margin-bottom: 4px;
+    }
+    .role-item {
+      display: grid; grid-template-columns: 10px 1fr auto; gap: 10px;
+      align-items: center; padding: 9px 10px; border-radius: 8px; cursor: pointer;
+      transition: background .15s;
+    }
+    .role-item:hover { background: rgba(255,255,255,0.05); }
+    .role-item.active { background: rgba(34, 197, 94, 0.12); border-left: 2px solid var(--ok); padding-left: 8px; }
+    .role-item.add { opacity: 0.85; border-top: 1px dashed var(--border); margin-top: 6px; padding-top: 12px; }
+    .role-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--dim); }
+    .role-dot.ok { background: var(--ok); }
+    .role-dot.warn { background: #f59e0b; }
+    .role-dot.bad { background: #ef4444; }
+    .role-meta { min-width: 0; }
+    .role-name { font-weight: 600; font-size: 13px; }
+    .role-sub { font-size: 11px; }
+    .roles-detail { padding: 18px 22px; }
+    .perm-hr { height: 1px; background: var(--border); margin: 14px 0; }
+    .perm-list { display: grid; gap: 4px; }
+    .perm-row {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 8px 10px; border-radius: 8px; cursor: pointer;
+      transition: background .15s;
+    }
+    .perm-row:hover { background: rgba(255,255,255,0.04); }
+    .perm-row.locked { cursor: default; opacity: 0.7; }
+    .perm-row.locked:hover { background: transparent; }
+    .perm-row input[type="checkbox"] { margin-top: 3px; flex-shrink: 0; }
+    .perm-label { font-size: 13px; }
+    .perm-actions { display: flex; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    @media (max-width: 760px) {
+      .roles-layout { grid-template-columns: 1fr; }
+      .roles-list { max-height: 240px; }
+    }
+    /* ===== Chip de proyecto / ciudad activa (estilo Hydra) ===== */
+    .project-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border: 1px solid var(--border-2); border-radius: 999px;
+      background: rgba(15, 23, 42, 0.92); font-size: 13px; cursor: default;
+      backdrop-filter: blur(6px); box-shadow: 0 2px 8px rgba(0,0,0,.35);
+    }
+    .project-chip.clickable { cursor: pointer; }
+    .project-chip.clickable:hover { background: rgba(30, 41, 59, 0.95); }
+    .project-chip .caret { color: var(--dim); font-size: 11px; }
+    /* Overlay del selector de ciudad, flotante arriba-izquierda del mapa */
+    .map-city { position: absolute; top: 12px; left: 12px; z-index: 800; }
+    .map-city .project-picker { position: absolute; top: 42px; left: 0; right: auto; }
+    .project-picker {
+      position: absolute; top: 80px; right: 28px;
+      background: rgba(15, 23, 42, 0.97); border: 1px solid var(--border-2);
+      border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.45);
+      backdrop-filter: blur(8px); min-width: 240px; max-height: 320px;
+      overflow-y: auto; z-index: 900;
+    }
+    .project-picker .opt {
+      padding: 10px 14px; cursor: pointer; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    }
+    .project-picker .opt:last-child { border-bottom: 0; }
+    .project-picker .opt:hover { background: rgba(255,255,255,0.06); }
+    .project-picker .opt.active { background: rgba(34, 197, 94, 0.12); }
+    .project-picker .opt small { color: var(--dim); font-size: 11px; }
+    .inicio-map { height: calc(100vh - 300px); min-height: 360px; }
+    /* Barra de herramientas del mapa (estilo Hydra, debajo del minimapa) */
+    .map-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .map-toolbar > .muted { font-size: 12px; }
+    /* Banner guía del modo "añadir CM en el mapa" (estilo Hydra). */
+    .map-add-banner {
+      position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      z-index: 800; background: rgba(34, 197, 94, 0.95); color: #04210f;
+      font-size: 13px; font-weight: 600; padding: 8px 16px; border-radius: 999px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4); pointer-events: none; white-space: nowrap;
+    }
+    .inicio-map #map { height: 100%; border-radius: 12px; background: #0b1120; }
+    /* No fade-in on the map tiles themselves — defensive against the
+       "tile pulse" some browsers exhibit when Leaflet recomputes size. */
+    .leaflet-fade-anim .leaflet-tile, .leaflet-zoom-anim .leaflet-zoom-animated {
+      transition: none !important;
+    }
+    .legend-thin { padding: 8px 12px; font-size: 12px; }
+    /* ===== Dock flotante de eventos (estilo Hydra "Eventos recientes") ===== */
+    .event-dock {
+      position: fixed; right: 18px; bottom: 18px; width: 380px; max-width: calc(100vw - 36px);
+      background: rgba(15, 23, 42, 0.95); border: 1px solid var(--border-2);
+      border-radius: 14px; box-shadow: 0 8px 32px rgba(0,0,0,0.45); backdrop-filter: blur(8px);
+      z-index: 950; display: flex; flex-direction: column; overflow: hidden;
+      transition: max-height .25s ease, transform .2s ease;
+    }
+    .event-dock.collapsed { max-height: 44px; }
+    .event-dock:not(.collapsed) { max-height: 420px; }
+    .dock-bar {
+      display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+      background: transparent; color: var(--fg); border: 0; cursor: pointer; width: 100%; text-align: left;
+      font: inherit; border-bottom: 1px solid var(--border);
+    }
+    .dock-bar:hover { background: rgba(255,255,255,0.04); }
+    .dock-pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .dock-pulse.warn { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+    .dock-pulse.bad { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: 0.35 } }
+    .dock-title { flex: 1; font-weight: 600; font-size: 13px; }
+    .dock-count {
+      background: var(--border-2); color: var(--fg); border-radius: 10px;
+      padding: 1px 8px; font-size: 11px; min-width: 22px; text-align: center;
+    }
+    .dock-count.bad { background: #ef4444; color: #fff; }
+    .dock-handle { color: var(--dim); transition: transform .2s; }
+    .event-dock:not(.collapsed) .dock-handle { transform: rotate(180deg); }
+    .dock-body { overflow-y: auto; flex: 1; }
+    .dock-row {
+      display: grid; grid-template-columns: 4px 1fr auto; gap: 10px;
+      padding: 8px 14px; border-bottom: 1px solid var(--border);
+      align-items: center; font-size: 12px;
+    }
+    .dock-row:last-child { border-bottom: 0; }
+    .dock-tick { width: 4px; height: 100%; border-radius: 2px; background: var(--dim); }
+    .dock-tick.ok { background: var(--ok); }
+    .dock-tick.warn { background: #f59e0b; }
+    .dock-tick.bad { background: #ef4444; }
+    .dock-msg .muted { font-size: 11px; }
+    .dock-time { color: var(--dim); font-size: 11px; font-family: var(--mono, monospace); white-space: nowrap; }
+    .dock-empty { padding: 14px; color: var(--dim); font-size: 12px; text-align: center; }
+    @media (max-width: 760px) {
+      #app { grid-template-columns: 1fr; } aside { flex-direction: row; flex-wrap: wrap; }
+      .event-dock { right: 8px; bottom: 8px; width: calc(100vw - 16px); }
+      .inicio-map { height: 50vh; }
+    }
+  </style>
+</head>
+<body>
+  <template id="phoenix-svg">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#fbbf24"/><stop offset=".5" stop-color="#f97316"/><stop offset="1" stop-color="#dc2626"/>
+      </linearGradient></defs>
+      <path fill="url(#fg)" d="M12 2c1.2 2.3.6 4-.7 5.3 2.1-.3 3.3-1.6 3.8-3.1.9 2.2.6 4.2-.8 5.9 1.6-.2 2.8-1 3.6-2.2.4 3-1 5.4-3.4 6.9 1.3.2 2.6-.1 3.7-.8-.8 2.6-2.9 4.3-5.6 4.8l1.1 2.2H8.6l1.1-2.2c-2.7-.5-4.8-2.2-5.6-4.8 1.1.7 2.4 1 3.7.8C5.4 13.3 4 10.9 4.4 7.9c.8 1.2 2 2 3.6 2.2C6.6 8.4 6.3 6.4 7.2 4.2c.5 1.5 1.7 2.8 3.8 3.1C9.4 6 8.8 4.3 12 2Z"/>
+    </svg>
+  </template>
+
+  <!-- ===================== LOGIN ===================== -->
+  <section id="login">
+    <div class="login-card">
+      <div class="brand">
+        <div class="emblem big"></div>
+        <div><h1>PHOENIX</h1><div class="sub">Light · Division</div></div>
+      </div>
+      <p class="tag">Telegestión y eficiencia de alumbrado público.<br/>Accede con tu cuenta para operar la red.</p>
+      <div id="form-login">
+        <div id="login-step1">
+          <label>Usuario</label><input id="li-user" autocomplete="username" />
+          <label>Contraseña</label><input id="li-pass" type="password" autocomplete="current-password" />
+          <label>PIN <span class="muted" style="font-weight:400">(si lo tienes)</span></label>
+          <input id="li-pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="one-time-code" />
+          <button class="btn" id="btn-login">Continuar</button>
+          <div class="switch">¿No tienes acceso? Pídeselo a un administrador.</div>
+        </div>
+        <div id="login-step2" class="hidden" style="text-align:center">
+          <p class="tag" style="margin-bottom:8px">Paso 2 · Dibuja tu <strong>patrón</strong> de seguridad.</p>
+          <div id="login-pattern-host"></div>
+          <div class="row" style="justify-content:center; gap:8px; margin-top:10px">
+            <button class="btn ghost sm" id="btn-pat-back">← Volver</button>
+            <button class="btn ghost sm" id="btn-pat-reset">Repetir</button>
+          </div>
+        </div>
+        <div id="login-step3" class="hidden" style="text-align:center">
+          <p class="tag" style="margin-bottom:8px">Paso 3 · Introduce el <strong>código 2FA</strong> de tu app (Google Authenticator).</p>
+          <input id="li-totp3" maxlength="12" placeholder="6 dígitos o clave de recuperación" style="text-align:center; font-size:18px; letter-spacing:3px" />
+          <div class="row" style="justify-content:center; gap:8px; margin-top:10px">
+            <button class="btn" id="btn-totp-confirm">Entrar</button>
+            <button class="btn ghost sm" id="btn-totp-back">← Volver</button>
+          </div>
+          <div class="switch" style="margin-top:8px">¿Perdiste el móvil? Usa una de tus <strong>claves de recuperación</strong> en el mismo campo.</div>
+        </div>
+      </div>
+      <div class="err" id="login-err"></div>
+      <div id="demo-hint" class="muted" style="margin-top:14px;font-size:12px;text-align:center"></div>
+      <div class="muted" id="login-build" style="margin-top:10px;font-size:10px;text-align:center;letter-spacing:1px">PHOENIX LIGHT · R1</div>
+    </div>
+  </section>
+
+  <!-- ===================== APP ===================== -->
+  <section id="app" class="hidden">
+    <aside>
+      <div class="brand">
+        <div class="emblem"></div>
+        <div><h1>PHOENIX</h1><div class="sub">Light · <span id="build-tag" title="versión · build (commit). Si no coincide con el repo, recarga con Ctrl+F5"></span></div></div>
+      </div>
+      <nav id="nav">
+        <!-- Operación (día a día): ver y actuar -->
+        <a data-view="inicio" class="active"><span class="ico">🗺️</span> Inicio</a>
+        <a data-view="cuadros" data-perm="cabinet:read"><span class="ico">🗄️</span> Cuadros</a>
+        <a data-view="alarmas" data-perm="cabinet:read"><span class="ico">🚨</span> Alarmas</a>
+        <a data-view="control" data-perm="cabinet:control"><span class="ico">🎛️</span> Control</a>
+        <!-- Infraestructura / inventario -->
+        <a data-view="topologia" data-perm="cabinet:read"><span class="ico">🔗</span> Topología</a>
+        <a data-view="luminarias" data-perm="cabinet:read"><span class="ico">💡</span> Luminarias</a>
+        <!-- Gestión / administración -->
+        <a data-view="proyectos" data-perm="user:manage"><span class="ico">🏙️</span> Proyectos</a>
+        <a data-view="permisos" data-perm="user:manage"><span class="ico">🔑</span> Permisos</a>
+        <a data-view="seguridad" data-perm="user:manage"><span class="ico">🛡️</span> Seguridad</a>
+        <a data-view="auditoria" data-perm="audit:read"><span class="ico">📋</span> Auditoría</a>
+      </nav>
+      <div class="spacer"></div>
+      <div class="userbox-mini muted">Kumiho Group · Phoenix</div>
+    </aside>
+    <main>
+      <div class="topbar">
+        <div>
+          <h2 id="view-title">Inicio</h2>
+          <div class="sub" id="view-sub">Resumen de la red de alumbrado</div>
+        </div>
+        <div class="row" style="gap:14px">
+          <!-- Búsqueda global: cuadros, luminarias, calles, proyectos (Ctrl+K). -->
+          <div class="search-wrap" id="search-wrap">
+            <input type="text" id="search-input" class="search-input" placeholder="🔍 Buscar…  (Ctrl+K)" autocomplete="off"/>
+            <div class="search-results hidden" id="search-results"></div>
+          </div>
+          <!-- Reloj fecha + hora (estilo Hydra). -->
+          <div class="clock" id="topbar-clock">
+            <div class="clock-time" id="clock-time">--:--:--</div>
+            <div class="clock-date" id="clock-date">—</div>
+          </div>
+          <div class="row">
+            <span class="dot ok" id="live-dot"></span>
+            <span class="muted" id="live-label" style="font-size:12px">conectando…</span>
+          </div>
+          <!-- Menú de usuario arriba a la derecha (estilo Hydra). -->
+          <div id="user-menu" class="user-menu">
+            <button class="user-chip" id="user-chip" type="button">
+              <span class="u" id="ub-user">—</span>
+              <span class="badge rank" id="ub-rank">—</span>
+              <span class="caret">▾</span>
+            </button>
+            <div class="user-dropdown hidden" id="user-dropdown">
+              <button class="btn sm" id="btn-emergency" style="display:none">⚠ Emergencia</button>
+              <button class="btn sm" id="btn-emergency-clear" style="display:none;background:linear-gradient(135deg,#22c55e,#15803d);border-color:rgba(34,197,94,.6)">✓ Apagar emergencia</button>
+              <button class="btn ghost sm" id="btn-lock" style="display:none">🔒 Bloquear</button>
+              <button class="btn ghost sm" id="btn-pin">Mi PIN</button>
+              <button class="btn ghost sm" id="btn-pattern">Mi patrón</button>
+              <button class="btn ghost sm" id="btn-totp">Mi 2FA</button>
+              <button class="btn ghost sm" id="btn-logout">Cerrar sesión</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div id="content"></div>
+      <footer class="foot">Kumiho Group · Phoenix Division · Tecnología · Innovación · Seguridad · Futuro · <span class="mono">R1</span></footer>
+    </main>
+    <!-- Dock flotante de eventos recientes (estilo Hydra). Vive fuera del
+         flujo del contenido para mantener altura propia y poder minimizarse. -->
+    <div id="event-dock" class="event-dock collapsed" aria-live="polite">
+      <button class="dock-bar" id="dock-toggle" type="button">
+        <span class="dock-pulse" id="dock-pulse"></span>
+        <span class="dock-title">Eventos recientes</span>
+        <span class="dock-count" id="dock-count">0</span>
+        <span class="dock-handle" id="dock-handle">⌃</span>
+      </button>
+      <div class="dock-body" id="dock-body"></div>
+    </div>
+  </section>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

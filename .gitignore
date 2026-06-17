@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+*.db
+*.sqlite3
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+.pio/
+.platformio/
+build/
+
+.DS_Store
+.idea/
+.vscode/
+
+# Paquetes de release generados por tools/make_release.py
+dist/
